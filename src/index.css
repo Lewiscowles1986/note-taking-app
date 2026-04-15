@@ -1,0 +1,267 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap");
+
+@layer base {
+  :root {
+    --background: 40 20% 98%;
+    --foreground: 30 10% 12%;
+
+    --card: 40 25% 99%;
+    --card-foreground: 30 10% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 30 10% 12%;
+
+    --primary: 36 80% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 36 20% 93%;
+    --secondary-foreground: 30 10% 20%;
+
+    --muted: 40 15% 94%;
+    --muted-foreground: 30 8% 50%;
+
+    --accent: 36 60% 92%;
+    --accent-foreground: 36 80% 30%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 36 15% 88%;
+    --input: 36 15% 88%;
+    --ring: 36 80% 50%;
+
+    --radius: 0.625rem;
+
+    --sidebar-background: 40 18% 96%;
+    --sidebar-foreground: 30 10% 25%;
+    --sidebar-primary: 36 80% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 36 30% 92%;
+    --sidebar-accent-foreground: 30 10% 15%;
+    --sidebar-border: 36 12% 90%;
+    --sidebar-ring: 36 80% 50%;
+
+    --warning: 45 93% 47%;
+    --warning-foreground: 30 10% 12%;
+    --info: 210 80% 52%;
+    --info-foreground: 0 0% 100%;
+    --success: 142 72% 40%;
+    --success-foreground: 0 0% 100%;
+    --important: 270 60% 55%;
+    --important-foreground: 0 0% 100%;
+    --caution: 0 72% 51%;
+    --caution-foreground: 0 0% 100%;
+  }
+
+  .dark {
+    --background: 30 10% 8%;
+    --foreground: 40 15% 90%;
+
+    --card: 30 10% 10%;
+    --card-foreground: 40 15% 90%;
+
+    --popover: 30 10% 10%;
+    --popover-foreground: 40 15% 90%;
+
+    --primary: 36 80% 55%;
+    --primary-foreground: 30 10% 8%;
+
+    --secondary: 30 10% 15%;
+    --secondary-foreground: 40 15% 90%;
+
+    --muted: 30 8% 16%;
+    --muted-foreground: 40 10% 55%;
+
+    --accent: 36 25% 18%;
+    --accent-foreground: 36 60% 75%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 30 8% 18%;
+    --input: 30 8% 18%;
+    --ring: 36 80% 55%;
+
+    --sidebar-background: 30 10% 7%;
+    --sidebar-foreground: 40 15% 85%;
+    --sidebar-primary: 36 80% 55%;
+    --sidebar-primary-foreground: 30 10% 8%;
+    --sidebar-accent: 30 10% 14%;
+    --sidebar-accent-foreground: 40 15% 85%;
+    --sidebar-border: 30 8% 16%;
+    --sidebar-ring: 36 80% 55%;
+
+    --warning: 45 93% 47%;
+    --warning-foreground: 30 10% 12%;
+    --info: 210 80% 52%;
+    --info-foreground: 0 0% 100%;
+    --success: 142 72% 40%;
+    --success-foreground: 0 0% 100%;
+    --important: 270 60% 65%;
+    --important-foreground: 0 0% 100%;
+    --caution: 0 62% 50%;
+    --caution-foreground: 0 0% 100%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family:
+      "Inter",
+      system-ui,
+      -apple-system,
+      sans-serif;
+  }
+}
+
+@layer components {
+  .note-editor {
+    @apply w-full h-full p-4 bg-transparent resize-none outline-none text-foreground;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.9rem;
+    line-height: 1.7;
+  }
+
+  .prose-notes {
+    @apply text-foreground leading-relaxed;
+  }
+  .prose-notes h1 {
+    @apply text-3xl font-bold mt-6 mb-3;
+  }
+  .prose-notes h2 {
+    @apply text-2xl font-semibold mt-5 mb-2;
+  }
+  .prose-notes h3 {
+    @apply text-xl font-semibold mt-4 mb-2;
+  }
+  .prose-notes p {
+    @apply mb-3;
+  }
+  .prose-notes ul {
+    @apply list-disc pl-6 mb-3;
+  }
+  .prose-notes ol {
+    @apply list-decimal pl-6 mb-3;
+  }
+  .prose-notes li {
+    @apply mb-1;
+  }
+  .prose-notes blockquote {
+    @apply border-l-4 border-primary/40 pl-4 italic text-muted-foreground my-3;
+  }
+  .prose-notes code {
+    @apply bg-muted px-1.5 py-0.5 rounded text-sm font-mono;
+  }
+  .prose-notes pre {
+    @apply bg-muted p-4 overflow-x-auto my-3;
+  }
+  .prose-notes pre code {
+    @apply bg-transparent p-0;
+  }
+  .prose-notes img {
+    @apply max-w-full rounded my-3;
+  }
+  .prose-notes a {
+    @apply text-primary underline underline-offset-2;
+  }
+  .prose-notes table {
+    @apply w-full border-collapse my-3;
+  }
+  .prose-notes th {
+    @apply border border-border px-3 py-2 bg-muted text-left font-semibold;
+  }
+  .prose-notes td {
+    @apply border border-border px-3 py-2;
+  }
+  .prose-notes hr {
+    @apply border-border my-6;
+  }
+  .prose-notes input[type="checkbox"] {
+    @apply mr-2 accent-primary;
+  }
+
+  .callout {
+    @apply rounded-none px-4 py-3 my-3 border-l-4;
+  }
+  .callout .callout-header {
+    @apply mb-2;
+  }
+  .callout p:last-child,
+  .callout ul:last-child,
+  .callout ol:last-child {
+    @apply mb-0;
+  }
+
+  .callout-note {
+    @apply border-l-info;
+    background: hsl(var(--info) / 0.12);
+    border-top: 1px solid hsl(var(--info) / 0.25);
+    border-right: 1px solid hsl(var(--info) / 0.25);
+    border-bottom: 1px solid hsl(var(--info) / 0.25);
+  }
+  .callout-note .callout-header {
+    @apply text-info;
+  }
+
+  .callout-tip {
+    @apply border-l-success;
+    background: hsl(var(--success) / 0.12);
+    border-top: 1px solid hsl(var(--success) / 0.25);
+    border-right: 1px solid hsl(var(--success) / 0.25);
+    border-bottom: 1px solid hsl(var(--success) / 0.25);
+  }
+  .callout-tip .callout-header {
+    @apply text-success;
+  }
+
+  .callout-important {
+    @apply border-l-important;
+    background: hsl(var(--important) / 0.12);
+    border-top: 1px solid hsl(var(--important) / 0.25);
+    border-right: 1px solid hsl(var(--important) / 0.25);
+    border-bottom: 1px solid hsl(var(--important) / 0.25);
+  }
+  .callout-important .callout-header {
+    @apply text-important;
+  }
+
+  .callout-warning {
+    @apply border-l-warning;
+    background: hsl(var(--warning) / 0.12);
+    border-top: 1px solid hsl(var(--warning) / 0.25);
+    border-right: 1px solid hsl(var(--warning) / 0.25);
+    border-bottom: 1px solid hsl(var(--warning) / 0.25);
+  }
+  .callout-warning .callout-header {
+    @apply text-warning;
+  }
+
+  .callout-caution {
+    @apply border-l-caution;
+    background: hsl(var(--caution) / 0.12);
+    border-top: 1px solid hsl(var(--caution) / 0.25);
+    border-right: 1px solid hsl(var(--caution) / 0.25);
+    border-bottom: 1px solid hsl(var(--caution) / 0.25);
+  }
+  .callout-caution .callout-header {
+    @apply text-caution;
+  }
+
+  .slash-menu {
+    @apply absolute z-50 bg-popover border border-border rounded-lg shadow-lg overflow-hidden min-w-[220px];
+  }
+  .slash-menu-item {
+    @apply px-3 py-2 cursor-pointer flex items-center gap-2 text-sm text-popover-foreground hover:bg-accent transition-colors;
+  }
+  .slash-menu-item.active {
+    @apply bg-accent;
+  }
+}
