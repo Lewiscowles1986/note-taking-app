@@ -56,7 +56,7 @@ export function createSandboxedJSRunner() {
     ].join('\n');
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+       
       const fn = new (window.Function as typeof Function)(wrappedCode);
       const result = await fn(
         sandboxConsole, blocked, safeTimeout,

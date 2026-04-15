@@ -4,7 +4,7 @@ import JSZip from 'jszip';
 
 function noteToHtml(note: Note): string {
   // Simple markdown-to-html for export (basic conversion)
-  let html = note.content
+  const html = note.content
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')

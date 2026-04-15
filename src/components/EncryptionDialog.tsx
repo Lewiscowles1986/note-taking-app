@@ -75,8 +75,8 @@ export default function EncryptionDialog({
         await onEncrypt('keypair', kp);
       }
       onClose();
-    } catch (e: any) {
-      setError(e.message || 'Encryption failed');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Encryption failed');
     } finally {
       setLoading(false);
     }
@@ -92,8 +92,8 @@ export default function EncryptionDialog({
     try {
       await onDecrypt(password);
       onClose();
-    } catch (e: any) {
-      setError(e.message || 'Decryption failed — wrong password or key?');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Decryption failed — wrong password or key?');
     } finally {
       setLoading(false);
     }
@@ -118,8 +118,8 @@ export default function EncryptionDialog({
       setImportMode(false);
       setImportName('');
       setImportData('');
-    } catch (e: any) {
-      setError(e.message || 'Import failed');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Import failed');
     } finally {
       setLoading(false);
     }

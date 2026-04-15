@@ -30,7 +30,7 @@ export function parseCodeFrontmatter(raw: string): ParsedCodeBlock {
 
   const meta: CodeFrontmatter = {};
   let currentKey: string | null = null;
-  let notesLines: string[] = [];
+  const notesLines: string[] = [];
 
   for (const line of headerLines) {
     const keyMatch = line.match(/^(\w+)\s*:\s*(.*)$/);

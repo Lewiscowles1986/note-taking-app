@@ -82,7 +82,7 @@ export default function NoteSidebar({
   };
 
   const preview = (content: string) => {
-    const text = content.replace(/[#*`\[\]>!\-]/g, '').trim();
+    const text = content.replace(/[#*`[\]>!-]/g, '').trim();
     return text.slice(0, 80) || 'No content';
   };
 

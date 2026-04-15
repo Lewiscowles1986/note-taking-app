@@ -20,10 +20,15 @@ export default function NoteEditor({ note, onSave }: NoteEditorProps) {
   const [slashPos, setSlashPos] = useState({ top: 0, left: 0 });
   const [slashStart, setSlashStart] = useState(-1);
 
+  const lastNoteId = useRef(note.id);
+
   useEffect(() => {
-    setContent(note.content);
-    setTitle(note.title);
-  }, [note.id]);
+    if (note.id !== lastNoteId.current) {
+      setContent(note.content);
+      setTitle(note.title);
+      lastNoteId.current = note.id;
+    }
+  }, [note.id, note.content, note.title]);
 
   const saveContent = useCallback(
     (newContent: string) => {
