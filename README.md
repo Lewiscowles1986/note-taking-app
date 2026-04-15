@@ -46,6 +46,7 @@ Note Haven is built with a focus on type safety, performance, and extensibility.
 - **Unit/Integration:** [Vitest](https://vitest.dev/) for fast, reliable tests.
 - **E2E Testing:** [Playwright](https://playwright.dev/) for browser automation.
 - **Linting:** [ESLint](https://eslint.org/) with modern flat-config and TypeScript support.
+- **Local CI:** Run your GitHub Actions locally using [act](https://github.com/nektos/act).
 
 ### 🚀 Getting Started
 
@@ -70,6 +71,16 @@ Note Haven is built with a focus on type safety, performance, and extensibility.
    ```bash
    npm test          # Run Vitest
    npx playwright test # Run Playwright (if configured)
+   ```
+
+5. **Local CI (Optional):**
+   Install `act` to run the GitHub Actions workflow (test, lint, build) across Node.js versions (22, 24, 25):
+   ```bash
+   brew install act
+   # Run all actions
+   act
+   # If on Apple M-series, you might need:
+   act --container-architecture linux/amd64
    ```
 
 ### 🧩 Extensibility
@@ -98,6 +109,8 @@ The application is designed to be easily extended:
    - window.open has two entrypoints. AI couldn't quite cope there.
 - ci workflow(s)
 - cd setup? - technically as this compiles to static app it's fairly deliverable; but in what state?
+
+---
 
 ## 📄 License
 
