@@ -344,4 +344,30 @@ attachment:clip.stl`;
 
     expect(screen.getByText('model.stl')).toBeInTheDocument();
   });
+
+  it('hides controls when they are disabled via frontmatter', async () => {
+    const disabledCode = `---
+pan: false
+zoom: false
+drag: false
+---
+attachment:clip.stl`;
+
+    render(
+      React.createElement(Model3DBlock, {
+        code: disabledCode,
+        language: 'stl',
+        note: mockNote,
+      })
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading 3D asset data...')).not.toBeInTheDocument();
+    });
+
+    expect(screen.queryByTitle('Tilt Up')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Pan Up')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Zoom In')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Reset Camera View')).not.toBeInTheDocument();
+  });
 });

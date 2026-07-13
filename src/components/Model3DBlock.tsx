@@ -494,6 +494,12 @@ function Model3DViewport({
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const modelMeshRef = useRef<THREE.Object3D | null>(null);
 
+  // Check controls availability based on config parameters
+  const canRotate = config.drag !== false;
+  const canPan = config.pan !== false;
+  const canZoom = config.zoom !== false;
+  const showReset = canRotate || canPan || canZoom;
+
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -795,118 +801,135 @@ function Model3DViewport({
       {showControls && (
         <>
           {/* Rotation / Auto-play (Bottom-Left) */}
-          <div className="absolute bottom-3 left-3 flex flex-col gap-1 z-10">
-            <div className="grid grid-cols-3 grid-rows-3 gap-1 w-24 h-24 p-1 bg-slate-900/80 rounded-xl backdrop-blur-sm border border-white/10 shadow-lg select-none">
-              <div />
-              <button
-                onClick={() => triggerOrbit('up')}
-                className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
-                title="Tilt Up"
-              >
-                <ArrowUp size={16} />
-              </button>
-              <div />
+          {canRotate && (
+            <div className="absolute bottom-3 left-3 flex flex-col gap-1 z-10">
+              <div className="grid grid-cols-3 grid-rows-3 gap-1 w-24 h-24 p-1 bg-slate-900/80 rounded-xl backdrop-blur-sm border border-white/10 shadow-lg select-none">
+                <div />
+                <button
+                  onClick={() => triggerOrbit('up')}
+                  className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
+                  title="Tilt Up"
+                >
+                  <ArrowUp size={16} />
+                </button>
+                <div />
 
-              <button
-                onClick={() => triggerOrbit('left')}
-                className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
-                title="Orbit Left"
-              >
-                <ArrowLeft size={16} />
-              </button>
-              <button
-                onClick={() => setIsSpinning(!isSpinning)}
-                className={`flex items-center justify-center transition-colors rounded ${
-                  isSpinning ? 'text-primary bg-primary/20' : 'text-white hover:text-primary hover:bg-white/10'
-                }`}
-                title={isSpinning ? 'Pause Rotation' : 'Spin Model'}
-              >
-                {isSpinning ? <Pause size={14} /> : <Play size={14} />}
-              </button>
-              <button
-                onClick={() => triggerOrbit('right')}
-                className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
-                title="Orbit Right"
-              >
-                <ArrowRight size={16} />
-              </button>
+                <button
+                  onClick={() => triggerOrbit('left')}
+                  className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
+                  title="Orbit Left"
+                >
+                  <ArrowLeft size={16} />
+                </button>
+                <button
+                  onClick={() => setIsSpinning(!isSpinning)}
+                  className={`flex items-center justify-center transition-colors rounded ${
+                    isSpinning ? 'text-primary bg-primary/20' : 'text-white hover:text-primary hover:bg-white/10'
+                  }`}
+                  title={isSpinning ? 'Pause Rotation' : 'Spin Model'}
+                >
+                  {isSpinning ? <Pause size={14} /> : <Play size={14} />}
+                </button>
+                <button
+                  onClick={() => triggerOrbit('right')}
+                  className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
+                  title="Orbit Right"
+                >
+                  <ArrowRight size={16} />
+                </button>
 
-              <div />
-              <button
-                onClick={() => triggerOrbit('down')}
-                className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
-                title="Tilt Down"
-              >
-                <ArrowDown size={16} />
-              </button>
-              <div />
+                <div />
+                <button
+                  onClick={() => triggerOrbit('down')}
+                  className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
+                  title="Tilt Down"
+                >
+                  <ArrowDown size={16} />
+                </button>
+                <div />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Panning / Zooming / Reset (Bottom-Right) */}
           <div className="absolute bottom-3 right-3 flex gap-2 items-end z-10">
             {/* Pan Directional Controls */}
-            <div className="grid grid-cols-3 grid-rows-3 gap-1 w-24 h-24 p-1 bg-slate-900/80 rounded-xl backdrop-blur-sm border border-white/10 shadow-lg select-none">
-              <div />
-              <button
-                onClick={() => triggerPan('up')}
-                className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
-                title="Pan Up"
-              >
-                <ArrowUp size={16} />
-              </button>
-              <div />
+            {canPan && (
+              <div className="grid grid-cols-3 grid-rows-3 gap-1 w-24 h-24 p-1 bg-slate-900/80 rounded-xl backdrop-blur-sm border border-white/10 shadow-lg select-none">
+                <div />
+                <button
+                  onClick={() => triggerPan('up')}
+                  className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
+                  title="Pan Up"
+                >
+                  <ArrowUp size={16} />
+                </button>
+                <div />
 
-              <button
-                onClick={() => triggerPan('left')}
-                className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
-                title="Pan Left"
-              >
-                <ArrowLeft size={16} />
-              </button>
+                <button
+                  onClick={() => triggerPan('left')}
+                  className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
+                  title="Pan Left"
+                >
+                  <ArrowLeft size={16} />
+                </button>
+                <button
+                  onClick={triggerReset}
+                  className="flex items-center justify-center text-white hover:text-primary hover:bg-white/10 transition-colors rounded"
+                  title="Reset Camera View"
+                >
+                  <RotateCcw size={14} />
+                </button>
+                <button
+                  onClick={() => triggerPan('right')}
+                  className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
+                  title="Pan Right"
+                >
+                  <ArrowRight size={16} />
+                </button>
+
+                <div />
+                <button
+                  onClick={() => triggerPan('down')}
+                  className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
+                  title="Pan Down"
+                >
+                  <ArrowDown size={16} />
+                </button>
+                <div />
+              </div>
+            )}
+
+            {/* Standalone Reset Button if Panning is disabled but Reset is still useful */}
+            {!canPan && showReset && (
               <button
                 onClick={triggerReset}
-                className="flex items-center justify-center text-white hover:text-primary hover:bg-white/10 transition-colors rounded"
+                className="w-8 h-8 flex items-center justify-center bg-slate-900/80 rounded-xl backdrop-blur-sm border border-white/10 shadow-lg text-white hover:text-primary hover:bg-white/10 transition-colors select-none"
                 title="Reset Camera View"
               >
                 <RotateCcw size={14} />
               </button>
-              <button
-                onClick={() => triggerPan('right')}
-                className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
-                title="Pan Right"
-              >
-                <ArrowRight size={16} />
-              </button>
-
-              <div />
-              <button
-                onClick={() => triggerPan('down')}
-                className="flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
-                title="Pan Down"
-              >
-                <ArrowDown size={16} />
-              </button>
-              <div />
-            </div>
+            )}
 
             {/* Zoom Controls */}
-            <div className="flex flex-col gap-1 p-1 bg-slate-900/80 rounded-xl backdrop-blur-sm border border-white/10 shadow-lg select-none">
-              <button
-                onClick={() => triggerZoom(true)}
-                className="w-8 h-8 flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
-                title="Zoom In"
-              >
-                <ZoomIn size={16} />
-              </button>
-              <button
-                onClick={() => triggerZoom(false)}
-                className="w-8 h-8 flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
-                title="Zoom Out"
-              >
-                <ZoomOut size={16} />
-              </button>
-            </div>
+            {canZoom && (
+              <div className="flex flex-col gap-1 p-1 bg-slate-900/80 rounded-xl backdrop-blur-sm border border-white/10 shadow-lg select-none">
+                <button
+                  onClick={() => triggerZoom(true)}
+                  className="w-8 h-8 flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
+                  title="Zoom In"
+                >
+                  <ZoomIn size={16} />
+                </button>
+                <button
+                  onClick={() => triggerZoom(false)}
+                  className="w-8 h-8 flex items-center justify-center text-white hover:text-primary transition-colors hover:bg-white/10 rounded"
+                  title="Zoom Out"
+                >
+                  <ZoomOut size={16} />
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}
