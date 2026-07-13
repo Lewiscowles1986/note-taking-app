@@ -9,6 +9,7 @@ import { getCalloutDef, calloutTypePattern } from '@/lib/callouts';
 const CodeBlock = lazy(() => import('./CodeBlock'));
 const MermaidBlock = lazy(() => import('./MermaidBlock'));
 const GeoJsonBlock = lazy(() => import('./GeoJsonBlock'));
+const Model3DBlock = lazy(() => import('./Model3DBlock'));
 
 interface NoteViewerProps {
   note: Note;
@@ -38,7 +39,7 @@ function renderCallout(type: string, bodyLines: string[], components?: Component
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw]}
         components={components}
-        urlTransform={(url) => (url.startsWith('attachment:') ? url : defaultUrlTransform(url))}
+        urlTransform={(url) => (url.startsWith('attachment:') || url.startsWith('data:') ? url : defaultUrlTransform(url))}
       >
         {body}
       </ReactMarkdown>
@@ -228,12 +229,26 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
   const needsSyntaxHighlighter = note.hasCodeBlocks !== false;
   const needsMermaid = note.hasMermaid !== false;
   const needsGeoJson = note.hasGeoJson !== false;
+  const needsModel3D = note.hasModel3D !== false;
 
   const components: Components = useMemo(() => ({
     img({ src, alt, ...props }) {
       const attachment = resolveAttachmentReference(src, attachmentMap);
       const resolved = resolveAttachmentHref(src, attachmentMap);
       const finalSrc = attachment?.thumbnail || resolved;
+
+      const attachmentName = attachment?.name.toLowerCase() || '';
+      const srcUrl = src?.toLowerCase() || '';
+      const isStl = attachmentName.endsWith('.stl') || srcUrl.endsWith('.stl');
+      const isObj = attachmentName.endsWith('.obj') || srcUrl.endsWith('.obj');
+
+      if ((isStl || isObj) && needsModel3D) {
+        return (
+          <Suspense fallback={<div className="my-3 h-48 animate-pulse rounded-sm bg-muted p-4 flex items-center justify-center text-xs text-muted-foreground font-sans">Loading 3D model...</div>}>
+            <Model3DBlock code={src || ''} language={isStl ? 'stl' : 'obj'} note={note} />
+          </Suspense>
+        );
+      }
 
       if (!finalSrc) {
         return <span className="text-muted-foreground italic">[missing image]</span>;
@@ -252,6 +267,19 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
     a({ href, children, ...props }) {
       const resolved = resolveAttachmentHref(href, attachmentMap);
       const attachment = resolveAttachmentReference(href, attachmentMap);
+
+      const attachmentName = attachment?.name.toLowerCase() || '';
+      const hrefUrl = href?.toLowerCase() || '';
+      const isStl = attachmentName.endsWith('.stl') || hrefUrl.endsWith('.stl') || hrefUrl.includes('model/stl') || hrefUrl.includes('application/octet-stream');
+      const isObj = attachmentName.endsWith('.obj') || hrefUrl.endsWith('.obj') || hrefUrl.includes('model/obj');
+
+      if ((isStl || isObj) && needsModel3D) {
+        return (
+          <Suspense fallback={<div className="my-3 h-48 animate-pulse rounded-sm bg-muted p-4 flex items-center justify-center text-xs text-muted-foreground font-sans">Loading 3D model...</div>}>
+            <Model3DBlock code={href || ''} language={isStl ? 'stl' : 'obj'} note={note} />
+          </Suspense>
+        );
+      }
 
       if (!resolved) {
         return <span className="text-muted-foreground italic">[missing attachment]</span>;
@@ -298,6 +326,14 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
         );
       }
 
+      if (lang === '3dmodel' && needsModel3D) {
+        return (
+          <Suspense fallback={<div className="my-3 h-48 animate-pulse rounded-sm bg-muted p-4 flex items-center justify-center text-xs text-muted-foreground">Loading 3D model...</div>}>
+            <Model3DBlock code={String(children).trim()} language="" note={note} />
+          </Suspense>
+        );
+      }
+
       if (lang === 'bpmn') {
         return (
           <div className="my-3">
@@ -327,7 +363,7 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
         </pre>
       );
     },
-  }), [needsSyntaxHighlighter, needsMermaid, needsGeoJson, attachmentMap]);
+  }), [needsSyntaxHighlighter, needsMermaid, needsGeoJson, needsModel3D, attachmentMap]);
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -345,7 +381,7 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
                 components={components}
-                urlTransform={(url) => (url.startsWith('attachment:') ? url : defaultUrlTransform(url))}
+                urlTransform={(url) => (url.startsWith('attachment:') || url.startsWith('data:') ? url : defaultUrlTransform(url))}
               >
                 {seg.content}
               </ReactMarkdown>

@@ -57,4 +57,18 @@ describe('detectContentFeatures', () => {
     expect(features.hasMermaid).toBe(true);
     expect(features.hasGeoJson).toBe(true);
   });
+
+  it('detects 3dmodel blocks', () => {
+    const content = '```3dmodel\nattachment:clip.stl\n```';
+    const features = detectContentFeatures(content);
+    expect(features.hasModel3D).toBe(true);
+    expect(features.hasCodeBlocks).toBe(false);
+  });
+
+  it('detects inline stl and obj attachments', () => {
+    const contentStl = 'Here is the clip: ![clip](attachment:uuid.stl)';
+    const contentObj = 'Here is the model: ![model](attachment:uuid.obj)';
+    expect(detectContentFeatures(contentStl).hasModel3D).toBe(true);
+    expect(detectContentFeatures(contentObj).hasModel3D).toBe(true);
+  });
 });

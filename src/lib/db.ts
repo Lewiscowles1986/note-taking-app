@@ -39,6 +39,7 @@ export interface Note {
   hasCodeBlocks?: boolean;
   hasMermaid?: boolean;
   hasGeoJson?: boolean;
+  hasModel3D?: boolean;
   /** Encryption metadata — if set, content is encrypted */
   encrypted?: EncryptedPayload | null;
 }
@@ -46,9 +47,10 @@ export interface Note {
 /** Detect content features for lazy-loading decisions */
 export function detectContentFeatures(content: string) {
   return {
-    hasCodeBlocks: /```(?!mermaid|geojson)[a-zA-Z]*\n[\s\S]*?```/.test(content),
+    hasCodeBlocks: /```(?!mermaid|geojson|3dmodel)[a-zA-Z]*\n[\s\S]*?```/.test(content),
     hasMermaid: /```mermaid\n[\s\S]*?```/.test(content),
     hasGeoJson: /```geojson\n[\s\S]*?```/.test(content),
+    hasModel3D: /```3dmodel\n[\s\S]*?```/.test(content) || /!\[[^\]]*\]\(attachment:[^)]+\.(stl|obj)\)/i.test(content),
   };
 }
 

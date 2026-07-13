@@ -13,6 +13,7 @@ import {
   GitBranch,
   Table,
   Map,
+  Box,
 } from 'lucide-react';
 import { calloutRegistry } from '@/lib/callouts';
 
@@ -46,6 +47,12 @@ const baseCommands: SlashCommand[] = [
     description: 'Render interactive map',
     icon: <Map size={16} />,
     insert: '```geojson\n{\n  "type": "FeatureCollection",\n  "features": [\n    {\n      "type": "Feature",\n      "properties": {\n        "name": "Washington, D.C.",\n        "description": "Capital of the United States"\n      },\n      "geometry": {\n        "type": "Point",\n        "coordinates": [-77.0369, 38.9072]\n      }\n    }\n  ]\n}\n```',
+  },
+  {
+    label: '3D Model',
+    description: 'Render interactive STL or OBJ',
+    icon: <Box size={16} />,
+    insert: '```3dmodel\n---\nviewports:\n  - name: Isometric\n    camera: [20, 20, 20]\n    mode: Solid\n  - name: Top View\n    camera: [0, 30, 0]\n    mode: Wireframe\n---\nattachment:clip.stl\n```',
   },
 ];
 
