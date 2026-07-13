@@ -669,10 +669,6 @@ function Model3DViewport({
     const animate = () => {
       animationId = requestAnimationFrame(animate);
       
-      if (controls.autoRotate !== isSpinning) {
-        controls.autoRotate = isSpinning;
-      }
-
       controls.update();
       renderer.render(scene, camera);
     };
@@ -716,7 +712,74 @@ function Model3DViewport({
         containerRef.current.innerHTML = '';
       }
     };
-  }, [geometry, objGroup, modelType, texture, renderMode, isSpinning, config, system]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geometry, objGroup, modelType, config.camera, config.projection, system]);
+
+  // Update material programmatically when renderMode or texture changes
+  useEffect(() => {
+    const model = modelMeshRef.current;
+    if (!model) return;
+
+    if (modelType === 'stl' && model instanceof THREE.Mesh) {
+      // Dispose old material to avoid memory leaks
+      if (Array.isArray(model.material)) {
+        model.material.forEach((m) => m.dispose());
+      } else {
+        model.material.dispose();
+      }
+
+      let mat: THREE.Material;
+      if (renderMode === 'Solid') {
+        mat = new THREE.MeshStandardMaterial({
+          color: 0x3b82f6,
+          roughness: 0.4,
+          metalness: 0.2,
+          map: texture || null
+        });
+      } else if (renderMode === 'Surface Angle') {
+        mat = new THREE.MeshNormalMaterial();
+      } else {
+        mat = new THREE.MeshBasicMaterial({
+          color: 0x1e3a8a,
+          wireframe: true
+        });
+      }
+      model.material = mat;
+    } else if (modelType === 'obj') {
+      model.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach((m) => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+
+          if (renderMode === 'Solid') {
+            child.material = new THREE.MeshStandardMaterial({
+              color: 0x3b82f6,
+              roughness: 0.4,
+              metalness: 0.2,
+              map: texture || null
+            });
+          } else if (renderMode === 'Surface Angle') {
+            child.material = new THREE.MeshNormalMaterial();
+          } else {
+            child.material = new THREE.MeshBasicMaterial({
+              color: 0x1e3a8a,
+              wireframe: true
+            });
+          }
+        }
+      });
+    }
+  }, [renderMode, texture, modelType]);
+
+  // Update controls autoRotate programmatically
+  useEffect(() => {
+    if (controlsRef.current) {
+      controlsRef.current.autoRotate = isSpinning;
+    }
+  }, [isSpinning]);
 
   // Programmatic movement actions
   const triggerOrbit = (dir: 'left' | 'right' | 'up' | 'down') => {
