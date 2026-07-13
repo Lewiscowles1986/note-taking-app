@@ -298,6 +298,16 @@ attachment:clip.stl`;
     expect(screen.getByText('Front View')).toBeInTheDocument();
     expect(screen.getByText('Top View')).toBeInTheDocument();
     expect(screen.queryByText('Default')).not.toBeInTheDocument();
+
+    // Front View has active controls initially
+    expect(screen.getAllByTitle('Tilt Up')).toHaveLength(1);
+
+    // Click Top View component container to switch active focus
+    const topViewContainer = screen.getByText('Top View').closest('.cursor-pointer')!;
+    fireEvent.click(topViewContainer);
+
+    // Controls are now active in Top View (still exactly 1 overlay rendered)
+    expect(screen.getAllByTitle('Tilt Up')).toHaveLength(1);
   });
 
   it('displays error notice when fetching or parsing fails', async () => {
