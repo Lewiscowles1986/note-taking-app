@@ -101,6 +101,7 @@ You can configure rendering parameters via YAML frontmatter in a ` ```3dmodel ` 
 - `drag` / `grab`: `true|false` (Enable/disable mouse dragging to rotate)
 - `camera`: `[x, y, z]` (Camera position coordinates)
 - `system`: `z-up|y-up` (Coordinate system; defaults to `z-up` for STL and `y-up` for OBJ)
+- `projection`: `perspective|orthographic` (Camera projection mode; defaults to `perspective`. `orthographic` is ideal for blueprint-style views)
 - `texture`: `attachment:name|URL` (Apply custom texture to the model)
 - `uvProjection`: `planar-x|planar-y|planar-z` (Apply planar UV mapping coordinates projection)
 - `viewports`: List of viewport configurations for side-by-side or grid multi-view CAD displays:
@@ -112,6 +113,7 @@ You can configure rendering parameters via YAML frontmatter in a ` ```3dmodel ` 
     - name: Top View
       camera: [0, 30, 0]
       mode: Wireframe
+      projection: orthographic
       pan: false
   ```
 

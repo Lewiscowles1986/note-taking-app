@@ -33,6 +33,7 @@ interface ViewportConfig {
   zoom?: boolean;
   drag?: boolean;
   mode?: 'Solid' | 'Surface Angle' | 'Wireframe';
+  projection?: 'perspective' | 'orthographic';
 }
 
 function parseFrontmatterAndContent(code: string) {
@@ -506,11 +507,32 @@ function Model3DViewport({
     const width = containerRef.current.clientWidth;
     const height = 400; // Standard fixed canvas height
 
+    // Compute radius beforehand for camera boundaries
+    let radius = 15;
+    if (modelType === 'stl' && geometry) {
+      geometry.computeBoundingSphere();
+      radius = geometry.boundingSphere?.radius || 15;
+    } else if (modelType === 'obj' && objGroup) {
+      const box = new THREE.Box3().setFromObject(objGroup);
+      const sphere = new THREE.Sphere();
+      box.getBoundingSphere(sphere);
+      radius = sphere.radius || 15;
+    }
+
     // 1. Setup Scene, Camera, Renderer
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xffffff);
 
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+    let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
+    const isOrthographic = config.projection === 'orthographic';
+
+    if (isOrthographic) {
+      const aspect = width / height;
+      const d = radius * 1.5;
+      camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 0.1, 1000);
+    } else {
+      camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+    }
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -618,7 +640,6 @@ function Model3DViewport({
     modelMeshRef.current = model;
 
     // 5. Configure Camera position
-    const radius = boundingSphere.radius || 15;
     if (config.camera && Array.isArray(config.camera) && config.camera.length === 3) {
       camera.position.set(config.camera[0], config.camera[1], config.camera[2]);
     } else {
@@ -663,8 +684,20 @@ function Model3DViewport({
       resizeObserver = new ResizeObserver((entries) => {
         for (let entry of entries) {
           const { width, height } = entry.contentRect;
-          camera.aspect = width / 400;
-          camera.updateProjectionMatrix();
+          if (isOrthographic) {
+            const aspect = width / 400;
+            const d = radius * 1.5;
+            const orthoCam = camera as THREE.OrthographicCamera;
+            orthoCam.left = -d * aspect;
+            orthoCam.right = d * aspect;
+            orthoCam.top = d;
+            orthoCam.bottom = -d;
+            orthoCam.updateProjectionMatrix();
+          } else {
+            const perspectiveCam = camera as THREE.PerspectiveCamera;
+            perspectiveCam.aspect = width / 400;
+            perspectiveCam.updateProjectionMatrix();
+          }
           renderer.setSize(width, 400);
         }
       });
@@ -731,6 +764,13 @@ function Model3DViewport({
     } else {
       camera.position.set(radius * 1.6, radius * 1.2, radius * 1.6);
     }
+
+    // Reset zoom level if orthographic
+    if ('zoom' in camera) {
+      camera.zoom = 1;
+      camera.updateProjectionMatrix();
+    }
+
     controls.update();
   };
 

@@ -52,7 +52,7 @@ const baseCommands: SlashCommand[] = [
     label: '3D Model',
     description: 'Render interactive STL or OBJ',
     icon: <Box size={16} />,
-    insert: '```3dmodel\n---\nviewports:\n  - name: Isometric\n    camera: [20, 20, 20]\n    mode: Solid\n  - name: Top View\n    camera: [0, 30, 0]\n    mode: Wireframe\n---\nattachment:clip.stl\n```',
+    insert: '```3dmodel\n---\nviewports:\n  - name: Isometric\n    camera: [20, 20, 20]\n    mode: Solid\n  - name: Top View\n    camera: [0, 30, 0]\n    mode: Wireframe\n    projection: orthographic\n---\nattachment:clip.stl\n```',
   },
 ];
 

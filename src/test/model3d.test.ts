@@ -94,6 +94,7 @@ vi.mock('three', async (importOriginal) => {
     WebGLRenderer: mockWebGLRenderer,
     Scene: mockScene,
     PerspectiveCamera: mockCamera,
+    OrthographicCamera: mockCamera,
     Mesh: mockMesh,
     PlaneGeometry: vi.fn().mockImplementation(() => ({})),
     MeshBasicMaterial: vi.fn().mockImplementation(() => ({})),
@@ -369,5 +370,29 @@ attachment:clip.stl`;
     expect(screen.queryByTitle('Pan Up')).not.toBeInTheDocument();
     expect(screen.queryByTitle('Zoom In')).not.toBeInTheDocument();
     expect(screen.queryByTitle('Reset Camera View')).not.toBeInTheDocument();
+  });
+
+  it('supports orthographic camera projection', async () => {
+    const orthoCode = `---
+viewports:
+  - name: Top View
+    camera: [0, 30, 0]
+    projection: orthographic
+---
+attachment:clip.stl`;
+
+    render(
+      React.createElement(Model3DBlock, {
+        code: orthoCode,
+        language: 'stl',
+        note: mockNote,
+      })
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading 3D asset data...')).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Top View')).toBeInTheDocument();
   });
 });
