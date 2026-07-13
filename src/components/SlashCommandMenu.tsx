@@ -12,6 +12,7 @@ import {
   Minus,
   GitBranch,
   Table,
+  Map,
 } from 'lucide-react';
 import { calloutRegistry } from '@/lib/callouts';
 
@@ -39,6 +40,12 @@ const baseCommands: SlashCommand[] = [
     description: 'Flowchart, sequence, etc.',
     icon: <GitBranch size={16} />,
     insert: '```mermaid\ngraph TD\n    A[Start] --> B[End]\n```',
+  },
+  {
+    label: 'GeoJSON Map',
+    description: 'Render interactive map',
+    icon: <Map size={16} />,
+    insert: '```geojson\n{\n  "type": "FeatureCollection",\n  "features": [\n    {\n      "type": "Feature",\n      "properties": {\n        "name": "Washington, D.C.",\n        "description": "Capital of the United States"\n      },\n      "geometry": {\n        "type": "Point",\n        "coordinates": [-77.0369, 38.9072]\n      }\n    }\n  ]\n}\n```',
   },
 ];
 

@@ -8,6 +8,7 @@ import { getCalloutDef, calloutTypePattern } from '@/lib/callouts';
 
 const CodeBlock = lazy(() => import('./CodeBlock'));
 const MermaidBlock = lazy(() => import('./MermaidBlock'));
+const GeoJsonBlock = lazy(() => import('./GeoJsonBlock'));
 
 interface NoteViewerProps {
   note: Note;
@@ -226,6 +227,7 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
 
   const needsSyntaxHighlighter = note.hasCodeBlocks !== false;
   const needsMermaid = note.hasMermaid !== false;
+  const needsGeoJson = note.hasGeoJson !== false;
 
   const components: Components = useMemo(() => ({
     img({ src, alt, ...props }) {
@@ -288,6 +290,14 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
         );
       }
 
+      if (lang === 'geojson' && needsGeoJson) {
+        return (
+          <Suspense fallback={<div className="my-3 h-48 animate-pulse rounded-sm bg-muted p-4 flex items-center justify-center text-xs text-muted-foreground">Loading map...</div>}>
+            <GeoJsonBlock code={String(children).trim()} />
+          </Suspense>
+        );
+      }
+
       if (lang === 'bpmn') {
         return (
           <div className="my-3">
@@ -317,7 +327,7 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
         </pre>
       );
     },
-  }), [needsSyntaxHighlighter, needsMermaid, attachmentMap]);
+  }), [needsSyntaxHighlighter, needsMermaid, needsGeoJson, attachmentMap]);
 
   return (
     <div className="flex-1 overflow-y-auto">

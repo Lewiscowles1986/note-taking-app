@@ -35,4 +35,26 @@ describe('detectContentFeatures', () => {
     const features = detectContentFeatures(content);
     expect(features.hasCodeBlocks).toBe(false);
   });
+
+  it('detects geojson blocks', () => {
+    const content = '```geojson\n{ "type": "Point" }\n```';
+    const features = detectContentFeatures(content);
+    expect(features.hasGeoJson).toBe(true);
+    expect(features.hasCodeBlocks).toBe(false);
+    expect(features.hasMermaid).toBe(false);
+  });
+
+  it('does not count geojson as a code block', () => {
+    const content = '```geojson\n{ "type": "Point" }\n```';
+    const features = detectContentFeatures(content);
+    expect(features.hasCodeBlocks).toBe(false);
+  });
+
+  it('detects mix of code, mermaid and geojson', () => {
+    const content = '```python\nprint(1)\n```\n\n```mermaid\ngraph TD\n```\n\n```geojson\n{"type": "Feature"}\n```';
+    const features = detectContentFeatures(content);
+    expect(features.hasCodeBlocks).toBe(true);
+    expect(features.hasMermaid).toBe(true);
+    expect(features.hasGeoJson).toBe(true);
+  });
 });

@@ -38,6 +38,7 @@ export interface Note {
   /** Fast-detect flags for lazy-loading heavy renderers */
   hasCodeBlocks?: boolean;
   hasMermaid?: boolean;
+  hasGeoJson?: boolean;
   /** Encryption metadata — if set, content is encrypted */
   encrypted?: EncryptedPayload | null;
 }
@@ -45,8 +46,9 @@ export interface Note {
 /** Detect content features for lazy-loading decisions */
 export function detectContentFeatures(content: string) {
   return {
-    hasCodeBlocks: /```(?!mermaid)[a-zA-Z]*\n[\s\S]*?```/.test(content),
+    hasCodeBlocks: /```(?!mermaid|geojson)[a-zA-Z]*\n[\s\S]*?```/.test(content),
     hasMermaid: /```mermaid\n[\s\S]*?```/.test(content),
+    hasGeoJson: /```geojson\n[\s\S]*?```/.test(content),
   };
 }
 
