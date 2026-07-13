@@ -18,6 +18,8 @@ Note Haven is a local-first, privacy-focused Markdown note-taking application. I
 - **Rich Media Support:** Paste images directly into the editor. Automatic thumbnailing and local attachment management.
 - **Interactive Diagrams:** Native support for [Mermaid.js](https://mermaid.js.org/) to create flowcharts, sequence diagrams, and more directly in your notes.
 - **Code Execution:** Write and run sandboxed JavaScript code blocks directly within your notes. Perfect for quick calculations or prototyping.
+- **GeoJSON support:** Render GeoJSON data as interactive maps directly in notes. Supports multiple markers and auto-clustering of points too close together.
+- **3D Model Rendering:** Render interactive STL and OBJ 3D models directly in notes. Supports custom camera angles, coordinate systems, texture overrides, and CAD-style multi-viewport grids via Markdown code blocks with YAML frontmatter.
 
 ### 🗂 Organized & Discoverable
 - **Powerful Search:** Instantly find notes with real-time full-text search.
@@ -89,6 +91,31 @@ The application is designed to be easily extended:
 - **Code Runners:** Register new language runners in `src/lib/codeRunners.ts`.
 - **Slash Commands:** Add new commands in `src/components/SlashCommandMenu.tsx`.
 - **UI Components:** Built on top of Shadcn UI for consistent design language.
+- **GeoJSON Support:** Configure GeoJSON data with YAML frontmatter in a ` ```geojson ` block. For now it's just markers, but may add layers, etc.
+- **3D Models:** Configure STL or OBJ interactive model views using the ` ```3dmodel ` block language.
+
+#### ⚙️ 3D Model Configuration (YAML Frontmatter)
+You can configure rendering parameters via YAML frontmatter in a ` ```3dmodel ` block:
+- `pan`: `true|false` (Enable/disable camera panning)
+- `zoom`: `true|false` (Enable/disable scrolling/pinching to zoom)
+- `drag` / `grab`: `true|false` (Enable/disable mouse dragging to rotate)
+- `camera`: `[x, y, z]` (Camera position coordinates)
+- `system`: `z-up|y-up` (Coordinate system; defaults to `z-up` for STL and `y-up` for OBJ)
+- `texture`: `attachment:name|URL` (Apply custom texture to the model)
+- `uvProjection`: `planar-x|planar-y|planar-z` (Apply planar UV mapping coordinates projection)
+- `viewports`: List of viewport configurations for side-by-side or grid multi-view CAD displays:
+  ```yaml
+  viewports:
+    - name: Isometric
+      camera: [20, 20, 20]
+      mode: Solid
+    - name: Top View
+      camera: [0, 30, 0]
+      mode: Wireframe
+      pan: false
+  ```
+
+  Attachments are similar syntax to markdown images, but with base64 inline content; which we can turn into named artifacts to access.
 
 ---
 
