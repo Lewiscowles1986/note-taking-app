@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import Model3DBlock from '../components/Model3DBlock';
 import { saveAs } from 'file-saver';
+import type { Note } from '@/lib/db';
 
 // Mock file-saver
 vi.mock('file-saver', () => ({
@@ -62,7 +63,7 @@ vi.mock('three/examples/jsm/loaders/OBJLoader.js', () => {
 
 // Mock three.js
 vi.mock('three', async (importOriginal) => {
-  const actual: any = await importOriginal();
+  const actual: Record<string, unknown> = await importOriginal();
   
   const mockWebGLRenderer = vi.fn().mockImplementation(() => ({
     setSize: vi.fn(),
@@ -110,16 +111,16 @@ vi.mock('three', async (importOriginal) => {
         this.x = x; this.y = y; this.z = z;
       }
       set(x: number, y: number, z: number) { this.x = x; this.y = y; this.z = z; return this; }
-      add(v: any) { this.x += v.x; this.y += v.y; this.z += v.z; return this; }
-      sub(v: any) { this.x -= v.x; this.y -= v.y; this.z -= v.z; return this; }
+      add(v: { x: number; y: number; z: number }) { this.x += v.x; this.y += v.y; this.z += v.z; return this; }
+      sub(v: { x: number; y: number; z: number }) { this.x -= v.x; this.y -= v.y; this.z -= v.z; return this; }
       normalize() { return this; }
-      subVectors(a: any, b: any) {
+      subVectors(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) {
         this.x = a.x - b.x;
         this.y = a.y - b.y;
         this.z = a.z - b.z;
         return this;
       }
-      addScaledVector(v: any, s: number) {
+      addScaledVector(v: { x: number; y: number; z: number }, s: number) {
         this.x += v.x * s;
         this.y += v.y * s;
         this.z += v.z * s;
@@ -129,8 +130,8 @@ vi.mock('three', async (importOriginal) => {
     },
     Box3: class {
       setFromObject() { return this; }
-      getCenter(v: any) { v.set(0, 0, 0); return v; }
-      getBoundingSphere(s: any) { s.radius = 10; return s; }
+      getCenter(v: { set: (x: number, y: number, z: number) => void }) { v.set(0, 0, 0); return v; }
+      getBoundingSphere(s: { radius: number }) { s.radius = 10; return s; }
     },
     Sphere: class {
       radius = 10;
@@ -147,9 +148,12 @@ vi.mock('three', async (importOriginal) => {
 });
 
 describe('Model3DBlock component', () => {
-  const mockNote: any = {
+  const mockNote: Note = {
     id: 1,
     title: 'Test Note',
+    content: '',
+    tags: [],
+    category: '',
     attachments: [
       {
         id: 'clip-uuid',
@@ -159,6 +163,10 @@ describe('Model3DBlock component', () => {
         data: 'data:model/stl;base64,Q09MT1I9AAAAAAAAAAAAAAAAAAAAAAA=',
       },
     ],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    editDates: [],
+    pinned: false,
   };
 
   beforeEach(() => {
