@@ -32,10 +32,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Compute Pages base path
+        id: base
+        # A user/org site (repo named "<owner>.github.io") is served at the
+        # domain root with no prefix; any other repo is a project site served
+        # under "/<repo-name>/". Derive the Vite base from the repo name so
+        # assets resolve correctly in either case.
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          if [[ "$REPO_NAME" == *.github.io ]]; then
+            echo "base=/" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=/$REPO_NAME/" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build project
-        # base is set so assets resolve under the /note-taking-app/ subpath on Pages
         env:
-          GITHUB_PAGES_BASE: /note-taking-app/
+          GITHUB_PAGES_BASE: ${{ steps.base.outputs.base }}
         run: npm run build
 
       - name: Configure Pages
