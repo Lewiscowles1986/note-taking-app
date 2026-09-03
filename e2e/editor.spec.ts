@@ -1,4 +1,4 @@
-import { test, expect, step, seedNotes, type NoteSeed } from './fixtures';
+import { test, expect, step, seedNotes, debugBreak, type NoteSeed } from './fixtures';
 import type { Page } from '@playwright/test';
 
 /**
@@ -62,6 +62,7 @@ test('slash command menu opens and inserts a code block', async ({ page }) => {
   await page.goto('/');
   await page.locator('div.group', { hasText: 'Slash' }).click();
   await expect(editor(page)).toHaveValue(/# Slash\n\n/);
+  await debugBreak(page, 'note open — inspect before slash command');
 
   // Position the cursor on an empty line, then type "/" to open the menu.
   await editor(page).click();
@@ -84,6 +85,7 @@ test('auto-continues markdown lists', async ({ page }) => {
   await page.goto('/');
   await page.locator('div.group', { hasText: 'List' }).click();
   await expect(editor(page)).toHaveValue(/# List\n\n/);
+  await debugBreak(page, 'note open — inspect before list typing');
 
   // Type a bullet item and press Enter at the end of the line.
   await editor(page).fill('- first item');
@@ -103,6 +105,7 @@ test('renders callouts in view mode', async ({ page }) => {
   await page.goto('/');
   await page.locator('div.group', { hasText: 'Callouts' }).click();
   await expect(editor(page)).toHaveValue(/# Callouts/);
+  await debugBreak(page, 'note open — inspect before view mode');
   await step(page, 'callouts-edit');
 
   await page.getByRole('button', { name: 'View', exact: true }).click();
@@ -126,6 +129,7 @@ test('runs a JavaScript code block and shows output', async ({ page }) => {
   await page.goto('/');
   await page.locator('div.group', { hasText: 'Code' }).click();
   await expect(editor(page)).toHaveValue(/# Code/);
+  await debugBreak(page, 'note open — inspect before running code');
   await step(page, 'code-block');
 
   await page.getByRole('button', { name: 'View', exact: true }).click();
@@ -148,6 +152,7 @@ test('renders a mermaid diagram', async ({ page }) => {
   await page.goto('/');
   await page.locator('div.group', { hasText: 'Mermaid' }).click();
   await expect(editor(page)).toHaveValue(/# Mermaid/);
+  await debugBreak(page, 'note open — inspect before mermaid render');
 
   await page.getByRole('button', { name: 'View', exact: true }).click();
   // Mermaid renders asynchronously into an <svg> inside the viewer.
@@ -164,6 +169,7 @@ test('autosaves edits and persists across reload', async ({ page }) => {
   await page.getByRole('button', { name: 'Create Note' }).click();
   await editor(page).fill('# Autosave Target\n\nInitial');
   await expect(page.getByText('Autosave Target', { exact: true }).first()).toBeVisible();
+  await debugBreak(page, 'note created — inspect before editing');
 
   // Append a paragraph. NoteEditor saves on every change (no debounce), so the
   // DB write happens immediately; poll IndexedDB to confirm it landed.
@@ -188,6 +194,7 @@ test('renders GFM tables and task lists', async ({ page }) => {
   await page.goto('/');
   await page.locator('div.group', { hasText: 'GFM' }).click();
   await expect(editor(page)).toHaveValue(/# GFM/);
+  await debugBreak(page, 'note open — inspect before GFM render');
 
   await page.getByRole('button', { name: 'View', exact: true }).click();
   // remark-gfm renders the table and task-list checkboxes.

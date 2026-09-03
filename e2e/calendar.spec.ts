@@ -1,4 +1,4 @@
-import { test, expect, step, seedNotes, type NoteSeed } from './fixtures';
+import { test, expect, step, seedNotes, debugBreak, type NoteSeed } from './fixtures';
 import type { Page } from '@playwright/test';
 
 /**
@@ -67,6 +67,7 @@ test('calendar view shows notes on their edit dates', async ({ page }) => {
   ]);
   await page.goto('/');
   await expect(page.getByText('TodayNote', { exact: true })).toBeVisible();
+  await debugBreak(page, 'notes seeded — inspect before calendar view');
 
   // Open the calendar view via the top-bar toggle (title="Calendar view").
   await page.getByTitle('Calendar view').click();
@@ -106,6 +107,7 @@ test('selecting a note from the calendar returns to notes', async ({ page }) => 
   await page.goto('/');
   await page.getByTitle('Calendar view').click();
   await expect(grid(page).first()).toBeVisible();
+  await debugBreak(page, 'calendar open — inspect before selecting note');
 
   // Click the cell containing the note -> day-detail sidebar appears.
   await grid(page).filter({ hasText: 'PickMe' }).click();
@@ -130,6 +132,7 @@ test('seeding is reload-safe (no duplicate notes after reload)', async ({ page }
   // Exactly 2 note items in the sidebar, and the footer count agrees.
   await expect(page.locator('div.w-72 div.group')).toHaveCount(2);
   await expect(page.getByText('2 notes')).toBeVisible();
+  await debugBreak(page, 'notes seeded — inspect before reload');
 
   // Reload: the seed init script must NOT re-run (Round D fix), so still 2.
   await page.reload();

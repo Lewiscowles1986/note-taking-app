@@ -40,6 +40,35 @@ npx playwright test --debug
 The `webServer` config auto-starts `npx vite --port 5173 --strictPort` and reuses an
 already-running dev server when present.
 
+## Run modes
+
+Three environment-driven modes coexist. They are controlled by two env vars:
+`E2E_BASE_URL` (attach mode) and `E2E_DEBUG` (debug mode). They combine freely.
+
+| Mode | Command | Behavior |
+| --- | --- | --- |
+| **Default** | `npm run test:e2e` | Playwright starts `vite` on **5173** (`--strictPort`) and runs headless, parallel. |
+| **Attach** | `E2E_BASE_URL=http://host:port npm run test:e2e` | **No server is started** — tests attach to the already-running server at that URL. Use against a preview/CI build or a dev server on a non-default port. |
+| **Debug** | `npm run test:e2e:debug` (or `E2E_DEBUG=1 npx playwright test -g "encrypts a note"`) | **Headed**, serial (`workers: 1`), no retries. Every test pauses at its labeled `debugBreak` drop-in before the assertion cluster. |
+
+- **Attach mode** (`E2E_BASE_URL` set): `webServer` is disabled entirely, so Playwright
+  never boots its own vite. The value must be an absolute `http(s)` URL (a trailing
+  slash is tolerated and stripped; anything else fails fast with a clear config error).
+  Nothing else in the config references the hardcoded 5173 at runtime in this mode.
+- **Debug mode** (`E2E_DEBUG=1` or `E2E_DEBUG=true`): forces `headless: false`,
+  `workers: 1`, `retries: 0` for a single deterministic headed window. Each test calls
+  `debugBreak(page, "<label>")` after the primary state is established and before its
+  main assertions. The helper logs a banner and calls `page.pause()`, opening the
+  Playwright Inspector — interact with the app, then click **Resume**. Because every
+  test pauses, filter with `-g` to target one test. `page.pause()` is a no-op in
+  headless (Playwright 1.58.x), so it never hangs, but debug mode forces headed so the
+  Inspector actually opens.
+- **Combined**: `E2E_DEBUG=1 E2E_BASE_URL=http://host:port npx playwright test -g "..."`
+  attaches to your server and pauses headed.
+- **PWDEBUG=1** is also compatible: it opens the Inspector on the first action of every
+  test (a different, action-level breakpoint than the labeled `debugBreak` drop-ins).
+  `PWDEBUG=1` implies headed + serial on its own.
+
 ### Updating snapshots
 
 `app.spec.ts` uses `toHaveScreenshot` baselines stored in
@@ -70,6 +99,11 @@ Then prove the no-update run still passes (see "Regenerating baselines" below).
 - **`step(page, name)`** — takes a full-page screenshot to
   `e2e/artifacts/<spec>/<test>/<name>.png`, logs the path, and returns it. Call it
   after each meaningful UI action to build a visual record of the run.
+- **`debugBreak(page, label?)`** — the debug drop-in. When `E2E_DEBUG=1` it logs a
+  banner and calls `page.pause()` (Playwright Inspector) so you can interact with the
+  app before the assertions run; otherwise it is a fast no-op. Every test calls it once
+  at a labeled point after the primary state is established. New tests should import and
+  call it the same way.
 
 ## Spec inventory
 

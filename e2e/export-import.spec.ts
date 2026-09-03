@@ -1,4 +1,4 @@
-import { test, expect, step, seedNotes, type NoteSeed } from './fixtures';
+import { test, expect, step, seedNotes, debugBreak, type NoteSeed } from './fixtures';
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
@@ -35,6 +35,7 @@ test('exports a single note as a download', async ({ page }) => {
   await page.goto('/');
   await page.locator('div.group', { hasText: 'ExportMe' }).click();
   await expect(page.getByRole('heading', { name: 'ExportMe', level: 2 })).toBeVisible();
+  await debugBreak(page, 'note open — inspect before export');
 
   // Open the export dropdown and trigger the single-note HTML export.
   await page.getByTitle('Export').click();
@@ -61,6 +62,7 @@ test('exports the full database backup', async ({ page }) => {
   ]);
   await page.goto('/');
   await expect(page.getByText('BackupMe', { exact: true })).toBeVisible();
+  await debugBreak(page, 'note seeded — inspect before backup export');
 
   await page.getByTitle('Export').click();
   const downloadPromise = page.waitForEvent('download');
@@ -88,6 +90,7 @@ test('exports all notes as a ZIP', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('ZipOne', { exact: true })).toBeVisible();
   await expect(page.getByText('ZipTwo', { exact: true })).toBeVisible();
+  await debugBreak(page, 'notes seeded — inspect before ZIP export');
 
   // Open the export dropdown and trigger the "Export all as ZIP" action.
   await page.getByTitle('Export').click();
@@ -122,6 +125,7 @@ test('exports all notes as a ZIP', async ({ page }) => {
 test('imports notes from a file', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'No note selected' })).toBeVisible();
+  await debugBreak(page, 'empty state — inspect before import');
 
   // The sidebar has a hidden file input (accepts .md/.json/.zip) triggered by
   // the FileUp button. setInputFiles works on hidden inputs.

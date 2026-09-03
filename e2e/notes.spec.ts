@@ -1,4 +1,4 @@
-import { test, expect, step, seedNotes, type NoteSeed } from './fixtures';
+import { test, expect, step, seedNotes, debugBreak, type NoteSeed } from './fixtures';
 
 /**
  * Round B note-management suite. Covers pin/unpin, delete, tag add/remove,
@@ -36,6 +36,7 @@ test('pins and unpins a note from the sidebar', async ({ page }) => {
   ]);
   await page.goto('/');
   await expect(page.getByText('Alpha', { exact: true })).toBeVisible();
+  await debugBreak(page, 'notes seeded — inspect before pinning');
 
   // Gamma is last (oldest updatedAt). Pin it and it should jump to the top.
   const gammaItem = page.locator('div.group', { hasText: 'Gamma' });
@@ -65,6 +66,7 @@ test('deletes a note', async ({ page }) => {
   await page.goto('/');
   await page.locator('div.group', { hasText: 'Doomed' }).click();
   await expect(page.getByRole('heading', { name: 'Doomed', level: 2 })).toBeVisible();
+  await debugBreak(page, 'note open — inspect before delete');
   await step(page, 'before-delete');
 
   const doomedItem = page.locator('div.group', { hasText: 'Doomed' });
@@ -87,6 +89,7 @@ test('adds and removes a tag on a note', async ({ page }) => {
   await page.goto('/');
   await page.locator('div.group', { hasText: 'Tagged' }).click();
   await expect(page.getByRole('heading', { name: 'Tagged', level: 2 })).toBeVisible();
+  await debugBreak(page, 'note open — inspect before tagging');
 
   // Add a tag via the meta bar "Add tag" input.
   const addTag = page.getByPlaceholder('Add tag');
@@ -119,6 +122,7 @@ test('changes category and filters by category', async ({ page }) => {
   await page.goto('/');
   await page.locator('div.group', { hasText: 'Alpha' }).click();
   await expect(page.getByRole('heading', { name: 'Alpha', level: 2 })).toBeVisible();
+  await debugBreak(page, 'note open — inspect before category change');
 
   // Change category via the meta bar (button -> free-text input with datalist).
   await page.getByRole('button', { name: 'Work', exact: true }).click();
@@ -141,6 +145,7 @@ test('collapses and expands the sidebar', async ({ page }) => {
   await seedNotes(page, [makeNote({ title: 'Alpha', content: '# Alpha\n\nBody' })]);
   await page.goto('/');
   await expect(page.getByPlaceholder('Search notes...')).toBeVisible();
+  await debugBreak(page, 'app loaded — inspect before collapse');
 
   // Collapse via the PanelLeftClose toggle in the top bar.
   await page.locator('button:has(svg.lucide-panel-left-close)').click();
@@ -161,6 +166,7 @@ test('switches between multiple notes', async ({ page }) => {
     makeNote({ title: 'Gamma', content: '# Gamma\n\nGamma body text', updatedAt: new Date(t.getTime() - 7200000) }),
   ]);
   await page.goto('/');
+  await debugBreak(page, 'notes seeded — inspect before switching');
 
   const editor = page.getByPlaceholder('Start writing... Type / for commands');
 
@@ -189,6 +195,7 @@ test('filters by tag and category facets', async ({ page }) => {
   ]);
   await page.goto('/');
   await expect(page.getByText('Alpha', { exact: true })).toBeVisible();
+  await debugBreak(page, 'notes seeded — inspect before filtering');
 
   // Tag facet: filter to "work" -> Alpha + Gamma, Beta hidden.
   await sidebar(page).getByRole('button', { name: 'Tags' }).click();

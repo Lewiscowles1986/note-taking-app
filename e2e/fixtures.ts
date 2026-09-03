@@ -148,4 +148,25 @@ export async function step(
   return filePath;
 }
 
+/**
+ * Debug drop-in. When E2E_DEBUG=1 (or "true"), logs a visible banner to the
+ * test output and pauses the page so you can interact with the app in the
+ * browser, then click "Resume" in the Playwright Inspector. When E2E_DEBUG is
+ * unset this is a fast no-op, so the calls can stay in every test permanently.
+ *
+ * page.pause() is a no-op in headless mode in Playwright 1.58.x (the server-side
+ * pause dispatcher is empty), so it never hangs — but the config forces headed
+ * mode when E2E_DEBUG is set so the Inspector actually opens.
+ */
+export async function debugBreak(page: Page, label?: string): Promise<void> {
+  if (process.env.E2E_DEBUG !== '1' && process.env.E2E_DEBUG !== 'true') return;
+  const heading = label ? `[debugBreak] ${label}` : '[debugBreak]';
+  console.log(
+    `\n${'='.repeat(72)}\n${heading}\n` +
+      `Interact with the app in the browser, then click Resume in the Playwright Inspector.\n` +
+      `${'='.repeat(72)}\n`
+  );
+  await page.pause();
+}
+
 export { expect };

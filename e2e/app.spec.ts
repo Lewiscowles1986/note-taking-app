@@ -1,7 +1,8 @@
-import { test, expect, step, seedNotes } from './fixtures';
+import { test, expect, step, seedNotes, debugBreak } from './fixtures';
 
 test('loads with empty state', async ({ page }) => {
   await page.goto('/');
+  await debugBreak(page, 'empty state loaded — inspect before assertions');
   await expect(page.getByRole('heading', { name: 'No note selected' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create Note' })).toBeVisible();
   await expect(page).toHaveScreenshot('empty-state.png');
@@ -21,6 +22,7 @@ test('creates a note and edits title', async ({ page }) => {
 
   // Autosave: wait for the derived title to appear in the sidebar.
   await expect(page.getByText('Playwright Smoke', { exact: true }).first()).toBeVisible();
+  await debugBreak(page, 'note created — inspect before assertions');
   await step(page, 'note-created');
 
   // Reload and confirm the note persisted.
@@ -36,6 +38,7 @@ test('toggles between edit and view mode', async ({ page }) => {
   await expect(editor).toBeVisible();
   await editor.fill('# Hello\n\nSome **bold** text');
   await expect(page.getByText('Hello', { exact: true }).first()).toBeVisible();
+  await debugBreak(page, 'note created — inspect before toggling view');
 
   // Switch to view mode.
   await page.getByRole('button', { name: 'View', exact: true }).click();
@@ -95,6 +98,7 @@ test('searches notes', async ({ page }) => {
   await expect(page.getByText('Grocery List', { exact: true })).toBeVisible();
   await expect(page.getByText('Meeting Notes', { exact: true })).toBeVisible();
   await expect(page.getByText('Ideas', { exact: true })).toBeVisible();
+  await debugBreak(page, 'seeded notes loaded — inspect before searching');
   await step(page, 'seeded-notes');
 
   // Search narrows the list.

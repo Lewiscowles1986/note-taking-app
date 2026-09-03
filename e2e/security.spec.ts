@@ -1,4 +1,4 @@
-import { test, expect, step, seedNotes, type NoteSeed } from './fixtures';
+import { test, expect, step, seedNotes, debugBreak, type NoteSeed } from './fixtures';
 import type { Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -61,6 +61,7 @@ test('encrypts a note with a password and locks it', async ({ page }) => {
   // Open the encryption dialog from the meta bar.
   await page.getByRole('button', { name: 'Encrypt', exact: true }).click();
   await expect(dialog(page).getByRole('heading', { name: 'Note Encryption' })).toBeVisible();
+  await debugBreak(page, 'encrypt dialog open — inspect before encrypting');
   await step(page, 'encrypt-dialog');
 
   await page.getByPlaceholder('Min 8 characters').fill(PASSWORD);
@@ -78,6 +79,7 @@ test('encrypts a note with a password and locks it', async ({ page }) => {
 
 test('rejects the wrong password on unlock', async ({ page }) => {
   await seedAndEncrypt(page, 'Secret', '# Secret\n\nTop secret body', PASSWORD);
+  await debugBreak(page, 'note encrypted — inspect before wrong-password unlock');
 
   await page.getByRole('button', { name: 'Unlock Note' }).click();
   await expect(page.getByPlaceholder('Enter password')).toBeVisible();
@@ -100,6 +102,7 @@ test('rejects the wrong password on unlock', async ({ page }) => {
 
 test('unlocks and decrypts with the correct password', async ({ page }) => {
   await seedAndEncrypt(page, 'Secret', '# Secret\n\nTop secret body', PASSWORD);
+  await debugBreak(page, 'note encrypted — inspect before correct-password unlock');
 
   await page.getByRole('button', { name: 'Unlock Note' }).click();
   await page.getByPlaceholder('Enter password').fill(PASSWORD);
@@ -128,6 +131,7 @@ test('encrypts and decrypts with a generated key pair', async ({ page }) => {
   await page.getByPlaceholder('Key pair name').fill('my-key');
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect(page.getByText('my-key', { exact: true })).toBeVisible({ timeout: 60_000 });
+  await debugBreak(page, 'key pair generated — inspect before encrypting');
 
   // Encrypt with the key pair.
   await dialog(page).getByRole('button', { name: 'Encrypt', exact: true }).click();
@@ -163,6 +167,7 @@ test('exports a generated key pair as JWK', async ({ page }) => {
   await page.getByPlaceholder('Key pair name').fill('export-key');
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect(page.getByText('export-key', { exact: true })).toBeVisible({ timeout: 60_000 });
+  await debugBreak(page, 'key pair generated — inspect before export');
   await step(page, 'keypair-generated');
 
   // Export the key pair as JWK via the row's "Export as JWK" control.
