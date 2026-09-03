@@ -41,6 +41,12 @@ export default defineConfig({
     actionTimeout: 10000,
     // Debug mode must be headed so page.pause() opens the Inspector.
     headless: debugMode ? false : undefined,
+    // Enable WebGL (three.js 3D models) under headless Chromium's SwiftShader.
+    // Without these, THREE.WebGLRenderer throws "could not create a WebGL
+    // context" and the Model3DBlock crashes the app.
+    launchOptions: {
+      args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--use-gl=angle'],
+    },
   },
   projects: [
     {
