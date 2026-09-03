@@ -5,7 +5,7 @@ import type { Page } from '@playwright/test';
  * Round K rich-rendering suite. Covers the heavy/lazy renderers gated by
  * detectContentFeatures in src/lib/db.ts and dispatched from NoteViewer:
  *   - mermaid (flowchart + sequence, invalid input)
- *   - BPMN (NOT a registered renderer — pinned as a plain code block)
+ *   - BPMN renderer (labeled BPMN code block for readable XML)
  *   - GeoJSON (Leaflet map + markers)
  *   - 3D models (inline STL via data URL, orthographic projection, viewports)
  *   - code-block language matrix (runnable vs static, syntax highlighting)
@@ -173,7 +173,7 @@ This paragraph should still render.
   await step(page, 'invalid-mermaid');
 });
 
-test('pins BPMN blocks as plain code blocks', async ({ page }) => {
+test('renders BPMN blocks with a dedicated BPMN renderer', async ({ page }) => {
   await seedNotes(page, [
     makeNote({
       title: 'BPMN',
@@ -195,17 +195,19 @@ test('pins BPMN blocks as plain code blocks', async ({ page }) => {
   ]);
   await page.goto('/');
   await openNoteInView(page, 'BPMN');
-  await debugBreak(page, 'bpmn-as-code — should be a plain code block');
+  await debugBreak(page, 'bpmn-renderer — diagram canvas should be visible');
 
-  // APP BEHAVIOR: BPMN is NOT a registered renderer. NoteViewer has a dedicated
-  // branch that renders it as a plain <pre> with a "BPMN" label — no shiki
-  // highlighting, no Run button (bpmn has no runner in codeRunners).
-  const bpmnBlock = page.locator('.prose-notes div.my-3', { hasText: 'startEvent' });
-  await expect(bpmnBlock.locator('div.mb-1', { hasText: 'BPMN' })).toBeVisible();
+  // APP BEHAVIOR: NoteViewer renders BPMN XML as an interactive diagram via
+  // bpmn-js. The diagram mounts a .bjs-container canvas; the optional code view
+  // is toggled with the "Code" tab.
+  const bpmnBlock = page.locator('.prose-notes div.my-3', { hasText: 'BPMN' });
+  await expect(bpmnBlock.locator('.bjs-container')).toBeVisible({ timeout: 20000 });
+  // Optional code view.
+  await bpmnBlock.getByRole('button', { name: 'Code' }).click();
   await expect(bpmnBlock).toContainText('startEvent');
-  // No Run button for bpmn.
-  await expect(bpmnBlock.getByRole('button', { name: 'Run', exact: true })).toHaveCount(0);
-  await step(page, 'bpmn-as-code');
+  await bpmnBlock.getByRole('button', { name: 'Diagram Preview' }).click();
+  await expect(bpmnBlock.locator('.bjs-container')).toBeVisible({ timeout: 20000 });
+  await step(page, 'bpmn-renderer');
 });
 
 test('renders a geojson map with markers', async ({ page }) => {

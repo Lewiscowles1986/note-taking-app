@@ -241,6 +241,9 @@ test('captures code runner', async ({ page }) => {
   await openNoteInView(page, 'Code Runner');
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByText(/\[log\]: Hello, Note Haven!/)).toBeVisible({ timeout: 10000 });
+  // Wait for shiki highlighting (pre.shiki) so the screenshot shows the final
+  // syntax-highlighted state instead of the loading fallback.
+  await expect(page.locator('.prose-notes pre.shiki').first()).toBeVisible({ timeout: 15000 });
   await shot(page, 'code-runner');
 });
 
@@ -263,6 +266,105 @@ test('captures mermaid diagram', async ({ page }) => {
   await openNoteInView(page, 'Mermaid');
   await expect(page.locator('.prose-notes svg')).toBeVisible({ timeout: 15000 });
   await shot(page, 'mermaid-diagram');
+});
+
+// ─── bpmn-diagram ───────────────────────────────────────────────────────────
+test('captures BPMN renderer', async ({ page }) => {
+  test.skip(
+    !process.env.E2E_DOCS || test.info().project.name !== 'chromium',
+    'docs tour runs only with E2E_DOCS=1 on the chromium project'
+  );
+  await seedNotes(page, [
+    makeNote({
+      title: 'BPMN',
+      content: `# BPMN
+
+\`\`\`bpmn
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI">
+  <process id="order-process" isExecutable="true">
+    <startEvent id="start" name="Order received" />
+    <task id="review" name="Review order" />
+    <exclusiveGateway id="gateway" name="In stock?" />
+    <task id="ship" name="Ship order" />
+    <task id="backorder" name="Backorder item" />
+    <endEvent id="end" name="Order complete" />
+    <sequenceFlow id="f1" sourceRef="start" targetRef="review" />
+    <sequenceFlow id="f2" sourceRef="review" targetRef="gateway" />
+    <sequenceFlow id="f3" sourceRef="gateway" targetRef="ship" name="Yes" />
+    <sequenceFlow id="f4" sourceRef="gateway" targetRef="backorder" name="No" />
+    <sequenceFlow id="f5" sourceRef="ship" targetRef="end" />
+    <sequenceFlow id="f6" sourceRef="backorder" targetRef="end" />
+  </process>
+  <bpmndi:BPMNDiagram id="diagram">
+    <bpmndi:BPMNPlane id="plane" bpmnElement="order-process">
+      <bpmndi:BPMNShape id="start-shape" bpmnElement="start">
+        <dc:Bounds x="120" y="180" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="review-shape" bpmnElement="review">
+        <dc:Bounds x="220" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="gateway-shape" bpmnElement="gateway">
+        <dc:Bounds x="380" y="170" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ship-shape" bpmnElement="ship">
+        <dc:Bounds x="500" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="backorder-shape" bpmnElement="backorder">
+        <dc:Bounds x="500" y="240" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end-shape" bpmnElement="end">
+        <dc:Bounds x="680" y="180" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1-edge" bpmnElement="f1">
+        <di:waypoint x="156" y="198" />
+        <di:waypoint x="220" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2-edge" bpmnElement="f2">
+        <di:waypoint x="320" y="200" />
+        <di:waypoint x="380" y="195" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3-edge" bpmnElement="f3">
+        <di:waypoint x="405" y="170" />
+        <di:waypoint x="500" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4-edge" bpmnElement="f4">
+        <di:waypoint x="405" y="220" />
+        <di:waypoint x="500" y="280" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5-edge" bpmnElement="f5">
+        <di:waypoint x="600" y="160" />
+        <di:waypoint x="680" y="198" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6-edge" bpmnElement="f6">
+        <di:waypoint x="600" y="280" />
+        <di:waypoint x="680" y="216" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>
+\`\`\``,
+      hasCodeBlocks: true,
+      hasMermaid: false,
+    }),
+  ]);
+  await page.goto('/');
+  await openNoteInView(page, 'BPMN');
+  const bpmnBlock = page.locator('.prose-notes div.my-3', {
+    has: page.getByText('bpmn', { exact: true }),
+  });
+  await expect(bpmnBlock.locator('.bjs-container')).toBeVisible({ timeout: 20000 });
+  await expect(bpmnBlock).toContainText('Order received');
+  await expect(bpmnBlock).toContainText('In stock?');
+  await expect(bpmnBlock).toContainText('Order complete');
+  await shot(page, 'bpmn-diagram');
+  // Toggle to the code view and capture it too.
+  await bpmnBlock.getByRole('button', { name: 'Code' }).click();
+  await expect(bpmnBlock).toContainText('order-process');
+  // Wait for shiki highlighting (pre.shiki) so the screenshot shows the final
+  // readable state instead of the loading fallback.
+  await expect(bpmnBlock.locator('pre.shiki').first()).toBeVisible({ timeout: 15000 });
+  await shot(page, 'bpmn-code');
 });
 
 // ─── geojson-map ────────────────────────────────────────────────────────────
@@ -538,6 +640,18 @@ const GALLERY: GallerySection[] = [
     title: 'Live Diagrams with Mermaid',
     caption:
       'Write Mermaid syntax in a fenced code block and Note Haven renders it as a flowchart, sequence diagram, or other diagram directly in your note.',
+  },
+  {
+    file: 'bpmn-diagram',
+    title: 'Readable BPMN Workflows',
+    caption:
+      'BPMN XML is recognized as a dedicated renderer and presented in a labeled, readable block so workflow definitions stay easy to inspect in your notes.',
+  },
+  {
+    file: 'bpmn-code',
+    title: 'BPMN Source View',
+    caption:
+      'Toggle to the code view to inspect the underlying BPMN XML directly, alongside the rendered diagram.',
   },
   {
     file: 'geojson-map',

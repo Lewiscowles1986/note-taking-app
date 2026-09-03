@@ -10,6 +10,7 @@ const CodeBlock = lazy(() => import('./CodeBlock'));
 const MermaidBlock = lazy(() => import('./MermaidBlock'));
 const GeoJsonBlock = lazy(() => import('./GeoJsonBlock'));
 const Model3DBlock = lazy(() => import('./Model3DBlock'));
+const BpmnBlock = lazy(() => import('./BpmnBlock'));
 
 interface NoteViewerProps {
   note: Note;
@@ -336,12 +337,9 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
 
       if (lang === 'bpmn') {
         return (
-          <div className="my-3">
-            <div className="mb-1 px-1 text-xs font-mono text-muted-foreground">BPMN</div>
-            <pre className="overflow-x-auto rounded-sm bg-muted p-4">
-              <code className={className} {...props}>{children}</code>
-            </pre>
-          </div>
+          <Suspense fallback={<div className="my-3 h-24 animate-pulse rounded-sm bg-muted p-4" />}>
+            <BpmnBlock code={String(children).trim()} />
+          </Suspense>
         );
       }
 

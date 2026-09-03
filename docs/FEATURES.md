@@ -52,6 +52,18 @@ JavaScript code blocks can be executed right inside a note. Press Run to see the
 
 Write Mermaid syntax in a fenced code block and Note Haven renders it as a flowchart, sequence diagram, or other diagram directly in your note.
 
+## Readable BPMN Workflows
+
+![Readable BPMN Workflows](images/bpmn-diagram.png)
+
+BPMN XML is recognized as a dedicated renderer and presented in a labeled, readable block so workflow definitions stay easy to inspect in your notes.
+
+## BPMN Source View
+
+![BPMN Source View](images/bpmn-code.png)
+
+Toggle to the code view to inspect the underlying BPMN XML directly, alongside the rendered diagram.
+
 ## Interactive Maps
 
 ![Interactive Maps](images/geojson-map.png)

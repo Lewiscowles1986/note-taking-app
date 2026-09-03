@@ -123,7 +123,12 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
         </div>
       )}
       {loading ? (
-        <pre className="bg-[#24292e] p-4 text-sm text-white/70 font-mono overflow-x-auto">
+        // Inline background so `.prose-notes pre` (bg-muted) cannot override it
+        // and leave light text on a light background during the shiki load.
+        <pre
+          style={{ backgroundColor: '#24292e' }}
+          className="p-4 text-sm text-white/70 font-mono overflow-x-auto"
+        >
           <code>{code}</code>
         </pre>
       ) : (

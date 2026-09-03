@@ -154,6 +154,14 @@ so the images and the page regenerate together atomically.
   # equivalent to:
   E2E_DOCS=1 npx playwright test e2e/docs-tour.spec.ts --project=chromium
   ```
+- **Linux Docker run:**
+  ```bash
+  npm run docs:screenshots:docker
+  ```
+  This uses the pinned Microsoft Playwright image with headless Linux Chromium,
+  so generated gallery PNGs do not depend on the host operating system. Docker
+  must be running; the app source is mounted back to the host and dependencies
+  are kept in a separate Docker volume.
 - **Output:** `docs/images/*.png` (stable snake_case filenames) plus
   `docs/FEATURES.md`. Both are committed and regenerate together — commit them as a
   pair. There are no `debugBreak` calls in this spec; it runs unattended.
