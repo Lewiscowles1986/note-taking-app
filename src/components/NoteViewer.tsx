@@ -363,7 +363,7 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
         </pre>
       );
     },
-  }), [needsSyntaxHighlighter, needsMermaid, needsGeoJson, needsModel3D, attachmentMap]);
+  }), [needsSyntaxHighlighter, needsMermaid, needsGeoJson, needsModel3D, attachmentMap, note]);
 
   return (
     <div className="flex-1 overflow-y-auto">
