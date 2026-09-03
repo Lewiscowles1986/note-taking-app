@@ -1,6 +1,14 @@
 import type { Note } from './db';
 import { saveAs } from 'file-saver';
-import JSZip from 'jszip';
+
+// JSZip (~95 KB minified) is only needed when the user exports a ZIP archive,
+// so it is loaded on demand to keep it out of the initial bundle.
+type JSZipType = typeof import('jszip')['default'];
+let jsZipPromise: Promise<JSZipType> | null = null;
+function loadJSZip(): Promise<JSZipType> {
+  jsZipPromise ??= import('jszip').then((m) => m.default);
+  return jsZipPromise;
+}
 
 function noteToHtml(note: Note): string {
   // Simple markdown-to-html for export (basic conversion)
@@ -77,6 +85,7 @@ export async function exportDatabase() {
 }
 
 export async function exportToZip(notes: Note[]) {
+  const JSZip = await loadJSZip();
   const zip = new JSZip();
   const folder = zip.folder('notes');
   if (!folder) return;

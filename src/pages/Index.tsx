@@ -1,9 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, lazy, Suspense } from 'react';
 import { useNotes } from '@/hooks/useNotes';
 import { useEncryption } from '@/hooks/useEncryption';
 import NoteSidebar from '@/components/NoteSidebar';
 import NoteEditor from '@/components/NoteEditor';
-import NoteViewer from '@/components/NoteViewer';
+// NoteViewer pulls in the full react-markdown pipeline (~300 KB minified:
+// micromark, mdast, hast, remark/rehype plugins), so it is code-split and
+// only fetched the first time a note is opened in view mode.
+const NoteViewer = lazy(() => import('@/components/NoteViewer'));
 import NoteMetaBar from '@/components/NoteMetaBar';
 import CalendarView from '@/components/CalendarView';
 import EncryptionDialog from '@/components/EncryptionDialog';
@@ -307,7 +310,15 @@ export default function Index() {
               ) : mode === 'edit' ? (
                 <NoteEditor note={displayNote!} onSave={handleSave} />
               ) : (
-                <NoteViewer note={displayNote!} onSave={handleSave} />
+                <Suspense
+                  fallback={
+                    <div className="flex-1 flex items-center justify-center p-6">
+                      <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+                    </div>
+                  }
+                >
+                  <NoteViewer note={displayNote!} onSave={handleSave} />
+                </Suspense>
               )}
             </div>
           </div>

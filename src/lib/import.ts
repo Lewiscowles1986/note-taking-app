@@ -1,5 +1,13 @@
-import JSZip from 'jszip';
 import { createNote, detectContentFeatures, db, type Note } from './db';
+
+// JSZip (~95 KB minified) is only needed when the user imports a ZIP archive,
+// so it is loaded on demand to keep it out of the initial bundle.
+type JSZipType = typeof import('jszip')['default'];
+let jsZipPromise: Promise<JSZipType> | null = null;
+function loadJSZip(): Promise<JSZipType> {
+  jsZipPromise ??= import('jszip').then((m) => m.default);
+  return jsZipPromise;
+}
 
 /** Parse frontmatter (---\nkey: value\n---) from markdown content */
 function parseFrontmatter(raw: string): { meta: Record<string, string>; body: string } {
@@ -135,6 +143,7 @@ export async function importJsonFile(file: File): Promise<ImportResult> {
 /** Import notes from a ZIP file containing .md and/or .json files */
 export async function importZipFile(file: File): Promise<ImportResult> {
   try {
+    const JSZip = await loadJSZip();
     const zip = await JSZip.loadAsync(file);
     let imported = 0;
     const errors: string[] = [];
