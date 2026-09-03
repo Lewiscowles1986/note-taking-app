@@ -128,6 +128,137 @@ export async function seedNotes(page: Page, notes: NoteSeed[]): Promise<void> {
 }
 
 /**
+ * A legacy (pre-migration) Note-shaped record used to seed IndexedDB at an
+ * OLDER schema version before the app's Dexie upgrade path runs. Mirrors the
+ * fields a v1/v2/v3-era row would actually have — newer fields are simply
+ * absent (editDates/hasCodeBlocks/hasMermaid are only present when the caller
+ * seeds at a version that already had them).
+ */
+export interface LegacyNoteSeed {
+  id?: number;
+  title: string;
+  content: string;
+  tags: string[];
+  category: string;
+  attachments: unknown[];
+  createdAt: Date;
+  updatedAt: Date;
+  pinned: boolean;
+  /** v2+ — written by the v2 upgrade; only seed at version 20+ */
+  hasCodeBlocks?: boolean;
+  hasMermaid?: boolean;
+  /** v3+ — written by the v3 upgrade; only seed at version 30+ */
+  editDates?: string[];
+}
+
+/** A legacy revision row for the v3 `revisions` store (version 30+). */
+export interface LegacyRevisionSeed {
+  noteId: number;
+  title: string;
+  content: string;
+  tags: string[];
+  category: string;
+  savedAt: Date;
+}
+
+/**
+ * Seed notes into IndexedDB at an OLDER schema version (10 = Dexie v1,
+ * 20 = v2, 30 = v3) BEFORE navigation, so the app's Dexie upgrade path runs on
+ * load and migrates the DB to the current version 40. Opens the raw "NotesApp"
+ * database at EXACTLY the given legacy version with the store definitions that
+ * version would have had (see src/lib/db.ts), puts the old-shape notes, and
+ * closes the connection. Reload-safe via a sessionStorage marker (mirrors
+ * seedNotes). Call before `page.goto('/')`.
+ *
+ * `revisions` is only written when `version >= 30` (the v3 schema introduced
+ * the `revisions` store).
+ */
+export async function seedLegacyNotes(
+  page: Page,
+  version: number,
+  notes: LegacyNoteSeed[],
+  revisions: LegacyRevisionSeed[] = []
+): Promise<void> {
+  const serializableNotes = notes.map((n) => ({
+    ...n,
+    createdAt: n.createdAt instanceof Date ? n.createdAt.toISOString() : n.createdAt,
+    updatedAt: n.updatedAt instanceof Date ? n.updatedAt.toISOString() : n.updatedAt,
+  }));
+  const serializableRevisions = revisions.map((r) => ({
+    ...r,
+    savedAt: r.savedAt instanceof Date ? r.savedAt.toISOString() : r.savedAt,
+  }));
+  await page.addInitScript(
+    (args) => {
+      const { version, notes, revisions } = args;
+      if (sessionStorage.getItem('__nh_legacy_seeded') === '1') return;
+      sessionStorage.setItem('__nh_legacy_seeded', '1');
+      return new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open('NotesApp', version);
+        req.onupgradeneeded = () => {
+          const d = req.result;
+          if (!d.objectStoreNames.contains('notes')) {
+            const s = d.createObjectStore('notes', { keyPath: 'id', autoIncrement: true });
+            s.createIndex('title', 'title');
+            s.createIndex('category', 'category');
+            s.createIndex('tags', 'tags', { multiEntry: true });
+            s.createIndex('createdAt', 'createdAt');
+            s.createIndex('updatedAt', 'updatedAt');
+            s.createIndex('pinned', 'pinned');
+            if (version >= 30) {
+              s.createIndex('editDates', 'editDates', { multiEntry: true });
+            }
+          }
+          if (version >= 30 && !d.objectStoreNames.contains('revisions')) {
+            const s = d.createObjectStore('revisions', { keyPath: 'id', autoIncrement: true });
+            s.createIndex('noteId', 'noteId');
+            s.createIndex('savedAt', 'savedAt');
+          }
+        };
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('notes', 'readwrite');
+          const store = tx.objectStore('notes');
+          for (const note of notes) {
+            store.put({
+              ...note,
+              createdAt: new Date(note.createdAt),
+              updatedAt: new Date(note.updatedAt),
+            });
+          }
+          tx.oncomplete = () => {
+            if (revisions.length > 0 && version >= 30) {
+              const rtx = db.transaction('revisions', 'readwrite');
+              const rstore = rtx.objectStore('revisions');
+              for (const r of revisions) {
+                rstore.put({ ...r, savedAt: new Date(r.savedAt) });
+              }
+              rtx.oncomplete = () => {
+                db.close();
+                resolve();
+              };
+              rtx.onerror = () => {
+                db.close();
+                reject(rtx.error);
+              };
+            } else {
+              db.close();
+              resolve();
+            }
+          };
+          tx.onerror = () => {
+            db.close();
+            reject(tx.error);
+          };
+        };
+        req.onerror = () => reject(req.error);
+      });
+    },
+    { version, notes: serializableNotes, revisions: serializableRevisions }
+  );
+}
+
+/**
  * Take a full-page screenshot saved to
  * e2e/artifacts/<test-file-basename>/<test-title>/<name>.png, log the path,
  * and return it. Call after each meaningful UI action in a spec.
