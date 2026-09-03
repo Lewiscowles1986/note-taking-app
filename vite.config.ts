@@ -5,6 +5,9 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  // Default to "/" for local dev; the Pages deploy workflow overrides this
+  // with the repo subpath (e.g. /note-taking-app/) so assets resolve correctly.
+  base: process.env.GITHUB_PAGES_BASE || "/",
   server: {
     host: "::",
     port: 8080,
