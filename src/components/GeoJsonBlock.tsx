@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
+import type { GeoJsonObject } from 'geojson';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
@@ -12,7 +13,7 @@ import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
-delete (L.Icon.Default.prototype as any)._getIconUrl;
+delete (L.Icon.Default.prototype as L.Icon.Default & { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconUrl: markerIcon,
   iconRetinaUrl: markerIcon2x,
@@ -28,7 +29,7 @@ export default function GeoJsonBlock({ code }: GeoJsonBlockProps) {
   const mapRef = useRef<L.Map | null>(null);
   const [activeTab, setActiveTab] = useState<'preview' | 'code'>('preview');
   const [error, setError] = useState<string | null>(null);
-  const [parsedData, setParsedData] = useState<any>(null);
+  const [parsedData, setParsedData] = useState<GeoJsonObject | null>(null);
 
   // Validate and parse GeoJSON payload
   useEffect(() => {
@@ -71,7 +72,7 @@ export default function GeoJsonBlock({ code }: GeoJsonBlockProps) {
       }).addTo(mapInstance);
 
       // Initialize Leaflet Marker Cluster Group
-      const markerClusterGroup = (L as any).markerClusterGroup();
+      const markerClusterGroup = L.markerClusterGroup();
 
       // Add the new GeoJSON layer to map (not bound to map directly)
       const geoJsonLayer = L.geoJSON(parsedData, {
