@@ -52,6 +52,18 @@ JavaScript code blocks can be executed right inside a note. Press Run to see the
 
 Write Mermaid syntax in a fenced code block and Note Haven renders it as a flowchart, sequence diagram, or other diagram directly in your note.
 
+## Mermaid Source View
+
+![Mermaid Source View](images/mermaid-code.png)
+
+Toggle to the code view to inspect the underlying Mermaid syntax directly, alongside the rendered diagram.
+
+## More Mermaid Diagram Types
+
+![More Mermaid Diagram Types](images/mermaid-diagram-types.png)
+
+Sequence, gantt, pie, state, and entity-relationship diagrams all render natively — each fenced `mermaid` block becomes a live diagram in your note.
+
 ## Readable BPMN Workflows
 
 ![Readable BPMN Workflows](images/bpmn-diagram.png)
@@ -69,6 +81,12 @@ Toggle to the code view to inspect the underlying BPMN XML directly, alongside t
 ![Interactive Maps](images/geojson-map.png)
 
 Paste GeoJSON into a code block to render an interactive map with markers. Great for trip plans, field notes, or anything location-based.
+
+## GeoJSON Source View
+
+![GeoJSON Source View](images/geojson-code.png)
+
+Toggle to the code view to inspect the underlying GeoJSON directly, alongside the rendered map.
 
 ## 3D Models in Your Notes
 

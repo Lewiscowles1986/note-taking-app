@@ -87,7 +87,7 @@ export default function BpmnBlock({ code }: BpmnBlockProps) {
       viewer.destroy();
       viewerRef.current = null;
     };
-  }, [code]);
+  }, [code, activeTab]);
 
   return (
     <div className="my-3 overflow-hidden rounded-md border border-border">

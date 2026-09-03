@@ -399,8 +399,9 @@ test('migrates a v2 database preserving feature flags', async ({ page }) => {
   await debugBreak(page, 'v2 migrated — inspect before view render');
 
   // The v2 hasMermaid flag must survive migration so the mermaid renderer loads.
+  // Scoped to .mermaid-diagram; :not(.lucide) excludes the header tab icons.
   await page.getByRole('button', { name: 'View', exact: true }).click();
-  await expect(page.locator('.prose-notes svg')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('.mermaid-diagram svg:not(.lucide)')).toBeVisible({ timeout: 15000 });
   await step(page, 'v2-migrated-render');
 });
 

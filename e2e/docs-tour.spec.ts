@@ -264,8 +264,112 @@ test('captures mermaid diagram', async ({ page }) => {
   ]);
   await page.goto('/');
   await openNoteInView(page, 'Mermaid');
-  await expect(page.locator('.prose-notes svg')).toBeVisible({ timeout: 15000 });
+  // The diagram SVG lives in the preview pane; :not(.lucide) excludes the
+  // header tab icons, which are also svgs inside the block.
+  await expect(page.locator('.mermaid-diagram svg:not(.lucide)')).toBeVisible({ timeout: 15000 });
   await shot(page, 'mermaid-diagram');
+  // Toggle to the code view and capture it too.
+  const mermaidBlock = page.locator('.mermaid-diagram').first();
+  await mermaidBlock.getByRole('button', { name: 'Code' }).click();
+  await expect(mermaidBlock).toContainText('graph TD');
+  // Wait for shiki highlighting (pre.shiki) so the screenshot shows the final
+  // readable state instead of the loading fallback.
+  await expect(mermaidBlock.locator('pre.shiki').first()).toBeVisible({ timeout: 15000 });
+  await shot(page, 'mermaid-code');
+});
+
+// ─── mermaid-diagram-types ──────────────────────────────────────────────────
+test('captures mermaid diagram types', async ({ page }) => {
+  test.skip(
+    !process.env.E2E_DOCS || test.info().project.name !== 'chromium',
+    'docs tour runs only with E2E_DOCS=1 on the chromium project'
+  );
+  await seedNotes(page, [
+    makeNote({
+      title: 'Mermaid Types',
+      content: `# Mermaid Types
+
+## Sequence diagram
+
+\`\`\`mermaid
+sequenceDiagram
+    Alice->>Bob: Hello Bob, how are you?
+    Bob-->>Alice: Great, thanks for asking!
+    Alice-)Bob: Talk later
+\`\`\`
+
+## Gantt chart
+
+\`\`\`mermaid
+gantt
+    title Sprint Plan
+    dateFormat  YYYY-MM-DD
+    section Design
+    Wireframes     :done, d1, 2024-01-01, 5d
+    Prototype      :active, after d1, 4d
+    section Build
+    Implementation :2024-01-12, 10d
+    Testing        :2024-01-22, 5d
+\`\`\`
+
+## Pie chart
+
+\`\`\`mermaid
+pie title Time spent per language
+    "TypeScript" : 45
+    "Python" : 30
+    "Rust" : 25
+\`\`\`
+
+## State diagram
+
+\`\`\`mermaid
+stateDiagram-v2
+    [*] --> Draft
+    Draft --> Review: submit
+    Review --> Published: approve
+    Review --> Draft: request changes
+    Published --> [*]
+\`\`\`
+
+## Entity relationship
+
+\`\`\`mermaid
+erDiagram
+    NOTE ||--o{ TAG : tagged-with
+    NOTE {
+        string id PK
+        string title
+    }
+    TAG {
+        string name
+    }
+\`\`\``,
+      hasMermaid: true,
+      hasCodeBlocks: false,
+    }),
+  ]);
+  await page.goto('/');
+  await openNoteInView(page, 'Mermaid Types');
+  // Every diagram type mounts its own MermaidBlock and renders an inline SVG.
+  // :not(.lucide) excludes the header tab icons, which are also svgs.
+  await expect(page.locator('.mermaid-diagram svg:not(.lucide)')).toHaveCount(5, { timeout: 20000 });
+  // The note body scrolls in an inner container inside an h-screen app shell,
+  // which clips fullPage shots. Relax overflow on it and every ancestor so the
+  // whole stack of diagrams flows into the page and is captured.
+  await page.evaluate(() => {
+    let el: HTMLElement | null | undefined = document.querySelector('.prose-notes')?.parentElement;
+    while (el && el !== document.body) {
+      const overflow = getComputedStyle(el).overflow + getComputedStyle(el).overflowY;
+      if (/auto|scroll|hidden/.test(overflow)) {
+        el.style.overflow = 'visible';
+        el.style.height = 'auto';
+        el.style.flex = 'none';
+      }
+      el = el.parentElement;
+    }
+  });
+  await shot(page, 'mermaid-diagram-types', { fullPage: true });
 });
 
 // ─── bpmn-diagram ───────────────────────────────────────────────────────────
@@ -408,7 +512,16 @@ test('captures geojson map', async ({ page }) => {
   await openNoteInView(page, 'Geo Map');
   await expect(page.locator('.leaflet-container')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('.leaflet-marker-icon')).toHaveCount(3, { timeout: 20000 });
+  // Wait for real map tiles, not just markers: tiles stream in asynchronously
+  // and a shot taken too early shows a grey background (this regressed once).
+  await expect(page.locator('.leaflet-tile-loaded').first()).toBeVisible({ timeout: 20000 });
   await shot(page, 'geojson-map');
+  // Toggle to the code view and capture it too.
+  const geoBlock = page.locator('.prose-notes div.my-3', { hasText: 'geojson' });
+  await geoBlock.getByRole('button', { name: 'Code' }).click();
+  await expect(geoBlock).toContainText('FeatureCollection');
+  await expect(geoBlock.locator('pre.shiki').first()).toBeVisible({ timeout: 15000 });
+  await shot(page, 'geojson-code');
 });
 
 // ─── model-3d ───────────────────────────────────────────────────────────────
@@ -642,6 +755,18 @@ const GALLERY: GallerySection[] = [
       'Write Mermaid syntax in a fenced code block and Note Haven renders it as a flowchart, sequence diagram, or other diagram directly in your note.',
   },
   {
+    file: 'mermaid-code',
+    title: 'Mermaid Source View',
+    caption:
+      'Toggle to the code view to inspect the underlying Mermaid syntax directly, alongside the rendered diagram.',
+  },
+  {
+    file: 'mermaid-diagram-types',
+    title: 'More Mermaid Diagram Types',
+    caption:
+      'Sequence, gantt, pie, state, and entity-relationship diagrams all render natively — each fenced `mermaid` block becomes a live diagram in your note.',
+  },
+  {
     file: 'bpmn-diagram',
     title: 'Readable BPMN Workflows',
     caption:
@@ -658,6 +783,12 @@ const GALLERY: GallerySection[] = [
     title: 'Interactive Maps',
     caption:
       'Paste GeoJSON into a code block to render an interactive map with markers. Great for trip plans, field notes, or anything location-based.',
+  },
+  {
+    file: 'geojson-code',
+    title: 'GeoJSON Source View',
+    caption:
+      'Toggle to the code view to inspect the underlying GeoJSON directly, alongside the rendered map.',
   },
   {
     file: 'model-3d',

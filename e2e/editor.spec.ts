@@ -155,8 +155,9 @@ test('renders a mermaid diagram', async ({ page }) => {
   await debugBreak(page, 'note open — inspect before mermaid render');
 
   await page.getByRole('button', { name: 'View', exact: true }).click();
-  // Mermaid renders asynchronously into an <svg> inside the viewer.
-  await expect(page.locator('.prose-notes svg')).toBeVisible({ timeout: 15000 });
+  // Mermaid renders asynchronously into an <svg> inside the viewer. Scoped to
+  // .mermaid-diagram; :not(.lucide) excludes the header tab icons.
+  await expect(page.locator('.mermaid-diagram svg:not(.lucide)')).toBeVisible({ timeout: 15000 });
   await step(page, 'mermaid-rendered');
 });
 

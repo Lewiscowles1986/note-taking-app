@@ -110,8 +110,9 @@ sequenceDiagram
   await openNoteInView(page, 'Multi Mermaid');
   await debugBreak(page, 'multi-mermaid — two diagrams should render');
 
-  // Both diagrams render asynchronously into <svg> elements.
-  await expect(page.locator('.prose-notes svg')).toHaveCount(2, { timeout: 15000 });
+  // Both diagrams render asynchronously into <svg> elements. Scoped to
+  // .mermaid-diagram; :not(.lucide) excludes the header tab icons.
+  await expect(page.locator('.mermaid-diagram svg:not(.lucide)')).toHaveCount(2, { timeout: 15000 });
   await step(page, 'two-diagrams');
 });
 
@@ -137,7 +138,7 @@ sequenceDiagram
   await openNoteInView(page, 'Sequence');
   await debugBreak(page, 'sequence — participant labels should be in the svg');
 
-  const svg = page.locator('.prose-notes svg');
+  const svg = page.locator('.mermaid-diagram svg:not(.lucide)');
   await expect(svg).toBeVisible({ timeout: 15000 });
   // Participant names render as <text> inside the mermaid svg.
   await expect(svg).toContainText('Alice');

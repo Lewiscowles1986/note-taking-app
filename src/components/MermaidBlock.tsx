@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
+import { Workflow, Code2, Copy, Check } from 'lucide-react';
 
 mermaid.initialize({
   startOnLoad: false,
@@ -97,6 +98,9 @@ export default function MermaidBlock({ code }: { code: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState('');
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState<'preview' | 'code'>('preview');
+  const [highlighted, setHighlighted] = useState('');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const id = `mermaid-${++mermaidCounter}`;
@@ -134,6 +138,30 @@ export default function MermaidBlock({ code }: { code: string }) {
       });
   }, [code]);
 
+  // Highlight the mermaid source for the code view. Falls back to plain text
+  // if the mermaid grammar is unavailable in the bundled shiki languages.
+  useEffect(() => {
+    let cancelled = false;
+    import('shiki').then(async ({ codeToHtml }) => {
+      try {
+        const html = await codeToHtml(code, { lang: 'mermaid', theme: 'github-dark' });
+        if (!cancelled) setHighlighted(html);
+      } catch {
+        const html = await codeToHtml(code, { lang: 'text', theme: 'github-dark' });
+        if (!cancelled) setHighlighted(html);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [code]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   if (error) {
     return (
       <div className="bg-destructive/10 text-destructive p-3 rounded-sm text-sm font-mono">
@@ -143,10 +171,70 @@ export default function MermaidBlock({ code }: { code: string }) {
   }
 
   return (
-    <div
-      ref={ref}
-      className="my-3 flex justify-center"
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
+    <div className="mermaid-diagram my-3 overflow-hidden rounded-md border border-border">
+      {/* Header Tabs */}
+      <div className="flex items-center justify-between px-4 py-1.5 bg-[#24292e]">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-mono text-white/50">mermaid</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setActiveTab('preview')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors ${
+              activeTab === 'preview'
+                ? 'bg-white/10 text-white font-medium'
+                : 'text-white/60 hover:text-white/95'
+            }`}
+          >
+            <Workflow size={12} />
+            Diagram Preview
+          </button>
+          <button
+            onClick={() => setActiveTab('code')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors ${
+              activeTab === 'code'
+                ? 'bg-white/10 text-white font-medium'
+                : 'text-white/60 hover:text-white/95'
+            }`}
+          >
+            <Code2 size={12} />
+            Code
+          </button>
+          {activeTab === 'code' && (
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 px-2.5 py-1 text-xs text-white/40 hover:text-white/80 transition-colors"
+            >
+              {copied ? <Check size={12} /> : <Copy size={12} />}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {activeTab === 'code' ? (
+        highlighted ? (
+          <div
+            className="shiki-wrapper text-sm [&_pre]:!my-0 [&_pre]:!rounded-none [&_pre]:!border-0 [&_pre]:max-h-96 [&_pre]:overflow-auto [&_pre]:!p-4 [&_code]:!text-sm"
+            dangerouslySetInnerHTML={{ __html: highlighted }}
+          />
+        ) : (
+          // Loading fallback with inline background so `.prose-notes pre`
+          // (bg-muted) cannot leave light text on a light background.
+          <pre
+            style={{ backgroundColor: '#24292e' }}
+            className="p-4 text-sm text-white/70 font-mono overflow-x-auto max-h-96"
+          >
+            <code>{code}</code>
+          </pre>
+        )
+      ) : (
+        <div
+          ref={ref}
+          className="flex justify-center p-3"
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+      )}
+    </div>
   );
 }
