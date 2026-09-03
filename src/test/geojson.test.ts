@@ -6,16 +6,16 @@ import L from 'leaflet';
 
 vi.mock('leaflet', () => {
   class MockMarker {}
-  (MockMarker.prototype as any).options = { pane: 'markerPane' };
-  (MockMarker.prototype as any).initialize = vi.fn();
-  (MockMarker as any).extend = vi.fn().mockImplementation(() => MockMarker);
-  (MockMarker as any).include = vi.fn().mockImplementation(() => MockMarker);
+  (MockMarker.prototype as Record<string, unknown>).options = { pane: 'markerPane' };
+  (MockMarker.prototype as Record<string, unknown>).initialize = vi.fn();
+  (MockMarker as unknown as Record<string, unknown>).extend = vi.fn().mockImplementation(() => MockMarker);
+  (MockMarker as unknown as Record<string, unknown>).include = vi.fn().mockImplementation(() => MockMarker);
 
   const mockFeatureGroup = class {};
-  (mockFeatureGroup as any).extend = vi.fn().mockImplementation(() => mockFeatureGroup);
-  (mockFeatureGroup as any).include = vi.fn().mockImplementation(() => mockFeatureGroup);
-  (mockFeatureGroup.prototype as any).addLayer = vi.fn().mockReturnThis();
-  (mockFeatureGroup.prototype as any).addTo = vi.fn().mockReturnThis();
+  (mockFeatureGroup as unknown as Record<string, unknown>).extend = vi.fn().mockImplementation(() => mockFeatureGroup);
+  (mockFeatureGroup as unknown as Record<string, unknown>).include = vi.fn().mockImplementation(() => mockFeatureGroup);
+  (mockFeatureGroup.prototype as Record<string, unknown>).addLayer = vi.fn().mockReturnThis();
+  (mockFeatureGroup.prototype as Record<string, unknown>).addTo = vi.fn().mockReturnThis();
 
   const mockMapInstance = {
     setView: vi.fn().mockReturnThis(),
@@ -44,7 +44,7 @@ vi.mock('leaflet', () => {
   };
 
   // Base mock object containing specific mocked methods used in our components/tests
-  const leafletBaseMock: any = {
+  const leafletBaseMock: Record<string, unknown> = {
     map: vi.fn().mockImplementation(() => mockMapInstance),
     tileLayer: vi.fn().mockReturnValue({
       addTo: vi.fn(),
@@ -70,13 +70,13 @@ vi.mock('leaflet', () => {
   const leafletMock = new Proxy(leafletBaseMock, {
     get(target, prop) {
       if (prop in target) {
-        return target[prop];
+        return target[prop as string];
       }
-      const mockClass: any = class {};
-      mockClass.prototype.options = { pane: 'markerPane' };
-      mockClass.prototype.initialize = vi.fn();
-      mockClass.prototype.addLayer = vi.fn().mockReturnThis();
-      mockClass.prototype.addTo = vi.fn().mockReturnThis();
+      const mockClass = class {} as unknown as Record<string, unknown>;
+      (mockClass.prototype as Record<string, unknown>).options = { pane: 'markerPane' };
+      (mockClass.prototype as Record<string, unknown>).initialize = vi.fn();
+      (mockClass.prototype as Record<string, unknown>).addLayer = vi.fn().mockReturnThis();
+      (mockClass.prototype as Record<string, unknown>).addTo = vi.fn().mockReturnThis();
       mockClass.extend = vi.fn().mockImplementation(() => mockClass);
       mockClass.include = vi.fn().mockImplementation(() => mockClass);
       return mockClass;
@@ -84,8 +84,8 @@ vi.mock('leaflet', () => {
   });
 
   // Set global L for leaflet.markercluster plugin compatibility
-  (global as any).L = leafletMock;
-  (window as any).L = leafletMock;
+  (global as Record<string, unknown>).L = leafletMock;
+  (window as unknown as Record<string, unknown>).L = leafletMock;
 
   return {
     default: leafletMock,
