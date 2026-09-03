@@ -4,6 +4,8 @@ Note Haven is a local-first, privacy-focused Markdown note-taking application. I
 
 ## ✨ Key User Features
 
+> 📸 [Feature gallery](docs/FEATURES.md) — screenshots captured automatically by the E2E suite.
+
 ### 🔒 Privacy & Security First
 
 - **Local-first:** Your notes are stored in your browser's IndexedDB. Your data never leaves your device unless you choose to export it.
@@ -46,7 +48,7 @@ Note Haven is built with a focus on type safety, performance, and extensibility.
 ### 🧪 Testing & Quality
 
 - **Unit/Integration:** [Vitest](https://vitest.dev/) for fast, reliable tests.
-- **E2E Testing:** [Playwright](https://playwright.dev/) for browser automation.
+- **E2E Testing:** [Playwright](https://playwright.dev/) for browser automation. `npm run test:e2e` runs the headless Playwright suite (specs: app, notes, editor, calendar, security, export-import). See [e2e/README.md](e2e/README.md) for details.
 - **Linting:** [ESLint](https://eslint.org/) with modern flat-config and TypeScript support.
 - **Local CI:** Run your GitHub Actions locally using [act](https://github.com/nektos/act).
 
@@ -72,7 +74,7 @@ Note Haven is built with a focus on type safety, performance, and extensibility.
 4. **Testing:**
    ```bash
    npm test          # Run Vitest
-   npx playwright test # Run Playwright (if configured)
+   npm run test:e2e  # Run the Playwright E2E suite (headless)
    ```
 
 5. **Local CI (Optional):**
