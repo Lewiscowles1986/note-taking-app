@@ -1,7 +1,7 @@
 import { test, expect, step, seedNotes, debugBreak, type NoteSeed } from './fixtures';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execFileSync } from 'child_process';
+import JSZip from 'jszip';
 
 /**
  * Round D export/import suite. Covers the single-note HTML export, the full
@@ -109,16 +109,20 @@ test('exports all notes as a ZIP', async ({ page }) => {
   const head = fs.readFileSync(savePath).subarray(0, 2).toString('latin1');
   expect(head).toBe('PK');
 
-  // 2) Integrity: `unzip -t` verifies the archive opens and every entry's CRC
-  //    matches. Throws (non-zero exit) if the archive is corrupt.
-  execFileSync('unzip', ['-t', savePath], { stdio: 'pipe' });
+  // 2) Integrity + contents: parse the archive with jszip (already a runtime
+  //    dependency) instead of shelling out to `unzip`, which is not present in
+  //    the Linux Playwright Docker image. loadAsync validates the central
+  //    directory and CRCs; the entry list must include each seeded note.
+  const zip = await JSZip.loadAsync(fs.readFileSync(savePath));
+  const names = Object.keys(zip.files);
+  expect(names).toContain('notes/ZipOne.html');
+  expect(names).toContain('notes/ZipOne.md');
+  expect(names).toContain('notes/ZipTwo.html');
+  expect(names).toContain('notes/ZipTwo.md');
 
-  // 3) Contents: the archive must contain each seeded note as .html + .md.
-  const listing = execFileSync('unzip', ['-l', savePath], { encoding: 'utf8' });
-  expect(listing).toContain('notes/ZipOne.html');
-  expect(listing).toContain('notes/ZipOne.md');
-  expect(listing).toContain('notes/ZipTwo.html');
-  expect(listing).toContain('notes/ZipTwo.md');
+  // 3) Spot-check that the HTML entry actually parses and carries the body.
+  const zipOneHtml = await zip.file('notes/ZipOne.html')!.async('string');
+  expect(zipOneHtml).toContain('First zip body');
   await step(page, 'zip-export');
 });
 

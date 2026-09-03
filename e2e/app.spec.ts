@@ -5,7 +5,10 @@ test('loads with empty state', async ({ page }) => {
   await debugBreak(page, 'empty state loaded — inspect before assertions');
   await expect(page.getByRole('heading', { name: 'No note selected' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create Note' })).toBeVisible();
-  await expect(page).toHaveScreenshot('empty-state.png');
+  // Baselines are rendered by Linux Chromium (see e2e/README.md "Running in
+  // Docker"). macOS Chromium renders fonts/AA slightly differently — measured
+  // macOS-vs-Linux delta is ~0.01 (1%) of pixels, so 0.02 gives 2x headroom.
+  await expect(page).toHaveScreenshot('empty-state.png', { maxDiffPixelRatio: 0.02 });
   await step(page, 'empty-state');
 });
 
@@ -43,7 +46,10 @@ test('toggles between edit and view mode', async ({ page }) => {
   // Switch to view mode.
   await page.getByRole('button', { name: 'View', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Hello', level: 1 })).toBeVisible();
-  await expect(page.locator('.prose-notes')).toHaveScreenshot('rendered-note.png');
+  // Linux-rendered baseline; macOS delta measured ~0.01 (see empty-state above).
+  await expect(page.locator('.prose-notes')).toHaveScreenshot('rendered-note.png', {
+    maxDiffPixelRatio: 0.02,
+  });
   await step(page, 'view-mode');
 
   // Switch back to edit mode.

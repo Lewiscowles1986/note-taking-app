@@ -274,7 +274,7 @@ export async function step(
   const dir = path.join(process.cwd(), 'e2e', 'artifacts', fileBase, title);
   await fs.promises.mkdir(dir, { recursive: true });
   const filePath = path.join(dir, `${name}.png`);
-  await page.screenshot({ path: filePath, fullPage: opts?.fullPage ?? true });
+  await page.screenshot({ path: filePath, fullPage: opts?.fullPage ?? true, timeout: 30_000 });
   console.log(`[step] ${name}: ${filePath}`);
   return filePath;
 }

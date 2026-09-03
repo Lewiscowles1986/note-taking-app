@@ -40,6 +40,52 @@ npx playwright test --debug
 The `webServer` config auto-starts `npx vite --port 5173 --strictPort` and reuses an
 already-running dev server when present.
 
+## Running in Docker (Linux parity)
+
+The visual baselines in `e2e/app.spec.ts-snapshots/` are **canonically rendered by
+Linux Chromium** — the same rendering environment as CI. To guarantee that parity
+and a reproducible environment on any host, the suite can run inside the official
+Playwright container:
+
+```bash
+# Full suite, both projects (Linux Chromium)
+npm run test:e2e:docker
+
+# A single spec file
+npm run test:e2e:docker -- e2e/app.spec.ts
+
+# Regenerate baselines (Linux-rendered) — see "Regenerating baselines" below
+npm run test:e2e:docker -- e2e/app.spec.ts --update-snapshots
+```
+
+`scripts/e2e-docker.sh` runs `mcr.microsoft.com/playwright:v1.58.2-noble` with the
+worktree bind-mounted at `/work`, the vite `webServer` starting inside the
+container (no host networking needed), and any extra arguments passed straight
+through to `npx playwright test`. It refuses to run (with a friendly message) if
+Docker is unavailable or the daemon is not running.
+
+**node_modules volume caching.** The worktree's `node_modules` is a symlink to the
+host's macOS install (native darwin binaries), which cannot run inside Linux. A
+persistent Docker named volume (`note-haven-e2e-node_modules`) is mounted at the
+symlink's resolved target to hold a Linux-native install. The first run runs
+`npm ci` (a few minutes); later runs skip it because the volume already contains
+`node_modules/.bin/playwright`. Delete the volume to force a clean reinstall:
+
+```bash
+docker volume rm note-haven-e2e-node_modules
+```
+
+**File ownership.** The container runs as your user (`-u "$(id -u):$(id -g)"`), so
+files it writes into the worktree (e.g. regenerated baselines) are owned by you,
+not root. `HOME` is set to `/tmp` because the container user's real home is not
+writable; npm/playwright caches land in `/tmp` and are discarded.
+
+**Screenshot timeout.** The `step()` helper in `e2e/fixtures.ts` captures
+full-page screenshots with an explicit `timeout: 30_000`. Linux Chromium under
+software rendering (SwiftShader) is slower than macOS at full-page captures, and
+the default 10s `actionTimeout` was exceeded on the tall encryption pages. The
+30s timeout is a capture-only accommodation — it does not change any assertion.
+
 ## Run modes
 
 Three environment-driven modes coexist. They are controlled by two env vars:
@@ -165,5 +211,17 @@ Baselines are **platform-independent**: `playwright.config.ts` sets a
 appends `-darwin`/`-linux`/`-win32`), so the same committed PNG is used on every
 OS. The `{-projectName}` token is kept, so `chromium` and `chromium-mobile`
 baselines remain separate files (e.g. `empty-state-chromium.png` vs
-`empty-state-chromium-mobile.png`). After any `--update-snapshots`, run the spec
-again **without** the flag to prove the no-update run passes before committing.
+`empty-state-chromium-mobile.png`).
+
+**Baselines are rendered by Linux Chromium** (the canonical environment, matching
+CI). Always regenerate them inside the Docker container so they stay Linux-rendered:
+
+```bash
+npm run test:e2e:docker -- e2e/app.spec.ts --update-snapshots
+```
+
+The four `toHaveScreenshot` calls in `app.spec.ts` carry a small
+`maxDiffPixelRatio: 0.02` tolerance to absorb the measured macOS-vs-Linux font/AA
+delta (~0.01 of pixels), so the same committed baselines pass on both the host
+(macOS) and in Docker (Linux). After any `--update-snapshots`, run the spec again
+**without** the flag to prove the no-update run passes before committing.
