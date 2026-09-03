@@ -29,6 +29,13 @@ const debugMode = process.env.E2E_DEBUG === '1' || process.env.E2E_DEBUG === 'tr
 
 export default defineConfig({
   testDir: 'e2e',
+  // Platform-independent snapshot baselines: the default template appends
+  // {-platform} (e.g. -darwin on macOS, -linux on CI), which would make
+  // committed baselines fail on any other OS. Omit the platform token so the
+  // same file is used everywhere while {-projectname} keeps chromium vs
+  // chromium-mobile baselines distinct.
+  snapshotPathTemplate:
+    '{snapshotDir}/{testFileDir}/{testFileName}-snapshots/{arg}{-projectName}{ext}',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: debugMode ? 0 : process.env.CI ? 2 : 1,

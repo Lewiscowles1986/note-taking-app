@@ -160,8 +160,10 @@ so the images and the page regenerate together atomically.
 
 ## Regenerating baselines
 
-Baselines are platform-suffixed (`-darwin` for macOS). If you regenerate snapshots on
-a different OS, Playwright writes `-linux`/`-win32` variants and the existing
-`-darwin` ones are ignored — commit the correct set for your CI platform. After any
-`--update-snapshots`, run the spec again **without** the flag to prove the no-update
-run passes before committing.
+Baselines are **platform-independent**: `playwright.config.ts` sets a
+`snapshotPathTemplate` that omits the `{-platform}` token (the default template
+appends `-darwin`/`-linux`/`-win32`), so the same committed PNG is used on every
+OS. The `{-projectName}` token is kept, so `chromium` and `chromium-mobile`
+baselines remain separate files (e.g. `empty-state-chromium.png` vs
+`empty-state-chromium-mobile.png`). After any `--update-snapshots`, run the spec
+again **without** the flag to prove the no-update run passes before committing.

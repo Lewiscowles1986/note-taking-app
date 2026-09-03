@@ -20,6 +20,29 @@ function dateFromKey(key: string): Date {
 const editor = (page: Page) => page.getByPlaceholder('Start writing... Type / for commands');
 const grid = (page: Page) => page.locator('div.grid.grid-cols-7.flex-1 > div');
 
+/**
+ * Raw legacy note row read back from IndexedDB. Only the fields inspected by
+ * readDbState are typed; newer fields (editDates/hasCodeBlocks/hasMermaid) are
+ * optional because they only exist on rows seeded at schema versions that had
+ * them.
+ */
+interface LegacyNoteRow {
+  title: string;
+  editDates?: string[];
+  hasCodeBlocks?: boolean;
+  hasMermaid?: boolean;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+}
+
+/** Raw legacy revision row read back from IndexedDB (v3 `revisions` store). */
+interface LegacyRevisionRow {
+  noteId: number;
+  title: string;
+  content: string;
+  savedAt: string | Date;
+}
+
 /** Read the raw DB version, store names, and a plain summary of every note. */
 function readDbState(page: Page) {
   return page.evaluate(() => {
@@ -43,7 +66,7 @@ function readDbState(page: Page) {
         const tx = db.transaction('notes', 'readonly');
         const getAll = tx.objectStore('notes').getAll();
         getAll.onsuccess = () => {
-          const notes = getAll.result.map((n: any) => ({
+          const notes = getAll.result.map((n: LegacyNoteRow) => ({
             title: n.title,
             editDates: n.editDates || [],
             hasCodeBlocks: !!n.hasCodeBlocks,
@@ -78,7 +101,7 @@ function readRevisions(page: Page, noteId: number) {
         const getReq = idx.getAll(id);
         getReq.onsuccess = () => {
           const rows = getReq.result
-            .map((r: any) => ({
+            .map((r: LegacyRevisionRow) => ({
               noteId: r.noteId,
               title: r.title,
               content: r.content,
