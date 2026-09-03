@@ -137,6 +137,27 @@ Then prove the no-update run still passes (see "Regenerating baselines" below).
 **Known UX quirk:** unpinning a note bumps `updatedAt` to now, so the note stays at
 the top of the list instead of reverting to its original position.
 
+## Documentation screenshots
+
+`e2e/docs-tour.spec.ts` is a **gated** "documentation tour" that drives the app to
+its most photogenic, deterministic states and captures PNGs directly into
+`docs/images/`, then writes `docs/FEATURES.md` (the committed feature gallery page)
+so the images and the page regenerate together atomically.
+
+- **Env gate:** every test starts with
+  `test.skip(!process.env.E2E_DOCS || test.info().project.name !== 'chromium', ...)`,
+  so the tour only runs when `E2E_DOCS=1` on the `chromium` project. A normal
+  `npm run test:e2e` run skips all of these tests and never touches `docs/`.
+- **Run it:**
+  ```bash
+  npm run docs:screenshots
+  # equivalent to:
+  E2E_DOCS=1 npx playwright test e2e/docs-tour.spec.ts --project=chromium
+  ```
+- **Output:** `docs/images/*.png` (stable snake_case filenames) plus
+  `docs/FEATURES.md`. Both are committed and regenerate together — commit them as a
+  pair. There are no `debugBreak` calls in this spec; it runs unattended.
+
 ## Regenerating baselines
 
 Baselines are platform-suffixed (`-darwin` for macOS). If you regenerate snapshots on

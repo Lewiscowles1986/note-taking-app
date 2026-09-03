@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:debug": "E2E_DEBUG=1 playwright test"
+    "test:e2e:debug": "E2E_DEBUG=1 playwright test",
+    "docs:screenshots": "E2E_DOCS=1 playwright test e2e/docs-tour.spec.ts --project=chromium"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

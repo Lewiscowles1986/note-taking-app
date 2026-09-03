@@ -4,6 +4,8 @@ Note Haven is a local-first, privacy-focused Markdown note-taking application. I
 
 ## ✨ Key User Features
 
+> 📸 [Feature gallery](docs/FEATURES.md) — screenshots captured automatically by the E2E suite.
+
 ### 🔒 Privacy & Security First
 
 - **Local-first:** Your notes are stored in your browser's IndexedDB. Your data never leaves your device unless you choose to export it.
