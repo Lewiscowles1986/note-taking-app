@@ -36,12 +36,25 @@ interface ViewportConfig {
   projection?: 'perspective' | 'orthographic';
 }
 
+interface FrontmatterConfig {
+  texture?: string;
+  uvProjection?: string;
+  system?: string;
+  camera?: [number, number, number];
+  pan?: boolean;
+  zoom?: boolean;
+  drag?: boolean;
+  grab?: boolean;
+  mode?: 'Solid' | 'Surface Angle' | 'Wireframe';
+  viewports?: ViewportConfig[];
+}
+
 function parseFrontmatterAndContent(code: string) {
   const match = code.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
   if (match) {
     const yamlStr = match[1];
     const content = match[2];
-    const config: any = {};
+    const config: Record<string, unknown> = {};
 
     const lines = yamlStr.split('\n');
     for (const line of lines) {
@@ -73,11 +86,11 @@ function parseFrontmatterAndContent(code: string) {
     try {
       if (yamlStr.includes('viewports:')) {
         const viewports: ViewportConfig[] = [];
-        let currentViewport: any = null;
+        let currentViewport: Record<string, unknown> | null = null;
         let inViewports = false;
 
         const lines = yamlStr.split('\n');
-        for (let line of lines) {
+        for (const line of lines) {
           const trimmed = line.trim();
           if (trimmed.startsWith('viewports:')) {
             inViewports = true;
@@ -92,7 +105,7 @@ function parseFrontmatterAndContent(code: string) {
 
             if (trimmed.startsWith('-')) {
               if (currentViewport) {
-                viewports.push(currentViewport);
+                viewports.push(currentViewport as unknown as ViewportConfig);
               }
               currentViewport = {};
               const keyValPart = trimmed.slice(1).trim();
@@ -113,7 +126,7 @@ function parseFrontmatterAndContent(code: string) {
           }
         }
         if (currentViewport) {
-          viewports.push(currentViewport);
+          viewports.push(currentViewport as unknown as ViewportConfig);
         }
         if (viewports.length > 0) {
           config.viewports = viewports;
@@ -123,7 +136,7 @@ function parseFrontmatterAndContent(code: string) {
       console.error('Failed parsing viewports block', e);
     }
 
-    return { config, content: content.trim() };
+    return { config: config as FrontmatterConfig, content: content.trim() };
   }
   return { config: {}, content: code.trim() };
 }
@@ -492,7 +505,7 @@ function Model3DViewport({
 
   // References to allow programmatic trigger clicks
   const controlsRef = useRef<OrbitControls | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | THREE.OrthographicCamera | null>(null);
   const modelMeshRef = useRef<THREE.Object3D | null>(null);
 
   // Check controls availability based on config parameters
@@ -503,8 +516,9 @@ function Model3DViewport({
 
   useEffect(() => {
     if (!containerRef.current) return;
+    const container = containerRef.current;
 
-    const width = containerRef.current.clientWidth;
+    const width = container.clientWidth;
     const height = 400; // Standard fixed canvas height
 
     // Compute radius beforehand for camera boundaries
@@ -539,7 +553,7 @@ function Model3DViewport({
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(width, height);
     renderer.shadowMap.enabled = true;
-    containerRef.current.appendChild(renderer.domElement);
+    container.appendChild(renderer.domElement);
 
     // 2. Setup Lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
@@ -678,7 +692,7 @@ function Model3DViewport({
     let resizeObserver: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver((entries) => {
-        for (let entry of entries) {
+        for (const entry of entries) {
           const { width, height } = entry.contentRect;
           if (isOrthographic) {
             const aspect = width / 400;
@@ -697,7 +711,7 @@ function Model3DViewport({
           renderer.setSize(width, 400);
         }
       });
-      resizeObserver.observe(containerRef.current);
+      resizeObserver.observe(container);
     }
 
     // Clean up
@@ -708,9 +722,7 @@ function Model3DViewport({
       }
       controls.dispose();
       renderer.dispose();
-      if (containerRef.current) {
-        containerRef.current.innerHTML = '';
-      }
+      container.innerHTML = '';
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [geometry, objGroup, modelType, config.camera, config.projection, system]);
