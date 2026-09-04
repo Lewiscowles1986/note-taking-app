@@ -57,7 +57,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Derive image name and version from base.Dockerfile
         id: ver
@@ -142,7 +142,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Derive image name and version from base.Dockerfile
         id: ver
