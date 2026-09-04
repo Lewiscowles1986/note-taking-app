@@ -1,0 +1,29 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "enabled": true,
+  "prCreation": "immediate",
+  "extends": ["config:recommended"],
+  "prConcurrentLimit": 0,
+  "branchConcurrentLimit": 0,
+  "schedule": ["at any time"],
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "enabled": true,
+      "prCreation": "immediate"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/.*\\.ya?ml$/"],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "actions/setup-node",
+      "versioningTemplate": "docker",
+      "matchStrings": [
+        "node-version:\\s*(?<currentValue>\\d+\\.\\d+)",
+        "Set up Node\\.js\\s+(?<currentValue>\\d+\\.\\d+)"
+      ]
+    }
+  ]
+}
