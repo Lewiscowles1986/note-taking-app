@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import NoteEditor from '../components/NoteEditor';
 import type { Note } from '../lib/db';
 import { MAX_INLINE_SIZE } from '../lib/db';
@@ -347,17 +347,23 @@ describe('NoteEditor component', () => {
       await flush();
 
       expect(processImage).not.toHaveBeenCalled();
-      expect(onSave).toHaveBeenLastCalledWith({
-        attachments: [
-          {
-            id: expect.any(String),
-            name: 'notes.txt',
-            type: 'text/plain',
-            data: expect.stringContaining('data:text/plain;base64,'),
-            size: 5,
-          },
-        ],
-      });
+      // toHaveBeenCalledWith (not LastCalledWith) + waitFor: handleFileAttach
+      // fires two saves (content insert, then attachments) and the FileReader
+      // resolve time varies under coverage instrumentation — order and exact
+      // timing must not matter.
+      await waitFor(() =>
+        expect(onSave).toHaveBeenCalledWith({
+          attachments: [
+            {
+              id: expect.any(String),
+              name: 'notes.txt',
+              type: 'text/plain',
+              data: expect.stringContaining('data:text/plain;base64,'),
+              size: 5,
+            },
+          ],
+        }),
+      );
     });
 
     it('asks for an external URL for large files and keeps it when provided', async () => {

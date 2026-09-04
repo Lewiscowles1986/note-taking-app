@@ -612,10 +612,11 @@ describe('EncryptionDialog — decrypt tab (encrypted note)', () => {
 // RSA-4096 keygen is CPU-bound; give it room like use-encryption.test.tsx.
 const CRYPTO_TIMEOUT = 30_000;
 
-/** Wipe the real database and reopen it fresh at the current (v4) schema. */
+/** Clear every table (schema stays open at v4). Unlike delete/reopen this
+ * cannot raise DatabaseClosedError from a previous test's in-flight read
+ * landing after the wipe — pending reads resolve against empty tables. */
 async function resetDb(): Promise<void> {
-  await db.delete();
-  await db.open();
+  await Promise.all(db.tables.map((table) => table.clear()));
 }
 
 /**
@@ -662,10 +663,7 @@ function RealHarness({ note, onClose }: { note: Note; onClose: () => void }) {
 }
 
 describe('EncryptionDialog — real-flow round trip (real hook, db, webcrypto)', () => {
-  beforeEach(async () => {
-    await db.delete();
-    await db.open();
-  });
+  beforeEach(resetDb);
 
   it('generates, imports, deletes a key pair, then encrypts and decrypts the note', async () => {
     const note = makeNote({ content: 'round trip secret' });

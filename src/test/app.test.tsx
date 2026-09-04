@@ -25,10 +25,11 @@ import { createNote, db } from "@/lib/db";
  */
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-/** Wipe the real database and reopen it fresh at the current (v4) schema. */
+/** Clear every table (schema stays open at v4). Unlike delete/reopen this
+ * cannot raise DatabaseClosedError from a previous test's in-flight read
+ * landing after the wipe — pending reads resolve against empty tables. */
 async function resetDb(): Promise<void> {
-  await db.delete();
-  await db.open();
+  await Promise.all(db.tables.map((table) => table.clear()));
 }
 
 describe("App shell (Round 23 — 100% line coverage)", () => {
