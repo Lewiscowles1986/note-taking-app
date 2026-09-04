@@ -1,4 +1,4 @@
-import { test, expect, seedNotes, type NoteSeed } from './fixtures';
+import { test, expect, seedNotes, type NoteSeed, APP_PATH } from './fixtures';
 import type { Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -120,7 +120,7 @@ test('captures app overview', async ({ page }) => {
     makeNote({ title: 'Grocery List', content: 'Buy milk, eggs, and bread.', tags: ['life'], category: 'Personal' }),
     makeNote({ title: 'Project Ideas', content: '# Project Ideas\n\nBrainstorm new features for the app.', tags: ['ideas'], category: 'Work' }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNote(page, 'Welcome to Note Haven');
   await shot(page, 'app-overview');
 });
@@ -137,7 +137,7 @@ test('captures sidebar search', async ({ page }) => {
     makeNote({ title: 'Project Ideas', content: '# Project Ideas\n\nBrainstorm new features.', tags: ['ideas'], category: 'Work' }),
     makeNote({ title: 'Reading List', content: 'Books to read this month.', tags: ['life'], category: 'Personal' }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.getByPlaceholder('Search notes...').fill('meeting');
   await expect(page.getByText('Meeting Notes', { exact: true })).toBeVisible();
   await expect(page.getByText('Grocery List', { exact: true })).toBeHidden();
@@ -156,7 +156,7 @@ test('captures tag filters', async ({ page }) => {
     makeNote({ title: 'Grocery List', content: 'Buy milk, eggs, and bread.', tags: ['life'], category: 'Personal' }),
     makeNote({ title: 'Reading List', content: 'Books to read this month.', tags: ['life'], category: 'Personal' }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   const sidebar = page.locator('div.w-72');
   await sidebar.getByRole('button', { name: 'Tags' }).click();
   await sidebar.getByRole('button', { name: 'work', exact: true }).click();
@@ -172,7 +172,7 @@ test('captures slash commands', async ({ page }) => {
     'docs tour runs only with E2E_DOCS=1 on the chromium project'
   );
   await seedNotes(page, [makeNote({ title: 'Draft', content: '# Draft\n\n' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNote(page, 'Draft');
   const editor = page.getByPlaceholder('Start writing... Type / for commands');
   await editor.click();
@@ -196,7 +196,7 @@ test('captures markdown view', async ({ page }) => {
         '# Markdown Showcase\n\nSome **bold** and *italic* text with a [link](https://example.com).\n\n## Lists\n\n- First item\n- Second item\n- Third item\n\n## Table\n\n| Feature | Status |\n| --- | --- |\n| Markdown | ✅ |\n| GFM tables | ✅ |\n| Callouts | ✅ |',
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Markdown Showcase');
   await expect(page.locator('.prose-notes table')).toBeVisible();
   await shot(page, 'markdown-view', { fullPage: true });
@@ -215,7 +215,7 @@ test('captures callouts', async ({ page }) => {
         '# Callouts\n\n> [!NOTE]\n> Useful information for the reader.\n\n> [!WARNING]\n> Be careful with this step.\n\n> [!TIP]\n> A helpful tip to make things easier.',
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Callouts');
   await expect(page.locator('.callout-note')).toBeVisible();
   await expect(page.locator('.callout-warning')).toBeVisible();
@@ -237,7 +237,7 @@ test('captures code runner', async ({ page }) => {
       hasMermaid: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Code Runner');
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByText(/\[log\]: Hello, Note Haven!/)).toBeVisible({ timeout: 10000 });
@@ -262,7 +262,7 @@ test('captures mermaid diagram', async ({ page }) => {
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Mermaid');
   // The diagram SVG lives in the preview pane; :not(.lucide) excludes the
   // header tab icons, which are also svgs inside the block.
@@ -349,7 +349,7 @@ erDiagram
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Mermaid Types');
   // Every diagram type mounts its own MermaidBlock and renders an inline SVG.
   // :not(.lucide) excludes the header tab icons, which are also svgs.
@@ -452,7 +452,7 @@ test('captures BPMN renderer', async ({ page }) => {
       hasMermaid: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'BPMN');
   const bpmnBlock = page.locator('.prose-notes div.my-3', {
     has: page.getByText('bpmn', { exact: true }),
@@ -508,7 +508,7 @@ test('captures geojson map', async ({ page }) => {
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Geo Map');
   await expect(page.locator('.leaflet-container')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('.leaflet-marker-icon')).toHaveCount(3, { timeout: 20000 });
@@ -542,7 +542,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, '3D Model');
   await expect(page.locator('.prose-notes canvas')).toBeVisible({ timeout: 20000 });
   await shot(page, 'model-3d');
@@ -576,7 +576,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Viewports');
   await expect(page.getByText('Isometric', { exact: true })).toBeVisible({ timeout: 20000 });
   await expect(page.getByText('Top View', { exact: true })).toBeVisible({ timeout: 20000 });
@@ -608,7 +608,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Frozen');
   await expect(page.locator('.prose-notes canvas')).toBeVisible({ timeout: 20000 });
   // Frozen viewport: no control pads render.
@@ -633,7 +633,7 @@ test('captures calendar view', async ({ page }) => {
     makeNote({ title: 'A Week Ago', content: '# A Week Ago\n\nBody', editDates: [key(7)], createdAt: day(7), updatedAt: day(7) }),
     makeNote({ title: 'Two Weeks Ago', content: '# Two Weeks Ago\n\nBody', editDates: [key(14)], createdAt: day(14), updatedAt: day(14) }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.getByTitle('Calendar view').click();
   await expect(page.getByText('Calendar', { exact: true })).toBeVisible();
   await expect(page.locator('div.grid.grid-cols-7.flex-1 > div').first()).toBeVisible();
@@ -647,7 +647,7 @@ test('captures encryption locked', async ({ page }) => {
     'docs tour runs only with E2E_DOCS=1 on the chromium project'
   );
   await seedNotes(page, [makeNote({ title: 'Secret', content: '# Secret\n\nTop secret body' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNote(page, 'Secret');
   await page.getByRole('button', { name: 'Encrypt', exact: true }).click();
   await page.getByPlaceholder('Min 8 characters').fill('correct horse battery staple');
@@ -666,7 +666,7 @@ test('captures encryption dialog', async ({ page }) => {
     'docs tour runs only with E2E_DOCS=1 on the chromium project'
   );
   await seedNotes(page, [makeNote({ title: 'Secret', content: '# Secret\n\nTop secret body' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNote(page, 'Secret');
   await page.getByRole('button', { name: 'Encrypt', exact: true }).click();
   const dialog = page.locator('div.fixed.inset-0.z-50');
@@ -681,7 +681,7 @@ test('captures empty state', async ({ page }) => {
     !process.env.E2E_DOCS || test.info().project.name !== 'chromium',
     'docs tour runs only with E2E_DOCS=1 on the chromium project'
   );
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await expect(page.getByRole('heading', { name: 'No note selected' })).toBeVisible();
   await shot(page, 'empty-state');
 });

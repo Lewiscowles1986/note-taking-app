@@ -1,4 +1,4 @@
-import { test, expect, step, seedNotes, debugBreak, type NoteSeed } from './fixtures';
+import { test, expect, step, seedNotes, debugBreak, type NoteSeed, APP_PATH } from './fixtures';
 
 /**
  * Round J tag-behavior suite. Thoroughly covers tag add/remove/dedup/trim,
@@ -68,7 +68,7 @@ async function addTagViaUi(
 
 test('adds multiple tags to one note and shows every chip', async ({ page }) => {
   await seedNotes(page, [makeNote({ title: 'Multi', content: '# Multi\n\nTag me a lot' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Multi' }).click();
   await expect(page.getByRole('heading', { name: 'Multi', level: 2 })).toBeVisible();
   await debugBreak(page, 'note open — inspect before adding 3 tags');
@@ -103,7 +103,7 @@ test('removes one tag while keeping the others', async ({ page }) => {
   await seedNotes(page, [
     makeNote({ title: 'Triple', content: '# Triple\n\nThree tags', tags: ['one', 'two', 'three'] }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Triple' }).click();
   await expect(page.getByRole('heading', { name: 'Triple', level: 2 })).toBeVisible();
   await expect(metaTagChips(page)).toHaveCount(3);
@@ -134,7 +134,7 @@ test('removes one tag while keeping the others', async ({ page }) => {
 
 test('prevents duplicate tags', async ({ page }) => {
   await seedNotes(page, [makeNote({ title: 'Dup', content: '# Dup\n\nDedup me' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Dup' }).click();
   await expect(page.getByRole('heading', { name: 'Dup', level: 2 })).toBeVisible();
   await debugBreak(page, 'note open — inspect before duplicate attempts');
@@ -158,7 +158,7 @@ test('prevents duplicate tags', async ({ page }) => {
 
 test('trims and normalizes tag input', async ({ page }) => {
   await seedNotes(page, [makeNote({ title: 'Trim', content: '# Trim\n\nNormalize me' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Trim' }).click();
   await expect(page.getByRole('heading', { name: 'Trim', level: 2 })).toBeVisible();
   await debugBreak(page, 'note open — inspect before odd tags');
@@ -186,7 +186,7 @@ test('search matches tag names', async ({ page }) => {
     makeNote({ title: 'Alpha', content: '# Alpha\n\nBody text', tags: ['unique-tag-xyz'], updatedAt: t }),
     makeNote({ title: 'Beta', content: '# Beta\n\nBody text', updatedAt: new Date(t.getTime() - 3600000) }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await expect(page.getByText('Alpha', { exact: true })).toBeVisible();
   await debugBreak(page, 'notes seeded — inspect before searching by tag');
   await step(page, 'seeded');
@@ -207,7 +207,7 @@ test('tag facet filters across many notes', async ({ page }) => {
     makeNote({ title: 'N4', content: '# N4\n\nD', tags: ['beta'], updatedAt: new Date(t.getTime() - 10800000) }),
     makeNote({ title: 'N5', content: '# N5\n\nE', tags: ['gamma'], updatedAt: new Date(t.getTime() - 14400000) }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await expect(page.getByText('N1', { exact: true })).toBeVisible();
   await debugBreak(page, '5 notes across 3 tags — inspect before facet filter');
 
@@ -237,7 +237,7 @@ test('combines tag filter with search query', async ({ page }) => {
     makeNote({ title: 'N2', content: '# N2\n\ngrocery list', tags: ['work'], updatedAt: new Date(t.getTime() - 3600000) }),
     makeNote({ title: 'N3', content: '# N3\n\nmeeting notes', tags: ['life'], updatedAt: new Date(t.getTime() - 7200000) }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await expect(page.getByText('N1', { exact: true })).toBeVisible();
   await debugBreak(page, 'notes seeded — inspect before tag+search');
 
@@ -265,7 +265,7 @@ test('combines tag filter with category filter', async ({ page }) => {
     makeNote({ title: 'N2', content: '# N2\n\nB', tags: ['work'], category: 'Personal', updatedAt: new Date(t.getTime() - 3600000) }),
     makeNote({ title: 'N3', content: '# N3\n\nC', tags: ['life'], category: 'Work', updatedAt: new Date(t.getTime() - 7200000) }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await expect(page.getByText('N1', { exact: true })).toBeVisible();
   await debugBreak(page, 'notes seeded — inspect before tag+category');
 
@@ -287,7 +287,7 @@ test('combines tag filter with category filter', async ({ page }) => {
 
 test('shows empty state when a tag filter matches nothing', async ({ page }) => {
   await seedNotes(page, [makeNote({ title: 'Solo', content: '# Solo\n\nOnly tag', tags: ['solo'] })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Solo' }).click();
   await expect(page.getByRole('heading', { name: 'Solo', level: 2 })).toBeVisible();
   await debugBreak(page, 'note open — inspect before emptying the facet');
@@ -317,7 +317,7 @@ test('tag chips on sidebar items reflect state per note', async ({ page }) => {
     makeNote({ title: 'Beta', content: '# Beta\n\nB', tags: ['green'], updatedAt: new Date(t.getTime() - 3600000) }),
     makeNote({ title: 'Gamma', content: '# Gamma\n\nC', tags: [], updatedAt: new Date(t.getTime() - 7200000) }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await expect(page.getByText('Alpha', { exact: true })).toBeVisible();
   await debugBreak(page, 'notes seeded — inspect per-note chips');
   await step(page, 'seeded');

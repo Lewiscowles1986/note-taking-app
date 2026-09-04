@@ -27,6 +27,16 @@ const attachMode = !!process.env.E2E_BASE_URL;
 // labeled debugBreak before the assertion cluster.
 const debugMode = process.env.E2E_DEBUG === '1' || process.env.E2E_DEBUG === 'true';
 
+// No-screenshot mode: E2E_NO_SCREENSHOTS=1 (or "true") disables failure
+// screenshots and traces (trace archives embed screenshots), and makes the
+// step() helper in e2e/fixtures.ts a no-op, so a run leaves no image artifacts
+// at all. Intended together with attach mode (E2E_BASE_URL) for runs against a
+// remote server. The toHaveScreenshot baselines in app.spec.ts are unaffected
+// (they are assertions, not artifacts); pass --ignore-snapshots to skip those
+// too — npm run test:e2e:remote does exactly that.
+const noScreenshots =
+  process.env.E2E_NO_SCREENSHOTS === '1' || process.env.E2E_NO_SCREENSHOTS === 'true';
+
 export default defineConfig({
   testDir: 'e2e',
   // Platform-independent snapshot baselines: the default template appends
@@ -43,8 +53,8 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
+    trace: noScreenshots ? 'off' : 'on-first-retry',
+    screenshot: noScreenshots ? 'off' : 'only-on-failure',
     actionTimeout: 10000,
     // Debug mode must be headed so page.pause() opens the Inspector.
     headless: debugMode ? false : undefined,

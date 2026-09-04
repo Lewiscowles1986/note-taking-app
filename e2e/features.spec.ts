@@ -1,4 +1,4 @@
-import { test, expect, step, seedNotes, debugBreak, type NoteSeed } from './fixtures';
+import { test, expect, step, seedNotes, debugBreak, type NoteSeed, APP_PATH } from './fixtures';
 import type { Page } from '@playwright/test';
 
 /**
@@ -106,7 +106,7 @@ sequenceDiagram
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Multi Mermaid');
   await debugBreak(page, 'multi-mermaid — two diagrams should render');
 
@@ -134,7 +134,7 @@ sequenceDiagram
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Sequence');
   await debugBreak(page, 'sequence — participant labels should be in the svg');
 
@@ -162,7 +162,7 @@ This paragraph should still render.
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Bad Mermaid');
   await debugBreak(page, 'invalid-mermaid — observe the error/fallback');
 
@@ -194,7 +194,7 @@ test('renders BPMN blocks with a dedicated BPMN renderer', async ({ page }) => {
       hasMermaid: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'BPMN');
   await debugBreak(page, 'bpmn-renderer — diagram canvas should be visible');
 
@@ -244,7 +244,7 @@ test('renders a geojson map with markers', async ({ page }) => {
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Geo Map');
   await debugBreak(page, 'geojson-map — leaflet container + markers');
 
@@ -271,7 +271,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'STL Inline');
   await debugBreak(page, 'stl-canvas — three.js canvas should render');
 
@@ -303,7 +303,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Ortho Model');
   await debugBreak(page, 'ortho-model — canvas should render without errors');
 
@@ -333,7 +333,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Viewports');
   await debugBreak(page, 'viewport-grid — two viewport labels should render');
 
@@ -361,7 +361,7 @@ print("hi")
       hasMermaid: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Runners');
   await debugBreak(page, 'js-runnable — js has Run, python does not');
 
@@ -394,7 +394,7 @@ print("hi")
       hasMermaid: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Multi Lang');
   await debugBreak(page, 'multi-lang — three highlighted blocks with labels');
 

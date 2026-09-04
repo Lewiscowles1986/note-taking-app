@@ -1,4 +1,4 @@
-import { test, expect, step, seedNotes, debugBreak, type NoteSeed } from './fixtures';
+import { test, expect, step, seedNotes, debugBreak, type NoteSeed, APP_PATH } from './fixtures';
 import type { Page } from '@playwright/test';
 
 /**
@@ -65,7 +65,7 @@ test('calendar view shows notes on their edit dates', async ({ page }) => {
       editDates: [monthAgoKey],
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await expect(page.getByText('TodayNote', { exact: true })).toBeVisible();
   await debugBreak(page, 'notes seeded — inspect before calendar view');
 
@@ -104,7 +104,7 @@ test('selecting a note from the calendar returns to notes', async ({ page }) => 
       editDates: [todayKey],
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.getByTitle('Calendar view').click();
   await expect(grid(page).first()).toBeVisible();
   await debugBreak(page, 'calendar open — inspect before selecting note');
@@ -127,7 +127,7 @@ test('seeding is reload-safe (no duplicate notes after reload)', async ({ page }
     makeNote({ title: 'ReloadA', content: '# ReloadA\n\nA', updatedAt: now }),
     makeNote({ title: 'ReloadB', content: '# ReloadB\n\nB', updatedAt: new Date(now.getTime() - 3600000) }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
 
   // Exactly 2 note items in the sidebar, and the footer count agrees.
   await expect(page.locator('div.w-72 div.group')).toHaveCount(2);

@@ -1,4 +1,4 @@
-import { test, expect, step, seedNotes, debugBreak, type NoteSeed } from './fixtures';
+import { test, expect, step, seedNotes, debugBreak, type NoteSeed, APP_PATH } from './fixtures';
 import type { Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -39,7 +39,7 @@ async function seedAndEncrypt(
   password: string,
 ): Promise<void> {
   await seedNotes(page, [makeNote({ title, content })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: title }).click();
   await expect(page.getByRole('heading', { name: title, level: 2 })).toBeVisible();
 
@@ -54,7 +54,7 @@ async function seedAndEncrypt(
 
 test('encrypts a note with a password and locks it', async ({ page }) => {
   await seedNotes(page, [makeNote({ title: 'Secret', content: '# Secret\n\nTop secret body' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Secret' }).click();
   await expect(page.getByRole('heading', { name: 'Secret', level: 2 })).toBeVisible();
 
@@ -119,7 +119,7 @@ test('unlocks and decrypts with the correct password', async ({ page }) => {
 test('encrypts and decrypts with a generated key pair', async ({ page }) => {
   test.setTimeout(120_000);
   await seedNotes(page, [makeNote({ title: 'KeyNote', content: '# KeyNote\n\nKey body' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'KeyNote' }).click();
   await expect(page.getByRole('heading', { name: 'KeyNote', level: 2 })).toBeVisible();
 
@@ -156,7 +156,7 @@ test('encrypts and decrypts with a generated key pair', async ({ page }) => {
 test('exports a generated key pair as JWK', async ({ page }) => {
   test.setTimeout(120_000);
   await seedNotes(page, [makeNote({ title: 'KeyExport', content: '# KeyExport\n\nBody' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'KeyExport' }).click();
   await expect(page.getByRole('heading', { name: 'KeyExport', level: 2 })).toBeVisible();
 
@@ -256,7 +256,7 @@ console.log(greeting);
 
 > A blockquote line.`;
   await seedNotes(page, [makeNote({ title: 'Roundtrip', content: rich })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Roundtrip' }).click();
   await expect(page.getByRole('heading', { name: 'Roundtrip', level: 2 })).toBeVisible();
   await step(page, 'original');
@@ -306,7 +306,7 @@ test('hides plaintext from the sidebar for encrypted notes', async ({ page }) =>
     makeNote({ title: 'Public', content: 'Public body text here' }),
     makeNote({ title: 'Secret', content: '# Secret\n\nTop secret body' }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Secret' }).click();
   await expect(page.getByRole('heading', { name: 'Secret', level: 2 })).toBeVisible();
 
@@ -372,7 +372,7 @@ test('recovers from a wrong password within the same dialog session', async ({ p
 test('exports a generated key pair as PEM', async ({ page }) => {
   test.setTimeout(120_000);
   await seedNotes(page, [makeNote({ title: 'PemExport', content: '# PemExport\n\nBody' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'PemExport' }).click();
   await expect(page.getByRole('heading', { name: 'PemExport', level: 2 })).toBeVisible();
 
@@ -406,7 +406,7 @@ test('exports a generated key pair as PEM', async ({ page }) => {
 test('imports an exported JWK key pair and encrypts with it', async ({ page }) => {
   test.setTimeout(180_000);
   await seedNotes(page, [makeNote({ title: 'ImportNote', content: '# ImportNote\n\nImported body' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'ImportNote' }).click();
   await expect(page.getByRole('heading', { name: 'ImportNote', level: 2 })).toBeVisible();
 
@@ -473,7 +473,7 @@ test('imports an exported JWK key pair and encrypts with it', async ({ page }) =
 test('deletes a key pair and falls back to the select-a-key guard', async ({ page }) => {
   test.setTimeout(180_000);
   await seedNotes(page, [makeNote({ title: 'KeyGuard', content: '# KeyGuard\n\nBody' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'KeyGuard' }).click();
   await expect(page.getByRole('heading', { name: 'KeyGuard', level: 2 })).toBeVisible();
 

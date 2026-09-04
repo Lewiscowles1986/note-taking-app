@@ -42,19 +42,30 @@ already-running dev server when present.
 
 ## Run modes
 
-Three environment-driven modes coexist. They are controlled by two env vars:
-`E2E_BASE_URL` (attach mode) and `E2E_DEBUG` (debug mode). They combine freely.
+Three environment-driven modes coexist, controlled by four env vars:
+`E2E_BASE_URL` (attach mode), `E2E_BASE_PATH` (app-root path), `E2E_DEBUG` (debug
+mode) and `E2E_NO_SCREENSHOTS` (no-screenshot mode). They combine freely.
 
 | Mode | Command | Behavior |
 | --- | --- | --- |
 | **Default** | `npm run test:e2e` | Playwright starts `vite` on **5173** (`--strictPort`) and runs headless, parallel. |
 | **Attach** | `E2E_BASE_URL=http://host:port npm run test:e2e` | **No server is started** — tests attach to the already-running server at that URL. Use against a preview/CI build or a dev server on a non-default port. |
 | **Debug** | `npm run test:e2e:debug` (or `E2E_DEBUG=1 npx playwright test -g "encrypts a note"`) | **Headed**, serial (`workers: 1`), no retries. Every test pauses at its labeled `debugBreak` drop-in before the assertion cluster. |
+| **No screenshots** | `E2E_NO_SCREENSHOTS=1 npm run test:e2e` | Failure screenshots off, retry traces off (trace archives embed screenshots), `step()` is a no-op. **No image artifacts at all.** |
 
 - **Attach mode** (`E2E_BASE_URL` set): `webServer` is disabled entirely, so Playwright
   never boots its own vite. The value must be an absolute `http(s)` URL (a trailing
   slash is tolerated and stripped; anything else fails fast with a clear config error).
   Nothing else in the config references the hardcoded 5173 at runtime in this mode.
+- **App-root path** (`E2E_BASE_PATH`, default `/`): every spec navigates with
+  `page.goto(APP_PATH)` from `e2e/app-path.ts` instead of a hardcoded `"/"`, because
+  Playwright resolves an absolute path against the ORIGIN root — a deployment under a
+  sub-path (e.g. GitHub Pages at `https://user.github.io/<repo>/`) would otherwise
+  404 every navigation. Resolution order: explicit `E2E_BASE_PATH` wins; otherwise the
+  path of `E2E_BASE_URL` is used (the app is served at the attach URL, so its pathname
+  is the app root); otherwise `/`. Trailing slashes are stripped, so attaching to
+  `https://user.github.io/<repo>/` needs no extra variable — the GitHub Pages run is
+  just `E2E_BASE_URL=https://lewiscowles1986.github.io/note-taking-app/ npm run test:e2e:remote`.
 - **Debug mode** (`E2E_DEBUG=1` or `E2E_DEBUG=true`): forces `headless: false`,
   `workers: 1`, `retries: 0` for a single deterministic headed window. Each test calls
   `debugBreak(page, "<label>")` after the primary state is established and before its
@@ -63,6 +74,18 @@ Three environment-driven modes coexist. They are controlled by two env vars:
   test pauses, filter with `-g` to target one test. `page.pause()` is a no-op in
   headless (Playwright 1.58.x), so it never hangs, but debug mode forces headed so the
   Inspector actually opens.
+- **No-screenshot mode** (`E2E_NO_SCREENSHOTS=1` or `E2E_NO_SCREENSHOTS=true`):
+  `screenshot: 'off'` and `trace: 'off'` in the config, and the `step()` helper in
+  `e2e/fixtures.ts` becomes a no-op, so a run leaves no image artifacts anywhere. It
+  does not touch the two `toHaveScreenshot` baselines in `app.spec.ts` (those are
+  assertions, not artifacts) — pass `--ignore-snapshots` to skip those too. The
+  intended combination is a remote attach run:
+
+  ```bash
+  E2E_BASE_URL=http://host:port npm run test:e2e:remote
+  ```
+
+  which is `E2E_NO_SCREENSHOTS=1 playwright test --ignore-snapshots` against your URL.
 - **Combined**: `E2E_DEBUG=1 E2E_BASE_URL=http://host:port npx playwright test -g "..."`
   attaches to your server and pauses headed.
 - **PWDEBUG=1** is also compatible: it opens the Inspector on the first action of every
@@ -94,11 +117,12 @@ Then prove the no-update run still passes (see "Regenerating baselines" below).
   IndexedDB version `4 * 10 = 40`) and putting records into the `notes` store. It is
   reload-safe (Round D fix): a `sessionStorage` marker prevents the seed script from
   re-running on `page.reload()`, so seeded notes are never duplicated. Call it before
-  `page.goto('/')`. Playwright serializes init-script args, so `Date` fields are
+  `page.goto(APP_PATH)`. Playwright serializes init-script args, so `Date` fields are
   round-tripped back to `Date` inside the page.
 - **`step(page, name)`** — takes a full-page screenshot to
   `e2e/artifacts/<spec>/<test>/<name>.png`, logs the path, and returns it. Call it
-  after each meaningful UI action to build a visual record of the run.
+  after each meaningful UI action to build a visual record of the run. With
+  `E2E_NO_SCREENSHOTS=1` it is a fast no-op that returns an empty string.
 - **`debugBreak(page, label?)`** — the debug drop-in. When `E2E_DEBUG=1` it logs a
   banner and calls `page.pause()` (Playwright Inspector) so you can interact with the
   app before the assertions run; otherwise it is a fast no-op. Every test calls it once

@@ -1,4 +1,4 @@
-import { test, expect, step, seedNotes, debugBreak, type NoteSeed } from './fixtures';
+import { test, expect, step, seedNotes, debugBreak, type NoteSeed, APP_PATH } from './fixtures';
 import type { Page } from '@playwright/test';
 
 /**
@@ -59,7 +59,7 @@ function readNoteContent(page: Page, title: string): Promise<string | null> {
 
 test('slash command menu opens and inserts a code block', async ({ page }) => {
   await seedNotes(page, [makeNote({ title: 'Slash', content: '# Slash\n\n' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Slash' }).click();
   await expect(editor(page)).toHaveValue(/# Slash\n\n/);
   await debugBreak(page, 'note open — inspect before slash command');
@@ -82,7 +82,7 @@ test('slash command menu opens and inserts a code block', async ({ page }) => {
 
 test('auto-continues markdown lists', async ({ page }) => {
   await seedNotes(page, [makeNote({ title: 'List', content: '# List\n\n' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'List' }).click();
   await expect(editor(page)).toHaveValue(/# List\n\n/);
   await debugBreak(page, 'note open — inspect before list typing');
@@ -102,7 +102,7 @@ test('renders callouts in view mode', async ({ page }) => {
       content: '# Callouts\n\n> [!NOTE]\n> Note body here\n\n> [!WARNING]\n> Warning body here',
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Callouts' }).click();
   await expect(editor(page)).toHaveValue(/# Callouts/);
   await debugBreak(page, 'note open — inspect before view mode');
@@ -126,7 +126,7 @@ test('runs a JavaScript code block and shows output', async ({ page }) => {
       hasMermaid: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Code' }).click();
   await expect(editor(page)).toHaveValue(/# Code/);
   await debugBreak(page, 'note open — inspect before running code');
@@ -149,7 +149,7 @@ test('renders a mermaid diagram', async ({ page }) => {
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Mermaid' }).click();
   await expect(editor(page)).toHaveValue(/# Mermaid/);
   await debugBreak(page, 'note open — inspect before mermaid render');
@@ -166,7 +166,7 @@ test('autosaves edits and persists across reload', async ({ page }) => {
   // script re-runs on every navigation (it is not sessionStorage-guarded like
   // the freshDb delete script), so a seeded note would be duplicated on
   // page.reload(). Creating via the UI keeps the DB single-copy across reload.
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.getByRole('button', { name: 'Create Note' }).click();
   await editor(page).fill('# Autosave Target\n\nInitial');
   await expect(page.getByText('Autosave Target', { exact: true }).first()).toBeVisible();
@@ -192,7 +192,7 @@ test('renders GFM tables and task lists', async ({ page }) => {
       content: '# GFM\n\n| Name | Value |\n| --- | --- |\n| A | 1 |\n| B | 2 |\n\n- [x] done\n- [ ] todo',
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'GFM' }).click();
   await expect(editor(page)).toHaveValue(/# GFM/);
   await debugBreak(page, 'note open — inspect before GFM render');

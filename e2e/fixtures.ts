@@ -2,6 +2,10 @@ import { test as base, expect, type Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 
+// App-root path for navigation (E2E_BASE_PATH, default "/"). Specs import it
+// from here so navigation works on deployments under a sub-path (GitHub Pages).
+export { APP_PATH } from './app-path';
+
 /**
  * A Note-shaped record used to seed IndexedDB before the app loads.
  * Mirrors the `Note` interface in src/lib/db.ts.
@@ -57,7 +61,7 @@ export const test = base.extend<{ freshDb: void }>({
  * database at version 40 (Dexie's `version(4)` maps to IndexedDB version
  * 4 * 10 = 40 — see Dexie's `Math.ceil(idbdb.version / 10)` comparison) and
  * puts the given notes into the "notes" store. Call this before
- * `page.goto('/')`.
+ * `page.goto(APP_PATH)`.
  *
  * Note: Playwright serializes init-script args, converting Date objects to
  * ISO strings, so we round-trip them back to Date inside the page.
@@ -168,7 +172,7 @@ export interface LegacyRevisionSeed {
  * database at EXACTLY the given legacy version with the store definitions that
  * version would have had (see src/lib/db.ts), puts the old-shape notes, and
  * closes the connection. Reload-safe via a sessionStorage marker (mirrors
- * seedNotes). Call before `page.goto('/')`.
+ * seedNotes). Call before `page.goto(APP_PATH)`.
  *
  * `revisions` is only written when `version >= 30` (the v3 schema introduced
  * the `revisions` store).
@@ -262,12 +266,22 @@ export async function seedLegacyNotes(
  * Take a full-page screenshot saved to
  * e2e/artifacts/<test-file-basename>/<test-title>/<name>.png, log the path,
  * and return it. Call after each meaningful UI action in a spec.
+ *
+ * With E2E_NO_SCREENSHOTS=1 (or "true") this is a fast no-op returning "" so
+ * a run produces no image artifacts (typically attach mode against a remote
+ * server); see playwright.config.ts.
  */
 export async function step(
   page: Page,
   name: string,
   opts?: { fullPage?: boolean }
 ): Promise<string> {
+  if (
+    process.env.E2E_NO_SCREENSHOTS === '1' ||
+    process.env.E2E_NO_SCREENSHOTS === 'true'
+  ) {
+    return '';
+  }
   const testInfo = test.info();
   const fileBase = path.basename(testInfo.file, path.extname(testInfo.file));
   const title = testInfo.title.replace(/[^\w-]+/g, '_');

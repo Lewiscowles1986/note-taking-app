@@ -1,4 +1,4 @@
-import { test, expect, step, seedNotes, debugBreak, type NoteSeed } from './fixtures';
+import { test, expect, step, seedNotes, debugBreak, type NoteSeed, APP_PATH } from './fixtures';
 
 /**
  * Round B note-management suite. Covers pin/unpin, delete, tag add/remove,
@@ -34,7 +34,7 @@ test('pins and unpins a note from the sidebar', async ({ page }) => {
     makeNote({ title: 'Beta', content: '# Beta\n\nBeta body', updatedAt: new Date(t.getTime() - 3600000) }),
     makeNote({ title: 'Gamma', content: '# Gamma\n\nGamma body', updatedAt: new Date(t.getTime() - 7200000) }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await expect(page.getByText('Alpha', { exact: true })).toBeVisible();
   await debugBreak(page, 'notes seeded — inspect before pinning');
 
@@ -63,7 +63,7 @@ test('pins and unpins a note from the sidebar', async ({ page }) => {
 
 test('deletes a note', async ({ page }) => {
   await seedNotes(page, [makeNote({ title: 'Doomed', content: '# Doomed\n\nDelete me' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Doomed' }).click();
   await expect(page.getByRole('heading', { name: 'Doomed', level: 2 })).toBeVisible();
   await debugBreak(page, 'note open — inspect before delete');
@@ -86,7 +86,7 @@ test('deletes a note', async ({ page }) => {
 
 test('adds and removes a tag on a note', async ({ page }) => {
   await seedNotes(page, [makeNote({ title: 'Tagged', content: '# Tagged\n\nTag me' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Tagged' }).click();
   await expect(page.getByRole('heading', { name: 'Tagged', level: 2 })).toBeVisible();
   await debugBreak(page, 'note open — inspect before tagging');
@@ -119,7 +119,7 @@ test('changes category and filters by category', async ({ page }) => {
     makeNote({ title: 'Alpha', content: '# Alpha\n\nWork note', category: 'Work', updatedAt: t }),
     makeNote({ title: 'Beta', content: '# Beta\n\nGeneral note', category: 'General', updatedAt: new Date(t.getTime() - 3600000) }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Alpha' }).click();
   await expect(page.getByRole('heading', { name: 'Alpha', level: 2 })).toBeVisible();
   await debugBreak(page, 'note open — inspect before category change');
@@ -143,7 +143,7 @@ test('changes category and filters by category', async ({ page }) => {
 
 test('collapses and expands the sidebar', async ({ page }) => {
   await seedNotes(page, [makeNote({ title: 'Alpha', content: '# Alpha\n\nBody' })]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await expect(page.getByPlaceholder('Search notes...')).toBeVisible();
   await debugBreak(page, 'app loaded — inspect before collapse');
 
@@ -165,7 +165,7 @@ test('switches between multiple notes', async ({ page }) => {
     makeNote({ title: 'Beta', content: '# Beta\n\nBeta body text', updatedAt: new Date(t.getTime() - 3600000) }),
     makeNote({ title: 'Gamma', content: '# Gamma\n\nGamma body text', updatedAt: new Date(t.getTime() - 7200000) }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await debugBreak(page, 'notes seeded — inspect before switching');
 
   const editor = page.getByPlaceholder('Start writing... Type / for commands');
@@ -193,7 +193,7 @@ test('filters by tag and category facets', async ({ page }) => {
     makeNote({ title: 'Beta', content: '# Beta\n\nB', tags: ['life'], category: 'Personal', updatedAt: new Date(t.getTime() - 3600000) }),
     makeNote({ title: 'Gamma', content: '# Gamma\n\nC', tags: ['work'], category: 'Work', updatedAt: new Date(t.getTime() - 7200000) }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await expect(page.getByText('Alpha', { exact: true })).toBeVisible();
   await debugBreak(page, 'notes seeded — inspect before filtering');
 

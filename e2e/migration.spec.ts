@@ -1,4 +1,4 @@
-import { test, expect, step, seedLegacyNotes, debugBreak, type LegacyNoteSeed } from './fixtures';
+import { test, expect, step, seedLegacyNotes, debugBreak, type LegacyNoteSeed, APP_PATH } from './fixtures';
 import type { Page } from '@playwright/test';
 
 /**
@@ -213,7 +213,7 @@ test('migrates a v1 database to the current schema', async ({ page }) => {
   ];
 
   await seedLegacyNotes(page, 10, notes);
-  await page.goto('/');
+  await page.goto(APP_PATH);
 
   // All 3 migrated notes are listed in the sidebar.
   await expect(page.getByText('Mermaid Note', { exact: true })).toBeVisible();
@@ -276,7 +276,7 @@ test('edits a note that was migrated from v1', async ({ page }) => {
       pinned: false,
     },
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await expect(page.getByText('Old Note', { exact: true })).toBeVisible();
   await debugBreak(page, 'v1 migrated — inspect before editing');
 
@@ -311,7 +311,7 @@ test('creates a revision snapshot when editing a migrated note', async ({ page }
       pinned: false,
     },
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Migrated Note' }).click();
   await expect(editor(page)).toHaveValue(/# Migrated Note\n\nOriginal body/);
   await debugBreak(page, 'migrated note open — inspect before editing');
@@ -350,7 +350,7 @@ test('updates editDates when editing a migrated note', async ({ page }) => {
       pinned: false,
     },
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'Old Date Note' }).click();
   await expect(editor(page)).toHaveValue(/# Old Date Note\n\nBody/);
   await debugBreak(page, 'old-date note open — inspect before editing');
@@ -393,7 +393,7 @@ test('migrates a v2 database preserving feature flags', async ({ page }) => {
       hasCodeBlocks: false,
     },
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'V2 Mermaid' }).click();
   await expect(editor(page)).toHaveValue(/# V2 Mermaid/);
   await debugBreak(page, 'v2 migrated — inspect before view render');
@@ -436,7 +436,7 @@ test('migrates a v3 database and keeps notes editable', async ({ page }) => {
       },
     ]
   );
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'V3 Note' }).click();
   await expect(editor(page)).toHaveValue(/# V3 Note\n\nCurrent version/);
   await debugBreak(page, 'v3 migrated — inspect before editing');
@@ -477,7 +477,7 @@ test('seeded legacy notes appear correctly in search and tags', async ({ page })
       pinned: false,
     },
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await expect(page.getByText('Legacy Grocery', { exact: true })).toBeVisible();
   await expect(page.getByText('Legacy Work', { exact: true })).toBeVisible();
   await debugBreak(page, 'v1 migrated — inspect before search');
@@ -548,7 +548,7 @@ test('handles a v1 database with edge-case rows', async ({ page }) => {
       pinned: false,
     },
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
 
   // Migration must not crash; all 4 edge-case notes are listed.
   await expect(page.getByText('Empty', { exact: true })).toBeVisible();

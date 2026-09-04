@@ -49,9 +49,11 @@ Note Haven is built with a focus on type safety, performance, and extensibility.
 
 ### 🧪 Testing & Quality
 
-- **Unit/Integration:** [Vitest](https://vitest.dev/) for fast, reliable tests.
+- **Unit/Component:** [Vitest](https://vitest.dev/) + [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) for fast, reliable tests (`src/test/`).
+- **Coverage:** `npm run test:coverage` (V8 provider; text report in CI, HTML in `coverage/`).
 - **E2E Testing:** [Playwright](https://playwright.dev/) for browser automation. `npm run test:e2e` runs the headless Playwright suite (specs: app, notes, editor, calendar, security, export-import). See [e2e/README.md](e2e/README.md) for details.
 - **Linting:** [ESLint](https://eslint.org/) with modern flat-config and TypeScript support.
+- **What to write when:** [docs/TESTING.md](docs/TESTING.md) — the test pyramid, coverage workflow, and the opt-in tooling menu (mutation testing via StrykerJS, IndexedDB integration tests, network mocking).
 - **Local CI:** Run your GitHub Actions locally using [act](https://github.com/nektos/act).
 
 ### 🚀 Getting Started
@@ -59,8 +61,6 @@ Note Haven is built with a focus on type safety, performance, and extensibility.
 1. **Dev Container (recommended):** open the repository in VS Code or Codespaces and **Reopen in Container**. Node.js, npm, git, the docker CLI and the Playwright browsers are pinned declaratively (Nix + a Playwright base image), so no local toolchain setup is required. Prefer the terminal? `scripts/devcontainer-up.sh` starts the container in one command (building the pinned image from source if it is not published yet). See [.devcontainer/README.md](.devcontainer/README.md).
 2. **Manual install:** clone, install Node 22 (see `.node-version`), then
    ```bash
-   git clone <repository-url>
-   cd note-haven
    npm install
    ```
 

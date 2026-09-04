@@ -1,7 +1,7 @@
-import { test, expect, step, seedNotes, debugBreak } from './fixtures';
+import { test, expect, step, seedNotes, debugBreak, APP_PATH } from './fixtures';
 
 test('loads with empty state', async ({ page }) => {
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await debugBreak(page, 'empty state loaded — inspect before assertions');
   await expect(page.getByRole('heading', { name: 'No note selected' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create Note' })).toBeVisible();
@@ -10,7 +10,7 @@ test('loads with empty state', async ({ page }) => {
 });
 
 test('creates a note and edits title', async ({ page }) => {
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await expect(page.getByRole('heading', { name: 'No note selected' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Create Note' }).click();
@@ -32,7 +32,7 @@ test('creates a note and edits title', async ({ page }) => {
 });
 
 test('toggles between edit and view mode', async ({ page }) => {
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await page.getByRole('button', { name: 'Create Note' }).click();
   const editor = page.getByPlaceholder('Start writing... Type / for commands');
   await expect(editor).toBeVisible();
@@ -93,7 +93,7 @@ test('searches notes', async ({ page }) => {
     },
   ]);
 
-  await page.goto('/');
+  await page.goto(APP_PATH);
   // Seeded notes should be listed in the sidebar on load.
   await expect(page.getByText('Grocery List', { exact: true })).toBeVisible();
   await expect(page.getByText('Meeting Notes', { exact: true })).toBeVisible();

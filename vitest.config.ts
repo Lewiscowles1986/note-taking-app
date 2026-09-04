@@ -9,6 +9,20 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // `npm run test:coverage` — V8 provider, no instrumentation build step.
+    coverage: {
+      provider: "v8",
+      include: ["src/**"],
+      exclude: [
+        "src/test/**",
+        "src/main.tsx",
+        "src/vite-env.d.ts",
+        "**/*.d.ts",
+        // shadcn/radix plumbing that is covered by the component libraries
+        "src/components/ui/**",
+      ],
+      reporter: ["text", "html", "lcov"],
+    },
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },

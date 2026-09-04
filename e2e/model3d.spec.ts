@@ -1,4 +1,4 @@
-import { test, expect, step, seedNotes, debugBreak, type NoteSeed } from './fixtures';
+import { test, expect, step, seedNotes, debugBreak, type NoteSeed, APP_PATH } from './fixtures';
 import type { Page } from '@playwright/test';
 
 /**
@@ -127,7 +127,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Default VP');
   await debugBreak(page, 'default-viewport — one "Default" sub-header, Solid active');
 
@@ -166,7 +166,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Multi Camera');
   await debugBreak(page, 'multi-camera — three viewport sub-headers + three canvases');
 
@@ -203,7 +203,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Mixed Modes');
   await debugBreak(page, 'mixed-modes — each sub-header shows its configured mode active');
 
@@ -237,7 +237,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Mode Switch');
   await debugBreak(page, 'mode-switched — click Wireframe then back to Solid');
 
@@ -280,7 +280,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Frozen');
   await debugBreak(page, 'frozen — no control pads should render');
 
@@ -318,7 +318,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Interactive');
   await debugBreak(page, 'interactive — pads present, click zoom-in');
 
@@ -360,7 +360,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Mixed Projection');
   await debugBreak(page, 'mixed-projection — two canvases, no errors');
 
@@ -394,7 +394,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Y Up');
   await debugBreak(page, 'y-up — canvas renders without errors');
 
@@ -425,7 +425,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'UV Planar');
   await debugBreak(page, 'uv-planar — canvas renders without errors');
 
@@ -455,7 +455,7 @@ ${STL_DATA_URL}
       hasCodeBlocks: false,
     }),
   ]);
-  await page.goto('/');
+  await page.goto(APP_PATH);
   await openNoteInView(page, 'Textured');
   await debugBreak(page, 'textured — canvas renders, texture loads async');
 
