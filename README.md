@@ -134,15 +134,15 @@ You can configure rendering parameters via YAML frontmatter in a ` ```3dmodel ` 
    - may borrow from vibecodedmess.space for full offline-first experience
 - infra code
 - better tests
-   - browser automation tests
+   - [X] browser automation tests
    - more comprehensive unit and integration level tests
 - regresion tests
-   - window.open has two entrypoints. AI couldn't quite cope there.
-- ci workflow(s)
-- cd setup? - technically as this compiles to static app it's fairly deliverable; but in what state?
+   - [X] window.open has two entrypoints. AI couldn't quite cope there.
+- [X] ci workflow(s)
+- [X] cd setup?
 
 ---
 
 ## 📄 License
 
-AGPL v3 License - dont use this code
+AGPL v3 License - A.K.A ... _probably dont use this code_
