@@ -71,10 +71,11 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       # Login must precede the build: build-push-action pushes to GHCR during
-      # "Build base image from source" (push: true from main/schedule), and an
-      # unauthenticated push fails with "failed to fetch anonymous token: 403".
+      # "Build base image from source" (push: true from main/schedule and
+      # same-repo PRs), and an unauthenticated push fails with
+      # "failed to fetch anonymous token: 403".
       - name: Log in to GHCR
-        if: github.event_name == 'push' || github.event_name == 'schedule'
+        if: github.event_name == 'push' || github.event_name == 'schedule' || (github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork)
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -88,20 +89,24 @@ jobs:
           file: .devcontainer/base.Dockerfile
           platforms: linux/${{ matrix.suffix }}
           tags: ${{ steps.ver.outputs.image }}:${{ steps.ver.outputs.version }}-${{ matrix.suffix }}
-          # Push to the registry only from main/schedule (fork PRs cannot).
-          push: ${{ github.event_name == 'push' || github.event_name == 'schedule' }}
-          load: ${{ !(github.event_name == 'push' || github.event_name == 'schedule') }}
+          # Push so the check below (and the publish job) can resolve the
+          # image from the registry. Same-repo PRs may push the arch-suffixed
+          # tags — publish only merges the multi-arch tags from main.
+          push: ${{ github.event_name == 'push' || github.event_name == 'schedule' || (github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork) }}
+          load: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
           cache-from: type=gha,scope=${{ matrix.suffix }}
           cache-to: type=gha,scope=${{ matrix.suffix }},mode=max
 
-      - name: Make the image available under the pinned devcontainer tag
+      # devcontainers/ci resolves the devcontainer.json image FROM THE REGISTRY
+      # (its buildx docker-container driver ignores locally-tagged images), and
+      # the merged tag only exists after the publish job runs — so the check
+      # targets the per-arch image this job just pushed instead.
+      - name: Point devcontainer.json at the per-arch image
         run: |
           IMAGE="${{ steps.ver.outputs.image }}"
-          REF="$IMAGE:${{ steps.ver.outputs.version }}-${{ matrix.suffix }}"
-          if ! docker image inspect "$REF" >/dev/null 2>&1; then
-            docker pull "$REF"
-          fi
-          docker tag "$REF" "$IMAGE:${{ steps.ver.outputs.version }}"
+          VERSION="${{ steps.ver.outputs.version }}"
+          sed -i "s#${IMAGE}:${VERSION}#${IMAGE}:${VERSION}-${{ matrix.suffix }}#" .devcontainer/devcontainer.json
+          grep '"image"' .devcontainer/devcontainer.json
 
       - name: Run project checks inside the devcontainer
         uses: devcontainers/ci@v0.3
@@ -120,14 +125,6 @@ jobs:
               echo "Scheduled run: exercising the baked Playwright browsers end-to-end"
               npm run test:e2e
             fi
-
-      - name: Log in to GHCR
-        if: github.event_name == 'push' || github.event_name == 'schedule'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
   publish:
     needs: build-test
