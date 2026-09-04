@@ -15,6 +15,7 @@
     "test:e2e": "playwright test",
     "test:e2e:debug": "E2E_DEBUG=1 playwright test",
     "test:e2e:remote": "E2E_NO_SCREENSHOTS=1 playwright test --ignore-snapshots",
+    "seed:e2e": "node scripts/seed-environment.mjs",
     "docs:screenshots": "E2E_DOCS=1 playwright test e2e/docs-tour.spec.ts --project=chromium",
     "docs:screenshots:docker": "bash \"$(npm prefix)/scripts/e2e-docker.sh\""
   },

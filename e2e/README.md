@@ -129,6 +129,40 @@ Then prove the no-update run still passes (see "Regenerating baselines" below).
   at a labeled point after the primary state is established. New tests should import and
   call it the same way.
 
+## Seeding a persistent environment (`scripts/seed-environment.mjs`)
+
+The test runner cannot show you its data afterwards: every test runs in an ephemeral
+context and the autouse `freshDb` fixture wipes the `NotesApp` IndexedDB per test. To
+browse the app with the suite's seed data, run:
+
+```bash
+npm run seed:e2e                 # headed browser, stays open until Ctrl+C
+node scripts/seed-environment.mjs --headless   # seed + verify + exit
+```
+
+The script borrows the per-spec seed datasets (`makeNote` + `seedNotes` calls), the
+in-page seeding routine from `e2e/fixtures.ts`, the SwiftShader launch args from
+`playwright.config.ts`, and the app-URL resolution from `e2e/app-path.ts`. It targets
+`E2E_BASE_URL`/`E2E_BASE_PATH` like the tests (e.g. attach to the GitHub Pages build),
+and writes into a persistent profile at `.seed-profile/` (gitignored) that survives
+across runs. Seeded notes use stable ids (9101+), so re-running overwrites the same
+rows instead of duplicating; your own notes are never touched. `--reset` starts from
+an empty profile, `--url`/`--path`/`--profile` override the defaults, and encrypted or
+legacy-schema seeds are intentionally out of scope (they need the app's crypto UI or
+an older DB version).
+
+Downloads behave differently under Playwright than in a normal browser: Playwright
+intercepts every download and deletes it when the context closes, so nothing ever
+reaches `$HOME/Downloads`. The test suite works around this itself —
+`export-import.spec.ts` saves each download into `e2e/artifacts/downloads` — and the
+seeding script does the same for its browser: every app Export lands in
+`.seed-downloads/` by default, or wherever `--downloads` points (e.g.
+`--downloads ~/Downloads` for the real folder). Extension handling also differs:
+a real browser appends an extension derived from the MIME type when the page's
+suggested name has none, while Playwright's interception skips that step — the
+seeding script replicates it by sniffing the file content and completing the
+extension (`zip`/`json`/`html`/`pem`/`stl` magic bytes).
+
 ## Spec inventory
 
 | File | Tests | What it covers |

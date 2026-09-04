@@ -18,6 +18,8 @@ dist-ssr
 test-results/
 playwright-report/
 e2e/artifacts/
+.seed-profile/
+.seed-downloads/
 
 # Vitest coverage report (npm run test:coverage)
 coverage/
