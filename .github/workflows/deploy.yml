@@ -38,7 +38,7 @@ jobs:
         # e.g. https://<owner>.github.io/<repo>). Runs before the build so the
         # og:image absolute URL can be composed from it; custom-domain aware
         # and needs no hard-coded URL.
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Compute Pages base path
         id: base
@@ -63,7 +63,7 @@ jobs:
         run: npm run build
 
       - name: Configure Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
