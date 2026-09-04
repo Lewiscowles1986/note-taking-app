@@ -21,7 +21,8 @@ export default defineConfig({
         // shadcn/radix plumbing that is covered by the component libraries
         "src/components/ui/**",
       ],
-      reporter: ["text", "html", "lcov"],
+      // json-summary feeds scripts/test-quality-report.mjs (PR visualisation)
+      reporter: ["text", "html", "lcov", "json-summary"],
     },
   },
   resolve: {

@@ -24,6 +24,10 @@ e2e/artifacts/
 # Vitest coverage report (npm run test:coverage)
 coverage/
 
+# Stryker mutation testing reports (npx stryker run)
+reports/
+.stryker-tmp/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

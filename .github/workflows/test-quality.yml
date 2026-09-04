@@ -1,0 +1,111 @@
+# Test Quality — coverage + mutation visualisation for PRs.
+#
+# Scope: Node.js LATEST only (resolved live from nodejs.org, not a pinned
+# major) — this is the canary check; .github/workflows/ci.yml covers the
+# support matrix. Single job: unit/component tests with coverage, then
+# StrykerJS mutation testing scoped to src/lib.
+#
+# Visualisation: a sticky PR comment (marker <!-- note-haven-test-quality -->)
+# with coverage + per-file mutation tables and surviving-mutant details, plus
+# interactive HTML reports (coverage-report / mutation-report) as run
+# artifacts. Report-only — it never gates a PR; enforcement stays in ci.yml.
+#
+# Permissions: pull-requests:write is required to post the PR comment. On
+# forked PRs GITHUB_TOKEN is read-only and the comment step self-skips, so
+# forks get artifacts + run summary only.
+#
+# Schedule: Mondays 06:00 UTC — deliberately after ci.yml (05:00) and
+# devcontainer.yml (05:30) so a failing main doesn't waste a mutation run.
+
+name: Test Quality
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC (weekly)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  report:
+    name: Coverage & mutation (Node latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: write # sticky PR comment (downgraded to read on forks)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve latest Node.js
+        id: node
+        run: |
+          # dist/index.json is newest-first; the filter skips pre-releases
+          # (e.g. vX.Y.Z-rc.1) so we always land on a stable release.
+          latest=$(curl -fsSL https://nodejs.org/dist/index.json \
+            | jq -r '[.[].version | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0]')
+          echo "version=${latest}" >> "$GITHUB_OUTPUT"
+          echo "Resolved latest Node.js: ${latest}"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.node.outputs.version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit & component tests with coverage
+        run: npm run test:coverage
+
+      - name: Mutation testing (Stryker, src/lib scope)
+        run: npx stryker run
+
+      - name: Build report (run summary + PR comment body)
+        run: node scripts/test-quality-report.mjs pr-comment.md
+
+      - name: Upload coverage HTML report
+        if: always() && hashFiles('coverage/index.html') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
+      - name: Upload mutation HTML report
+        if: always() && hashFiles('reports/mutation/mutation.html') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: reports/mutation/mutation.html
+          retention-days: 14
+
+      - name: Post sticky PR comment
+        # Forked PRs run with a read-only GITHUB_TOKEN, so self-skip there;
+        # artifacts and the run summary still carry the report.
+        if: github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          MARK='<!-- note-haven-test-quality -->'
+          jq -n --rawfile body pr-comment.md '{body: $body}' > /tmp/comment.json
+          comment_id=$(gh api "repos/${REPO}/issues/${PR}/comments" \
+            --jq ".[] | select(.body | startswith(\"${MARK}\")) | .id" | tail -n1)
+          if [ -n "${comment_id}" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${comment_id}" \
+              --input /tmp/comment.json > /dev/null
+            echo "Updated sticky report comment (id=${comment_id})"
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR}/comments" \
+              --input /tmp/comment.json > /dev/null
+            echo "Created sticky report comment"
+          fi

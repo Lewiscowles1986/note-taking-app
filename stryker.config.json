@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "coverageAnalysis": "perTest",
+  "mutate": ["src/lib/**/*.ts"],
+  "reporters": ["clear-text", "html", "progress", "json"],
+  "htmlReporter": {
+    "fileName": "reports/mutation/mutation.html"
+  },
+  "timeoutMS": 60000,
+  "concurrency": 4,
+  "ignorers": [],
+  "vitest": {
+    "related": false
+  },
+  "ignorePatterns": [
+    ".npm-cache",
+    ".seed-profile",
+    ".worktrees",
+    "coverage",
+    "dist",
+    "dist-ssr",
+    "test-results",
+    "playwright-report",
+    "e2e/artifacts",
+    "logs"
+  ]
+}
