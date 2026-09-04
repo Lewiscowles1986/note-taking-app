@@ -73,7 +73,7 @@ jobs:
 
       - name: Upload coverage HTML report
         if: always() && hashFiles('coverage/index.html') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage/
@@ -81,7 +81,7 @@ jobs:
 
       - name: Upload mutation HTML report
         if: always() && hashFiles('reports/mutation/mutation.html') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-report
           path: reports/mutation/mutation.html
