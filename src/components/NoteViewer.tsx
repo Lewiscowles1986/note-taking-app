@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useMemo } from 'react';
+import React, { Children, isValidElement, lazy, Suspense, useMemo } from 'react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -11,6 +11,7 @@ const MermaidBlock = lazy(() => import('./MermaidBlock'));
 const GeoJsonBlock = lazy(() => import('./GeoJsonBlock'));
 const Model3DBlock = lazy(() => import('./Model3DBlock'));
 const BpmnBlock = lazy(() => import('./BpmnBlock'));
+
 
 interface NoteViewerProps {
   note: Note;
@@ -232,8 +233,8 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
   const needsGeoJson = note.hasGeoJson !== false;
   const needsModel3D = note.hasModel3D !== false;
 
-  const components: Components = useMemo(() => ({
-    img({ src, alt, ...props }) {
+  const components: Components = useMemo(() => {
+  const img = ({ src, alt, ...props }) => {
       const attachment = resolveAttachmentReference(src, attachmentMap);
       const resolved = resolveAttachmentHref(src, attachmentMap);
       const finalSrc = attachment?.thumbnail || resolved;
@@ -264,8 +265,10 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
           {...props}
         />
       );
-    },
-    a({ href, children, ...props }) {
+    
+  };
+
+  const a = ({ href, children, ...props }) => {
       const resolved = resolveAttachmentHref(href, attachmentMap);
       const attachment = resolveAttachmentReference(href, attachmentMap);
 
@@ -297,6 +300,30 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
           {children}
         </a>
       );
+    
+  };
+
+    return {
+    img,
+    a,
+    // An inline image/link that dispatches to the block-level Model3DBlock
+    // renders a <div>; nesting a <div> inside a <p> is invalid HTML (React
+    // warns via validateDOMNesting in dev builds), so drop the paragraph
+    // wrapper and let the block stand on its own.
+    p({ children }) {
+      // A paragraph containing an inline stl/obj reference renders the
+      // block-level Model3DBlock viewer; nesting that <div> inside a <p> is
+      // invalid HTML (React: validateDOMNesting), so the wrapper is dropped.
+      const hasModelRef = needsModel3D && Children.toArray(children).some(
+        (child) =>
+          isValidElement(child) &&
+          (child.type === img || child.type === a) &&
+          (["src", "href"] as const).some((key) => {
+            const url = String(child.props?.[key] ?? "").toLowerCase();
+            return /\.(stl|obj)$/.test(url) || url.includes("model/stl") || url.includes("model/obj") || url.includes("application/octet-stream");
+          }),
+      );
+      return hasModelRef ? <>{children}</> : <p>{children}</p>;
     },
     pre({ children }) {
       return <>{children}</>;
@@ -361,7 +388,8 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
         </pre>
       );
     },
-  }), [needsSyntaxHighlighter, needsMermaid, needsGeoJson, needsModel3D, attachmentMap, note]);
+    };
+  }, [needsSyntaxHighlighter, needsMermaid, needsGeoJson, needsModel3D, attachmentMap, note]);
 
   return (
     <div className="flex-1 overflow-y-auto">

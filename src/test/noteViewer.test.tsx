@@ -712,6 +712,11 @@ describe('NoteViewer component', () => {
       expect(container.textContent).toContain('part.stl');
       expect(container.textContent).toContain('mesh.obj');
       expect(container.textContent).not.toContain('[missing image]');
+      // Inline model refs must not leave a <div> inside a <p> (Model3DBlock
+      // itself contains no <p>, so this covers the whole subtree).
+      for (const paragraph of container.querySelectorAll("p")) {
+        expect(paragraph.querySelector("div")).toBeNull();
+      }
     });
   });
 

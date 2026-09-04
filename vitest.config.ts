@@ -9,6 +9,18 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // Keep test output readable: silence console noise that is either an
+    // intentional error-path under test or environment-inherent, not a
+    // regression signal. Assertions on behaviour are unaffected.
+    onConsoleLog(log) {
+      return !(
+        log.includes("Error loading or parsing 3D model") || // Model3DBlock error-branch tests (fetch fails on attachment:/unknown scheme in jsdom)
+        log.includes("unknown scheme") || // the `cause` stack of the above
+        log.includes("React Router Future Flag Warning") || // v7 opt-in hints from every router instance
+        log.includes("Not implemented: navigation") || // jsdom cannot follow downloads/navigation
+        log.includes("was not wrapped in act(") // Model3DBlock resolves loads async; state lands after the test
+      );
+    },
     // `npm run test:coverage` — V8 provider, no instrumentation build step.
     coverage: {
       provider: "v8",

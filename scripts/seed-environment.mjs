@@ -309,7 +309,6 @@ ${STL_DATA_URL}
 
 // ─── In-page seeding (mirrors e2e/fixtures.ts seedNotes — keep in sync) ─────
 function seedInitScript(notes) {
-  // eslint-disable-next-line no-unused-vars
   return (seedNotes) => {
     // Same sessionStorage guard as the fixtures: a reload never re-seeds.
     if (sessionStorage.getItem('__nh_seeded') === '1') return;

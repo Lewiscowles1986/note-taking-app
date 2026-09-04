@@ -111,6 +111,11 @@ jobs:
       - name: Run project checks inside the devcontainer
         uses: devcontainers/ci@v0.3
         with:
+          # The action tries to push its extended image on push events and
+          # emits "imageName is required to push images" without an imageName
+          # input — we publish the real images ourselves via build-push-action
+          # and imagetools, so this check never needs to push.
+          push: never
           env: |
             RUN_E2E=${{ github.event_name == 'schedule' && '1' || '0' }}
           runCmd: |
