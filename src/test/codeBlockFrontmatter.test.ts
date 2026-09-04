@@ -39,4 +39,32 @@ describe('parseCodeFrontmatter', () => {
     expect(meta.notes).toBe('Legacy mapping API');
     expect(code).toBe('from collections import Mapping');
   });
+
+  it('parses an inline notes value', () => {
+    const raw = `notes: Uses the legacy mapping API\n---\ncode`;
+    const { meta, code } = parseCodeFrontmatter(raw);
+    expect(meta.notes).toBe('Uses the legacy mapping API');
+    expect(code).toBe('code');
+  });
+
+  it('appends continuation lines after an inline notes value', () => {
+    const raw = `notes: First line\n  continued here\n---\ncode`;
+    const { meta, code } = parseCodeFrontmatter(raw);
+    expect(meta.notes).toBe('First line\ncontinued here');
+    expect(code).toBe('code');
+  });
+
+  it('ignores list items that follow an unknown key', () => {
+    const raw = `compatible:\n  - 2.7\ntitle: My snippet\n  - orphan item\n---\ncode`;
+    const { meta, code } = parseCodeFrontmatter(raw);
+    expect(meta).toEqual({ compatible: ['2.7'] });
+    expect(code).toBe('code');
+  });
+
+  it('stops notes continuation at an unknown key', () => {
+    const raw = `notes: start\ntitle: My snippet\n  this is not notes\n---\ncode`;
+    const { meta, code } = parseCodeFrontmatter(raw);
+    expect(meta.notes).toBe('start');
+    expect(code).toBe('code');
+  });
 });
