@@ -1,5 +1,7 @@
 # Note Haven 📝
 
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Lewiscowles1986/note-taking-app)
+
 Note Haven is a local-first, privacy-focused Markdown note-taking application. It combines the simplicity of Markdown with powerful features like encrypted notes, interactive diagrams, and sandboxed code execution, all while keeping your data strictly in your own browser.
 
 ## ✨ Key User Features
@@ -54,30 +56,31 @@ Note Haven is built with a focus on type safety, performance, and extensibility.
 
 ### 🚀 Getting Started
 
-1. **Clone and Install:**
+1. **Dev Container (recommended):** open the repository in VS Code or Codespaces and **Reopen in Container**. Node.js, npm, git, the docker CLI and the Playwright browsers are pinned declaratively (Nix + a Playwright base image), so no local toolchain setup is required. Prefer the terminal? `scripts/devcontainer-up.sh` starts the container in one command (building the pinned image from source if it is not published yet). See [.devcontainer/README.md](.devcontainer/README.md).
+2. **Manual install:** clone, install Node 22 (see `.node-version`), then
    ```bash
    git clone <repository-url>
    cd note-haven
    npm install
    ```
 
-2. **Development:**
+3. **Development:**
    ```bash
    npm run dev
    ```
 
-3. **Build:**
+4. **Build:**
    ```bash
    npm run build
    ```
 
-4. **Testing:**
+5. **Testing:**
    ```bash
    npm test          # Run Vitest
    npm run test:e2e  # Run the Playwright E2E suite (headless)
    ```
 
-5. **Local CI (Optional):**
+6. **Local CI (Optional):**
    Install `act` to run the GitHub Actions workflow (test, lint, build) across Node.js versions (22, 24, 25):
    ```bash
    brew install act

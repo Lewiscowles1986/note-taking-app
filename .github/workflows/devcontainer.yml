@@ -1,0 +1,159 @@
+name: Devcontainer
+
+# Two-stage pipeline:
+#   1. build-test (per arch, native runners): builds .devcontainer/base.Dockerfile
+#      from source and runs the project's real checks inside the container —
+#      so PRs and the weekly schedule validate what would actually be shipped.
+#   2. publish (main pushes + schedule): merges the per-arch images into the
+#      multi-arch tags consumed by devcontainer.json.
+#
+# ubuntu-24.04-arm is a free arm64 GitHub-hosted runner for public repos.
+# If this repo is private, replace it with QEMU:
+#   - uses: docker/setup-qemu-action@v3
+# and build --platform linux/amd64,linux/arm64 on ubuntu-latest.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".devcontainer/**"
+      - "flake.nix"
+      - "flake.lock"
+      - "package-lock.json"
+      - ".dockerignore"
+      - "scripts/build-devcontainer-base.sh"
+      - ".github/workflows/devcontainer.yml"
+  pull_request:
+    paths:
+      - ".devcontainer/**"
+      - "flake.nix"
+      - "flake.lock"
+      - "package-lock.json"
+      - ".dockerignore"
+      - "scripts/build-devcontainer-base.sh"
+      - ".github/workflows/devcontainer.yml"
+  schedule:
+    # Mondays 05:30 UTC — shortly after CI's scheduled run (05:00 UTC).
+    - cron: "30 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            suffix: amd64
+          - runner: ubuntu-24.04-arm
+            suffix: arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive image name and version from base.Dockerfile
+        id: ver
+        run: |
+          VERSION="$(sed -nE 's/.*playwright:v([0-9]+\.[0-9]+\.[0-9]+)-noble.*/\1/p' .devcontainer/base.Dockerfile | head -n1)"
+          if [ -z "$VERSION" ]; then echo "No playwright version in base.Dockerfile" >&2; exit 1; fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}/devcontainer" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build base image from source
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .devcontainer/base.Dockerfile
+          platforms: linux/${{ matrix.suffix }}
+          tags: ${{ steps.ver.outputs.image }}:${{ steps.ver.outputs.version }}-${{ matrix.suffix }}
+          # Push to the registry only from main/schedule (fork PRs cannot).
+          push: ${{ github.event_name == 'push' || github.event_name == 'schedule' }}
+          load: ${{ !(github.event_name == 'push' || github.event_name == 'schedule') }}
+          cache-from: type=gha,scope=${{ matrix.suffix }}
+          cache-to: type=gha,scope=${{ matrix.suffix }},mode=max
+
+      - name: Make the image available under the pinned devcontainer tag
+        run: |
+          IMAGE="${{ steps.ver.outputs.image }}"
+          REF="$IMAGE:${{ steps.ver.outputs.version }}-${{ matrix.suffix }}"
+          if ! docker image inspect "$REF" >/dev/null 2>&1; then
+            docker pull "$REF"
+          fi
+          docker tag "$REF" "$IMAGE:${{ steps.ver.outputs.version }}"
+
+      - name: Run project checks inside the devcontainer
+        uses: devcontainers/ci@v0.3
+        with:
+          env: |
+            RUN_E2E=${{ github.event_name == 'schedule' && '1' || '0' }}
+          runCmd: |
+            set -e
+            echo "arch $(uname -m) | node $(node --version) | npm $(npm --version) | git $(git --version)"
+            # postCreateCommand already ran `npm ci`; reinstall only if absent.
+            [ -d node_modules ] || npm ci
+            npm run lint
+            npm run test:coverage
+            npm run build
+            if [ "$RUN_E2E" = "1" ]; then
+              echo "Scheduled run: exercising the baked Playwright browsers end-to-end"
+              npm run test:e2e
+            fi
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' || github.event_name == 'schedule'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    needs: build-test
+    # Publish the multi-arch manifest consumed by devcontainer.json.
+    # NOTE: the GHCR package starts private; flip it to public once (Package
+    # settings → visibility) so every contributor can pull it.
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive image name and version from base.Dockerfile
+        id: ver
+        run: |
+          VERSION="$(sed -nE 's/.*playwright:v([0-9]+\.[0-9]+\.[0-9]+)-noble.*/\1/p' .devcontainer/base.Dockerfile | head -n1)"
+          if [ -z "$VERSION" ]; then echo "No playwright version in base.Dockerfile" >&2; exit 1; fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}/devcontainer" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge per-arch images into multi-arch tags
+        run: |
+          IMAGE="${{ steps.ver.outputs.image }}"
+          VERSION="${{ steps.ver.outputs.version }}"
+          docker buildx imagetools create \
+            -t "$IMAGE:$VERSION" -t "$IMAGE:latest" \
+            "$IMAGE:$VERSION-amd64" "$IMAGE:$VERSION-arm64"
+          docker buildx imagetools inspect "$IMAGE:$VERSION"

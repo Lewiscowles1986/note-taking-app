@@ -1,0 +1,12 @@
+# Keeps the devcontainer build context (repo root) small. Only flake.nix,
+# flake.lock and .devcontainer/ are copied by .devcontainer/Dockerfile, but
+# everything here is still shipped to the docker daemon for evaluation.
+.git
+.npm-cache
+.worktrees
+node_modules
+dist
+test-results
+playwright-report
+e2e/artifacts
+docs/images

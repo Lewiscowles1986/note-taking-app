@@ -1,0 +1,52 @@
+// Dev Container for Note Haven.
+//
+// Consumes the prebuilt, multi-arch base image published by CI
+// (.github/workflows/devcontainer.yml → ghcr, tagged with the Playwright
+// version baked into it). Fastest onboarding: scripts/devcontainer-up.sh
+// (pulls or builds the image, then starts the container). To build the image
+// from source — e.g. after editing flake.nix or base.Dockerfile — run:
+//     scripts/build-devcontainer-base.sh
+// Toolchain versions are pinned by flake.lock; see .devcontainer/README.md.
+// Docker socket rationale: docs/technical/devcontainer/DIND.md
+{
+  "name": "Note Haven",
+  "image": "ghcr.io/lewiscowles1986/note-taking-app/devcontainer:1.58.2",
+  "remoteUser": "vscode",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "mounts": [
+    // Linux binaries from the host workspace would poison the container, and
+    // vice versa; a named volume keeps node_modules architecture-correct per
+    // environment. Re-create the container (or `docker volume rm`) to reset.
+    "source=${localWorkspaceFolderBasename}-node-modules,target=/workspaces/${localWorkspaceFolderBasename}/node_modules,type=volume",
+    // Docker-out-of-Docker: reuse the HOST daemon instead of nesting one.
+    // Rationale & trade-offs: docs/technical/devcontainer/DIND.md
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postStartCommand": "sudo /usr/local/sbin/fix-docker-group",
+  "forwardPorts": [5173],
+  "portsAttributes": {
+    "5173": {
+      "label": "Vite dev server",
+      "onAutoForward": "notify"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss",
+        "vitest.explorer",
+        "ms-playwright.playwright",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "typescript.tsdk": "node_modules/typescript/lib"
+      }
+    },
+    // First open in Codespaces lands on the docs that matter.
+    "codespaces": {
+      "openFiles": ["README.md", ".devcontainer/README.md"]
+    }
+  }
+}
