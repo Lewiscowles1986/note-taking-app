@@ -32,6 +32,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Configure Pages
+        id: pages
+        # Queries the Pages API for the deployed site URL (origin + base path,
+        # e.g. https://<owner>.github.io/<repo>). Runs before the build so the
+        # og:image absolute URL can be composed from it; custom-domain aware
+        # and needs no hard-coded URL.
+        uses: actions/configure-pages@v5
+
       - name: Compute Pages base path
         id: base
         # A user/org site (repo named "<owner>.github.io") is served at the
@@ -49,6 +57,9 @@ jobs:
       - name: Build project
         env:
           GITHUB_PAGES_BASE: ${{ steps.base.outputs.base }}
+          # Absolute site base URL for og:image/twitter:image; composed onto a
+          # page-relative asset path in vite.config.ts.
+          PAGES_ASSET_BASE_URL: ${{ steps.pages.outputs.base_url }}
         run: npm run build
 
       - name: Configure Pages

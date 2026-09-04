@@ -2,6 +2,13 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
+// og:image / twitter:image need scheme+host for social scrapers. The Pages
+// deploy workflow supplies the site's absolute base URL (PAGES_ASSET_BASE_URL,
+// from actions/configure-pages); anywhere else __ASSET_BASE_URL__ collapses to
+// an empty string, leaving a page-relative "social-preview.png" reference.
+const pagesBase = process.env.PAGES_ASSET_BASE_URL?.replace(/\/+$/, "");
+const assetBaseUrl = pagesBase ? `${pagesBase}/` : "";
+
 // https://vitejs.dev/config/
 export default defineConfig(() => ({
   // Default to "/" for local dev; the Pages deploy workflow overrides this
@@ -14,7 +21,13 @@ export default defineConfig(() => ({
       overlay: false,
     },
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: "compose-social-preview-url",
+      transformIndexHtml: (html) => html.replaceAll("__ASSET_BASE_URL__", assetBaseUrl),
+    },
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
