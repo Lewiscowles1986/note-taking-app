@@ -42,7 +42,7 @@ jobs:
       contents: read
       pull-requests: write # sticky PR comment (downgraded to read on forks)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve latest Node.js
         id: node
