@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
+import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 
 // og:image / twitter:image need scheme+host for social scrapers. The Pages
@@ -27,6 +28,38 @@ export default defineConfig(() => ({
       name: "compose-social-preview-url",
       transformIndexHtml: (html) => html.replaceAll("__ASSET_BASE_URL__", assetBaseUrl),
     },
+    VitePWA({
+      // The service worker precaches the hashed build output and re-registers
+      // silently: a new deploy activates on the user's next load.
+      registerType: "autoUpdate",
+      includeAssets: [
+        "favicon.svg",
+        "favicon.ico",
+        "apple-touch-icon.png",
+        "maskable-icon-512x512.png",
+        "social-preview.png",
+      ],
+      manifest: {
+        name: "Note Haven",
+        short_name: "Note Haven",
+        description: "A local-first, privacy-focused Markdown note-taking app.",
+        start_url: "./",
+        scope: "./",
+        display: "standalone",
+        background_color: "#F5F1E8",
+        theme_color: "#1E4D4A",
+        icons: [
+          { src: "android-chrome-192x192.png", sizes: "192x192", type: "image/png" },
+          { src: "android-chrome-512x512.png", sizes: "512x512", type: "image/png" },
+          {
+            src: "maskable-icon-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
+          },
+        ],
+      },
+    }),
   ],
   resolve: {
     alias: {
