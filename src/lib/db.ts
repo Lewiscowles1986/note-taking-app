@@ -64,7 +64,13 @@ class NotesDatabase extends Dexie {
   keyPairs!: Table<StoredKeyPair>;
 
   constructor() {
-    super('NotesApp');
+    // PR preview builds set VITE_STORAGE_NAMESPACE to a branch-specific slug so
+    // each preview gets its own isolated IndexedDB and can never see or corrupt
+    // the real app's notes. On main (and local dev) the variable is unset and
+    // we fall back to the long-standing "NotesApp" name.
+    const namespace = import.meta.env.VITE_STORAGE_NAMESPACE;
+    const dbName = namespace ? `NotesApp-${namespace}` : 'NotesApp';
+    super(dbName);
     this.version(1).stores({
       notes: '++id, title, category, *tags, createdAt, updatedAt, pinned',
     });

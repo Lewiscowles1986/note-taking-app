@@ -168,7 +168,7 @@ export default function Index() {
 
   if (calendarMode) {
     return (
-      <div className="flex h-screen bg-background overflow-hidden">
+      <div className="flex h-full bg-background overflow-hidden">
         <div className="flex-1 flex flex-col h-full min-w-0">
           <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card">
             <div className="flex items-center gap-2">
@@ -202,7 +202,7 @@ export default function Index() {
   }
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-full bg-background overflow-hidden">
       {sidebarOpen && (
         <NoteSidebar
           notes={notes}

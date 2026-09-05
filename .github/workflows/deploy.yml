@@ -5,9 +5,11 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-# Grant the workflow the permissions it needs to publish to Pages.
+# Grant the workflow the permissions it needs to publish to Pages and to read
+# the PR preview artifacts staged alongside the real app (via the Artifacts API).
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
@@ -61,6 +63,15 @@ jobs:
           # page-relative asset path in vite.config.ts.
           PAGES_ASSET_BASE_URL: ${{ steps.pages.outputs.base_url }}
         run: npm run build
+
+      - name: Stage PR preview builds
+        # Pulls the latest "preview-build-*" artifact per open PR (built by
+        # preview.yml) into dist/preview-builds/<branch>/ so this single Pages
+        # deploy serves both the real app at the root and every preview under a
+        # sub-path. No previews -> deploys the main site only.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/stage-preview-builds.sh
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

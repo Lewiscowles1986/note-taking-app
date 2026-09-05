@@ -1,0 +1,131 @@
+# Builds a preview of each pull request so it can be reviewed from a real URL
+# (https://<owner>.github.io/<repo>/preview-builds/<branch>/). The built preview
+# is uploaded as an artifact; the Pages deploy workflow (`deploy.yml`) picks these
+# up on the next push to main and serves them under the preview-builds/ path.
+#
+# The build is configured so a preview is always obviously "just a preview":
+#   * GITHUB_PAGES_BASE      - serves it under preview-builds/<branch>/
+#   * VITE_PREVIEW="true"    - renders the amber PREVIEW BUILD banner
+#   * VITE_PREVIEW_LABEL     - the branch name shown in that banner
+#   * VITE_STORAGE_NAMESPACE - isolates IndexedDB per PR (falls back to shared
+#                              storage on main, where it is unset)
+name: Preview Builds
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened ]
+
+# Only one preview build per open PR at a time; supersede stale runs on new push.
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # Needed to post/update the preview-build link comment on the PR.
+  issues: write
+  pull-requests: write
+
+jobs:
+  build-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compute preview slug and base path
+        id: slug
+        run: |
+          # Derive a filesystem- and URL-safe slug from the PR head branch, e.g.
+          #   feat/my-cool-change  ->  feat-my-cool-change
+          # The base path mirrors the main deploy's repo subpath plus an extra
+          # "preview-builds/<slug>/" segment so previews never collide with the
+          # real app and the URL advertises that it is only a preview.
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          SLUG="$(printf '%s' "${{ github.head_ref }}" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')"
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          if [[ "$REPO_NAME" == *.github.io ]]; then
+            echo "base=/preview-builds/$SLUG/" >> "$GITHUB_OUTPUT"
+            echo "preview_url=https://$OWNER.github.io/preview-builds/$SLUG/" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=/$REPO_NAME/preview-builds/$SLUG/" >> "$GITHUB_OUTPUT"
+            echo "preview_url=https://$OWNER.github.io/$REPO_NAME/preview-builds/$SLUG/" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build preview
+        env:
+          GITHUB_PAGES_BASE: ${{ steps.slug.outputs.base }}
+          VITE_PREVIEW: "true"
+          VITE_PREVIEW_LABEL: ${{ github.head_ref }}
+          VITE_STORAGE_NAMESPACE: preview-${{ steps.slug.outputs.slug }}
+        run: npm run build
+
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # Unique per branch so the deploy workflow can stage the latest build
+          # of every open PR at once. PR artifacts are auto-deleted on close/merge,
+          # which also removes that branch's preview on the next Pages deploy.
+          name: preview-build-${{ steps.slug.outputs.slug }}
+          path: dist
+          if-no-files-found: error
+
+      # Post (or update) a comment on the PR linking to the preview. The URL is
+      # deterministic, so it is announced right away even though Pages actually
+      # serves it after the next deploy of main; the marker makes the comment
+      # idempotent across pushes. Runs only if the build succeeded above.
+      - name: Comment preview link on PR
+        env:
+          PREVIEW_URL: ${{ steps.slug.outputs.preview_url }}
+          PREVIEW_LABEL: ${{ github.head_ref }}
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const marker = '<!-- note-haven-preview-build -->';
+            const url = process.env.PREVIEW_URL;
+            const label = process.env.PREVIEW_LABEL || 'this branch';
+            const body = [
+              marker,
+              '## 🔎 Preview build',
+              `A preview of this branch is served (isolated storage, clearly badged) at:`,
+              '',
+              `**<${url}>**`,
+              '',
+              `> Branch: \`${label}\` · Staged on the Pages site with the next deploy of \`main\`. Notes are in a`,
+              '> branch-specific IndexedDB and can\'t touch your real notes.',
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

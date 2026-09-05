@@ -90,6 +90,33 @@ Note Haven is built with a focus on type safety, performance, and extensibility.
    act --container-architecture linux/amd64
    ```
 
+### 🔎 PR preview builds
+
+Every pull request to `main` gets a temporary preview served from GitHub Pages at
+
+```
+https://<owner>.github.io/<repo>/preview-builds/<branch>/
+```
+
+- The URL lives under `preview-builds/`, and the build renders an amber
+  **PREVIEW BUILD** banner (with the branch name), so it is obvious you are
+  *not* using the real app.
+- Each preview uses its own isolated IndexedDB (a branch-specific namespace)
+  so reviewing a PR can never read or corrupt your real notes.
+- Previews are refreshed on each new push to the PR and auto-removed when the PR
+  is closed or merged (the next deploy of `main` drops them from the site).
+
+Preview builds are automatically linked: `.github/workflows/preview.yml` posts a
+"🔎 Preview build" comment on the PR (kept up to date, not duplicated, as the
+branch changes) pointing at that URL.
+
+It works with two cooperating workflows: `.github/workflows/preview.yml` builds
+each PR, uploads it as a `preview-build-<slug>` artifact and comments the link,
+and the Pages deploy (`deploy.yml`) fetches the latest of those artifacts and
+stages them under `preview-builds/<branch>/`. If there are no open PR previews,
+`main` deploys as before. Notes from forks won't publish previews (GitHub does
+not hand repo tokens to fork-triggered runs).
+
 ### 🧩 Extensibility
 
 The application is designed to be easily extended:

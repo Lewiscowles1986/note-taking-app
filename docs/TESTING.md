@@ -159,4 +159,5 @@ Refresh with `npx playwright test --update-snapshots` inside the container.
 |---|---|---|
 | `.github/workflows/ci.yml` | lint, unit+component with coverage, build — Node 22/24/25 | push/PR to main + **Mondays 05:00 UTC (schedule)** |
 | `.github/workflows/devcontainer.yml` | the same checks **inside the devcontainer** (+ full E2E on schedule), per-arch image build & publish | push/PR touching devcontainer files + **Mondays 05:30 UTC (schedule)** |
-| `.github/workflows/deploy.yml` | build + Pages deploy | push to main |
+| `.github/workflows/deploy.yml` | build + Pages deploy (also stages PR previews under `preview-builds/<branch>/`) | push to main |
+| `.github/workflows/preview.yml` | build each PR preview w/ isolated storage + preview banner, upload as `preview-build-<slug>` artifact | PR opened/synced to main |
