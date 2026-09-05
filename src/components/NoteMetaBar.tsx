@@ -35,7 +35,7 @@ export default function NoteMetaBar({ note, allCategories, onSave, onEncryptClic
   const isEncrypted = !!note.encrypted;
 
   return (
-    <div className="px-4 py-2 border-b border-border flex items-center gap-4 text-xs flex-wrap">
+    <div className="px-4 py-2 pr-[calc(env(safe-area-inset-right,0px)_+_1rem)] border-b border-border flex items-center gap-4 text-xs flex-wrap">
       {/* Category */}
       <div className="flex items-center gap-1.5">
         <FolderOpen size={12} className="text-muted-foreground" />
@@ -46,7 +46,7 @@ export default function NoteMetaBar({ note, allCategories, onSave, onEncryptClic
               onChange={(e) => setCategoryInput(e.target.value)}
               onBlur={saveCategory}
               onKeyDown={(e) => e.key === 'Enter' && saveCategory()}
-              className="bg-accent px-1.5 py-0.5 rounded text-xs w-24 outline-none"
+              className="bg-accent px-2 py-2.5 min-h-11 rounded text-xs w-28 outline-none sm:py-0.5 sm:min-h-0 sm:w-24"
               list="categories"
               autoFocus
             />
@@ -62,7 +62,7 @@ export default function NoteMetaBar({ note, allCategories, onSave, onEncryptClic
               setCategoryInput(note.category);
               setEditingCategory(true);
             }}
-            className="text-muted-foreground hover:text-foreground"
+            className="flex items-center px-2 py-2.5 min-h-11 text-muted-foreground hover:text-foreground sm:px-0 sm:py-0.5 sm:min-h-0"
           >
             {note.category}
           </button>
@@ -78,7 +78,7 @@ export default function NoteMetaBar({ note, allCategories, onSave, onEncryptClic
             className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-primary/10 text-primary"
           >
             {tag}
-            <button onClick={() => removeTag(tag)}>
+            <button onClick={() => removeTag(tag)} className="p-2 flex items-center justify-center -m-1">
               <X size={10} />
             </button>
           </span>
@@ -89,10 +89,13 @@ export default function NoteMetaBar({ note, allCategories, onSave, onEncryptClic
             onChange={(e) => setNewTag(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addTag()}
             placeholder="Add tag"
-            className="bg-transparent w-16 outline-none text-xs placeholder:text-muted-foreground"
+            className="bg-transparent py-2.5 min-h-11 w-16 outline-none text-xs placeholder:text-muted-foreground sm:py-0 sm:min-h-0"
           />
           {newTag && (
-            <button onClick={addTag} className="text-primary">
+            <button
+              onClick={addTag}
+              className="p-2 min-w-11 min-h-11 flex items-center justify-center text-primary sm:min-w-min sm:min-h-min sm:p-0"
+            >
               <Plus size={12} />
             </button>
           )}
@@ -102,7 +105,7 @@ export default function NoteMetaBar({ note, allCategories, onSave, onEncryptClic
       {/* Encryption indicator / toggle */}
       <button
         onClick={onEncryptClick}
-        className={`ml-auto flex items-center gap-1 px-2 py-0.5 rounded transition-colors ${
+        className={`ml-auto flex items-center gap-1 px-2.5 py-2.5 min-h-11 rounded transition-colors sm:py-0.5 sm:min-h-0 ${
           isEncrypted
             ? 'bg-primary/10 text-primary'
             : 'text-muted-foreground hover:text-foreground'

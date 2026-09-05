@@ -16,6 +16,7 @@ import {
 import { exportToHtml, exportToPdf, exportToZip, exportDatabase } from '@/lib/export';
 import { importFiles } from '@/lib/import';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 interface NoteSidebarProps {
   notes: Note[];
@@ -33,6 +34,8 @@ interface NoteSidebarProps {
   onFilterTag: (t: string | null) => void;
   onFilterCategory: (c: string | null) => void;
   onRefresh: () => void;
+  /** Extra classes merged onto the root. On mobile pass full-width/height overrides. */
+  className?: string;
 }
 
 export default function NoteSidebar({
@@ -51,6 +54,7 @@ export default function NoteSidebar({
   onFilterTag,
   onFilterCategory,
   onRefresh,
+  className,
 }: NoteSidebarProps) {
   const [showTags, setShowTags] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
@@ -87,7 +91,13 @@ export default function NoteSidebar({
   };
 
   return (
-    <div className="w-72 h-full bg-sidebar border-r border-sidebar-border flex flex-col">
+    <div
+      className={cn(
+        'w-72 h-full bg-sidebar border-r border-sidebar-border flex flex-col',
+        'pl-[env(safe-area-inset-left)]',
+        className,
+      )}
+    >
       {/* Header */}
       <div className="p-3 border-b border-sidebar-border">
         <div className="flex items-center justify-between mb-3">
@@ -103,21 +113,21 @@ export default function NoteSidebar({
             />
             <button
               onClick={() => importInputRef.current?.click()}
-              className="p-1.5 rounded-md hover:bg-sidebar-accent text-muted-foreground transition-colors"
+              className="p-2.5 min-w-11 min-h-11 flex items-center justify-center rounded-md hover:bg-sidebar-accent text-muted-foreground transition-colors sm:min-w-min sm:min-h-min sm:p-1.5"
               title="Import notes"
             >
               <FileUp size={16} />
             </button>
             <button
               onClick={() => setShowExport(!showExport)}
-              className="p-1.5 rounded-md hover:bg-sidebar-accent text-muted-foreground transition-colors"
+              className="p-2.5 min-w-11 min-h-11 flex items-center justify-center rounded-md hover:bg-sidebar-accent text-muted-foreground transition-colors sm:min-w-min sm:min-h-min sm:p-1.5"
               title="Export"
             >
               <FileDown size={16} />
             </button>
             <button
               onClick={onNewNote}
-              className="p-1.5 rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+              className="p-2.5 min-w-11 min-h-11 flex items-center justify-center rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity sm:min-w-min sm:min-h-min sm:p-1.5"
               title="New note"
             >
               <Plus size={16} />
@@ -127,13 +137,13 @@ export default function NoteSidebar({
 
         {/* Search */}
         <div className="relative">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground sm:left-2.5" />
           <input
             type="text"
             placeholder="Search notes..."
             value={searchQuery}
             onChange={(e) => onSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-sidebar-accent rounded-md text-sm text-sidebar-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+            className="w-full pl-8 pr-3 py-2.5 min-h-11 bg-sidebar-accent rounded-md text-sm text-sidebar-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring sm:py-1.5 sm:min-h-0"
           />
         </div>
       </div>
@@ -146,7 +156,7 @@ export default function NoteSidebar({
               const active = notes.find((n) => n.id === activeNoteId);
               if (active) exportToHtml(active);
             }}
-            className="w-full text-left px-2 py-1 rounded hover:bg-sidebar-accent"
+            className="w-full text-left px-2 py-2.5 min-h-11 flex items-center rounded hover:bg-sidebar-accent sm:py-1 sm:min-h-0"
             disabled={!activeNoteId}
           >
             Export current as HTML
@@ -156,14 +166,14 @@ export default function NoteSidebar({
               const active = notes.find((n) => n.id === activeNoteId);
               if (active) exportToPdf(active);
             }}
-            className="w-full text-left px-2 py-1 rounded hover:bg-sidebar-accent"
+            className="w-full text-left px-2 py-2.5 min-h-11 flex items-center rounded hover:bg-sidebar-accent sm:py-1 sm:min-h-0"
             disabled={!activeNoteId}
           >
             Export current as PDF
           </button>
           <button
             onClick={() => exportToZip(notes)}
-            className="w-full text-left px-2 py-1 rounded hover:bg-sidebar-accent"
+            className="w-full text-left px-2 py-2.5 min-h-11 flex items-center rounded hover:bg-sidebar-accent sm:py-1 sm:min-h-0"
           >
             Export all as ZIP
           </button>
@@ -172,7 +182,7 @@ export default function NoteSidebar({
               exportDatabase();
               toast.success('Database backup downloaded');
             }}
-            className="w-full text-left px-2 py-1 rounded hover:bg-sidebar-accent"
+            className="w-full text-left px-2 py-2.5 min-h-11 flex items-center rounded hover:bg-sidebar-accent sm:py-1 sm:min-h-0"
           >
             Download full database backup
           </button>
@@ -187,29 +197,33 @@ export default function NoteSidebar({
             {filterTag && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/15 text-primary text-xs">
                 <Tag size={10} /> {filterTag}
-                <button onClick={() => onFilterTag(null)}><X size={10} /></button>
+                <button onClick={() => onFilterTag(null)} className="p-2 flex items-center justify-center -m-1">
+                  <X size={10} />
+                </button>
               </span>
             )}
             {filterCategory && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent text-accent-foreground text-xs">
                 <FolderOpen size={10} /> {filterCategory}
-                <button onClick={() => onFilterCategory(null)}><X size={10} /></button>
+                <button onClick={() => onFilterCategory(null)} className="p-2 flex items-center justify-center -m-1">
+                  <X size={10} />
+                </button>
               </span>
             )}
           </div>
         )}
 
-        <div className="flex gap-3">
+        <div className="flex gap-1 sm:gap-3">
           <button
             onClick={() => setShowTags(!showTags)}
-            className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
+            className="flex items-center gap-1.5 sm:gap-1 text-muted-foreground hover:text-foreground py-2.5 min-h-11 sm:py-0 sm:min-h-0"
           >
             {showTags ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             <Tag size={12} /> Tags
           </button>
           <button
             onClick={() => setShowCategories(!showCategories)}
-            className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
+            className="flex items-center gap-1.5 sm:gap-1 text-muted-foreground hover:text-foreground py-2.5 min-h-11 sm:py-0 sm:min-h-0"
           >
             {showCategories ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             <FolderOpen size={12} /> Categories
@@ -222,7 +236,7 @@ export default function NoteSidebar({
               <button
                 key={tag}
                 onClick={() => onFilterTag(filterTag === tag ? null : tag)}
-                className={`px-2 py-0.5 rounded-full text-xs transition-colors ${
+                className={`px-2.5 py-1.5 min-h-11 flex items-center rounded-full text-xs transition-colors sm:py-0.5 sm:min-h-0 ${
                   filterTag === tag
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-sidebar-accent text-sidebar-foreground hover:bg-primary/15'
@@ -240,7 +254,7 @@ export default function NoteSidebar({
               <button
                 key={cat}
                 onClick={() => onFilterCategory(filterCategory === cat ? null : cat)}
-                className={`px-2 py-0.5 rounded-full text-xs transition-colors ${
+                className={`px-2.5 py-1.5 min-h-11 flex items-center rounded-full text-xs transition-colors sm:py-0.5 sm:min-h-0 ${
                   filterCategory === cat
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-sidebar-accent text-sidebar-foreground hover:bg-primary/15'
@@ -254,7 +268,7 @@ export default function NoteSidebar({
       </div>
 
       {/* Note list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
         {notes.length === 0 ? (
           <div className="p-4 text-center text-muted-foreground text-sm">
             {searchQuery ? 'No notes found' : 'No notes yet. Create one!'}
@@ -301,7 +315,7 @@ export default function NoteSidebar({
                       e.stopPropagation();
                       onTogglePin(note);
                     }}
-                    className="p-1 rounded hover:bg-sidebar-accent"
+                    className="p-2 min-w-11 min-h-11 flex items-center justify-center rounded hover:bg-sidebar-accent sm:min-w-min sm:min-h-min sm:p-1"
                     title={note.pinned ? 'Unpin' : 'Pin'}
                   >
                     <Pin size={12} className={note.pinned ? 'text-primary' : 'text-muted-foreground'} />
@@ -311,7 +325,7 @@ export default function NoteSidebar({
                       e.stopPropagation();
                       if (note.id) onDeleteNote(note.id);
                     }}
-                    className="p-1 rounded hover:bg-destructive/10"
+                    className="p-2 min-w-11 min-h-11 flex items-center justify-center rounded hover:bg-destructive/10 sm:min-w-min sm:min-h-min sm:p-1"
                     title="Delete"
                   >
                     <Trash2 size={12} className="text-muted-foreground hover:text-destructive" />
