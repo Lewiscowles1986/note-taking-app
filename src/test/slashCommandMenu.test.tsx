@@ -163,6 +163,41 @@ describe('SlashCommandMenu component', () => {
     expect(items[1]).not.toHaveClass('active');
   });
 
+  it('scrolls each newly active item into view while arrowing through the overflowed list', () => {
+    const scrolled: HTMLElement[] = [];
+    const original = HTMLElement.prototype.scrollIntoView;
+    // jsdom does not implement scrollIntoView; stub it so we can observe calls.
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      writable: true,
+      value: function (this: HTMLElement) {
+        scrolled.push(this);
+      },
+    });
+    try {
+      const { container } = renderMenu();
+      const items = container.querySelectorAll<HTMLElement>('.slash-menu-item');
+
+      // Drive the highlight deep into a list that overflows max-h-64.
+      for (let i = 0; i < 6; i++) {
+        fireEvent.keyDown(document, { key: 'ArrowDown' });
+      }
+      // The last scroll request must target the newly focused, off-screen item.
+      expect(scrolled[scrolled.length - 1]).toBe(items[6]);
+      expect(items[6]).toHaveClass('active');
+
+      // Arrowing back up keeps the focus item scrolled into view too.
+      fireEvent.keyDown(document, { key: 'ArrowUp' });
+      expect(scrolled[scrolled.length - 1]).toBe(items[5]);
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+        configurable: true,
+        writable: true,
+        value: original,
+      });
+    }
+  });
+
   it('selects the active command on Enter', () => {
     const { onSelect } = renderMenu({ filter: 'head' });
 

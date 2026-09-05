@@ -85,6 +85,8 @@ export default function SlashCommandMenu({
 }: SlashCommandMenuProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Refs to the rendered items so the active one can be scrolled into view.
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const filtered = commands.filter(
     (c) =>
@@ -95,6 +97,17 @@ export default function SlashCommandMenu({
   useEffect(() => {
     setActiveIndex(0);
   }, [filter]);
+
+  // Keep the highlighted item visible while navigating with the keyboard. The
+  // list is capped at max-h-64 and overflows (19 commands), so without this the
+  // active highlight marches off-screen as the user arrows through it.
+  useEffect(() => {
+    const activeEl = itemRefs.current[activeIndex];
+    // Guarded so tests (jsdom) and any env lacking the API don't crash.
+    if (activeEl && typeof activeEl.scrollIntoView === 'function') {
+      activeEl.scrollIntoView({ block: 'nearest' });
+    }
+  }, [activeIndex, filtered]);
 
   useEffect(() => {
     if (!visible) return;
@@ -129,6 +142,9 @@ export default function SlashCommandMenu({
         {filtered.map((cmd, i) => (
           <div
             key={cmd.label}
+            ref={(el) => {
+              itemRefs.current[i] = el;
+            }}
             className={`slash-menu-item ${i === activeIndex ? 'active' : ''}`}
             onMouseEnter={() => setActiveIndex(i)}
             onClick={() => onSelect(cmd)}
