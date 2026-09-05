@@ -69,6 +69,8 @@ jobs:
         run: npm ci
       - name: Run tests
         run: npm run test
+      - name: Run Vitest with coverage
+        run: npm run test:coverage
 
   build:
     needs: prepare
