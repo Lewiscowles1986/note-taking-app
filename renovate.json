@@ -26,7 +26,10 @@
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "npm-all-minor-patch",
       "automerge": true,
-      "automergeStrategy": "squash"
+      "automergeStrategy": "squash",
+      // Wait until a release is 7 days old before proposing it, so freshly
+      // published (possibly yanked/buggy) versions don't get used immediately.
+      "minimumReleaseAge": "7 days"
     },
     // All lockfile-only npm updates -> ONE PR.
     {
@@ -34,7 +37,8 @@
       "matchFileNames": ["package-lock.json"],
       "groupName": "npm-lockfile-updates",
       "automerge": true,
-      "automergeStrategy": "squash"
+      "automergeStrategy": "squash",
+      "minimumReleaseAge": "7 days"
     },
     // Keep the existing github-actions rule.
     {
