@@ -35,7 +35,7 @@ export default function NoteMetaBar({ note, allCategories, onSave, onEncryptClic
   const isEncrypted = !!note.encrypted;
 
   return (
-    <div className="px-4 py-2 pr-[calc(env(safe-area-inset-right)+1rem)] border-b border-border flex items-center gap-4 text-xs flex-wrap">
+    <div className="px-4 py-2 pr-[calc(env(safe-area-inset-right,0px)_+_1rem)] border-b border-border flex items-center gap-4 text-xs flex-wrap">
       {/* Category */}
       <div className="flex items-center gap-1.5">
         <FolderOpen size={12} className="text-muted-foreground" />

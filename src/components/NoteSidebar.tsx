@@ -137,7 +137,7 @@ export default function NoteSidebar({
 
         {/* Search */}
         <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground sm:left-2.5" />
           <input
             type="text"
             placeholder="Search notes..."
@@ -216,14 +216,14 @@ export default function NoteSidebar({
         <div className="flex gap-1 sm:gap-3">
           <button
             onClick={() => setShowTags(!showTags)}
-            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground py-2.5 min-h-11 sm:py-0 sm:min-h-0"
+            className="flex items-center gap-1.5 sm:gap-1 text-muted-foreground hover:text-foreground py-2.5 min-h-11 sm:py-0 sm:min-h-0"
           >
             {showTags ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             <Tag size={12} /> Tags
           </button>
           <button
             onClick={() => setShowCategories(!showCategories)}
-            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground py-2.5 min-h-11 sm:py-0 sm:min-h-0"
+            className="flex items-center gap-1.5 sm:gap-1 text-muted-foreground hover:text-foreground py-2.5 min-h-11 sm:py-0 sm:min-h-0"
           >
             {showCategories ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             <FolderOpen size={12} /> Categories

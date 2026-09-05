@@ -67,6 +67,9 @@ export default defineConfig({
   },
   projects: [
     {
+      // Full suite on desktop Chromium. Mobile-targeted specs (e2e/mobile.spec.ts
+      // and *mobile*.spec.ts) pin their own phone viewport, so they also run the
+      // mobile branch here — giving two passes over the same mobile flow.
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
@@ -74,11 +77,13 @@ export default defineConfig({
       },
     },
     {
+      // Real phone project: genuine Pixel 7 viewport, touch, isMobile. Because
+      // the desktop specs assume an always-visible `.w-72` sidebar (which mobile
+      // replaces with a top sheet), only *mobile*.spec.ts runs under this project.
       name: 'chromium-mobile',
+      testMatch: '**/*mobile*.spec.ts',
       use: {
         ...devices['Pixel 7'],
-        viewport: { width: 1280, height: 720 },
-        deviceScaleFactor: 1,
       },
     },
   ],

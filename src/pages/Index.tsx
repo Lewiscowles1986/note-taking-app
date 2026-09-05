@@ -182,9 +182,9 @@ export default function Index() {
 
   if (calendarMode) {
     return (
-      <div className="flex h-dvh bg-background overflow-hidden">
+      <div className="flex h-screen max-md:h-dvh bg-background overflow-hidden">
         <div className="flex-1 flex flex-col h-full min-w-0">
-          <div className="flex items-center justify-between px-4 pb-2 pt-[calc(env(safe-area-inset-top)+0.5rem)] pr-[calc(env(safe-area-inset-right)+1rem)] border-b border-border bg-card">
+          <div className="flex items-center justify-between px-4 pb-2 pt-[calc(env(safe-area-inset-top,0px)_+_0.5rem)] pr-[calc(env(safe-area-inset-right,0px)_+_1rem)] border-b border-border bg-card">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setCalendarMode(false)}
@@ -270,7 +270,7 @@ export default function Index() {
       )}
 
       <div className="flex-1 flex flex-col h-full min-w-0">
-        <div className="flex items-center justify-between px-4 pb-2 pt-[calc(env(safe-area-inset-top)+0.5rem)] pr-[calc(env(safe-area-inset-right)+1rem)] border-b border-border bg-card">
+        <div className="flex items-center justify-between px-4 pb-2 pt-[calc(env(safe-area-inset-top,0px)_+_0.5rem)] pr-[calc(env(safe-area-inset-right,0px)_+_1rem)] border-b border-border bg-card">
           <div className="flex items-center gap-2">
             {isMobile ? (
               activeNote && !sidebarOpen && (
