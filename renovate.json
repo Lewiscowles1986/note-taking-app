@@ -19,6 +19,11 @@
   "platformAutomerge": true,
   "separateMajorMinor": true,
 
+  // Wait until a release is 7 days old before proposing it, for every
+  // datasource (npm deps, GitHub Actions, etc.). Prefer 7 days of a stale
+  // (possibly broken) pipeline over pulling in a freshly published zero-day.
+  "minimumReleaseAge": "7 days",
+
   "packageRules": [
     // All patch & minor npm deps -> ONE PR.
     {
@@ -26,10 +31,7 @@
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "npm-all-minor-patch",
       "automerge": true,
-      "automergeStrategy": "squash",
-      // Wait until a release is 7 days old before proposing it, so freshly
-      // published (possibly yanked/buggy) versions don't get used immediately.
-      "minimumReleaseAge": "7 days"
+      "automergeStrategy": "squash"
     },
     // All lockfile-only npm updates -> ONE PR.
     {
@@ -37,8 +39,7 @@
       "matchFileNames": ["package-lock.json"],
       "groupName": "npm-lockfile-updates",
       "automerge": true,
-      "automergeStrategy": "squash",
-      "minimumReleaseAge": "7 days"
+      "automergeStrategy": "squash"
     },
     // Keep the existing github-actions rule.
     {
