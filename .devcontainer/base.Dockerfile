@@ -14,7 +14,7 @@ ARG PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.58.2-noble
 # --- Stage 1: evaluate flake.lock and build the pinned toolchain -------------
 # flake.lock pins the exact nixpkgs revision, which pins Node.js, npm, git and
 # the docker CLI.
-FROM nixos/nix:2.31.2 AS toolchain
+FROM nixos/nix:2.35.2 AS toolchain
 
 WORKDIR /build
 COPY flake.nix flake.lock ./
