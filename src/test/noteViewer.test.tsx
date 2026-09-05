@@ -641,13 +641,18 @@ describe('NoteViewer component', () => {
         <NoteViewer note={makeNote({ content: fence('mermaid', 'graph TD\n  A --> B') })} />,
       );
 
+      // MermaidBlock is React.lazy and mounts asynchronously, and the mocked
+      // render resolves as a promise. A bare `querySelector('svg')` can match
+      // the toolbar's lucide icon before the diagram renders, leaving
+      // `renderMock.mock.calls[0]` undefined (the flaky-failure source). So
+      // wait for the mock to actually be called with the diagram source.
       await waitFor(() => {
-        expect(container.querySelector('svg')).not.toBeNull();
+        expect(renderMock.mock.calls[0]?.[1]).toBe('graph TD\n  A --> B');
       });
       expect(container.querySelector('.mermaid-diagram')).not.toBeNull();
+      expect(container.querySelector('.mermaid-diagram svg')).not.toBeNull();
       expect(screen.getByText('Diagram Preview')).toBeInTheDocument();
       expect(initializeMock).toHaveBeenCalled();
-      expect(renderMock.mock.calls[0][1]).toBe('graph TD\n  A --> B');
     });
 
     it('renders geojson fences through GeoJsonBlock', async () => {
