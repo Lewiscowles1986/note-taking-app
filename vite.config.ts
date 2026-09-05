@@ -10,6 +10,10 @@ import path from "path";
 const pagesBase = process.env.PAGES_ASSET_BASE_URL?.replace(/\/+$/, "");
 const assetBaseUrl = pagesBase ? `${pagesBase}/` : "";
 
+// Preview builds set VITE_PREVIEW=true (see .github/workflows/github-pages.yml).
+// Used to tailor the service worker's navigation-fallback rules per build type.
+const previewBuild = process.env.VITE_PREVIEW === "true";
+
 // https://vitejs.dev/config/
 export default defineConfig(() => ({
   // Default to "/" for local dev; the Pages deploy workflow overrides this
@@ -32,6 +36,19 @@ export default defineConfig(() => ({
       // The service worker precaches the hashed build output and re-registers
       // silently: a new deploy activates on the user's next load.
       registerType: "autoUpdate",
+      workbox: {
+        // SPA: serve the app shell for client-side routes...
+        navigateFallback: "index.html",
+        // ...but NEVER for the per-PR previews. Previews are published next to
+        // the app under /preview-builds/<branch>/ and the service worker's scope
+        // (/note-taking-app/) covers them too; without this denylist it would
+        // smuggle in the main app's index.html and its own 404 route, masking
+        // the real preview. This exclusion applies only to the real build — a
+        // preview's OWN worker still needs SPA fallback within its own scope.
+        navigateFallbackDenylist: previewBuild
+          ? [/[^/]+\.[^/]+$/]
+          : [/preview-builds\//, /[^/]+\.[^/]+$/],
+      },
       includeAssets: [
         "favicon.svg",
         "favicon.ico",
