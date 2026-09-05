@@ -1,0 +1,176 @@
+# Publishes the app to GitHub Pages, plus a live branch-specific preview per PR.
+#
+# The Pages publishing source is the `gh-pages` branch (Deploy from a branch,
+# path "/"). A single workflow handles both cases, mirroring this repo's
+# py-call-graph pattern:
+#
+#   * on push/main  -> builds the real app and publishes it to the gh-pages ROOT.
+#                      `keep_files: true` preserves the preview-builds/ subfolder.
+#   * on PR         -> builds that branch as a clearly-badged PREVIEW and
+#                      publishes it to gh-pages/preview-builds/<branch>/, so it
+#                      goes live immediately, isolated from the real app.
+#
+# Every push to `gh-pages` makes GitHub Pages rebuild, so each PR preview is
+# served in the build itself (no reliance on a later main deploy).
+#
+# The app is built differently per case so every part is correct:
+#   * preview builds set VITE_PREVIEW=true (amber banner), a branch label, a
+#     PR-specific VITE_STORAGE_NAMESPACE (isolated IndexedDB), and a Vite base
+#     rooted at preview-builds/<branch>/.
+#   * main builds set the normal repo base and the absolute og:image base URL.
+name: GitHub Pages
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+# One page publish per PR / per main push at a time; cancel stale runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compute branch slug and Vite bases
+        id: cfg
+        run: |
+          # Branch for the run: PR head ref, or the pushed branch otherwise.
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          # URL/filesystem-safe slug from the branch, e.g. feat/my-cool-change -> feat-my-cool-change
+          SLUG="$(printf '%s' "$BRANCH" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')"
+          REPO="${GITHUB_REPOSITORY##*/}"
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+          if [[ "$REPO" == *.github.io ]]; then
+            echo "main_base=/" >> "$GITHUB_OUTPUT"
+            echo "preview_base=/preview-builds/$SLUG/" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://$OWNER.github.io" >> "$GITHUB_OUTPUT"
+          else
+            echo "main_base=/$REPO/" >> "$GITHUB_OUTPUT"
+            echo "preview_base=/$REPO/preview-builds/$SLUG/" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://$OWNER.github.io/$REPO" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ---- Pull request: build + publish a live, isolated preview ----
+      - name: Build preview
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_PAGES_BASE: ${{ steps.cfg.outputs.preview_base }}
+          VITE_PREVIEW: "true"
+          VITE_PREVIEW_LABEL: ${{ steps.cfg.outputs.branch }}
+          VITE_STORAGE_NAMESPACE: preview-${{ steps.cfg.outputs.slug }}
+        run: npm run build
+
+      - name: Deploy preview to preview-builds/<branch>
+        if: github.event_name == 'pull_request'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          publish_branch: gh-pages
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: dist
+          destination_dir: preview-builds/${{ steps.cfg.outputs.slug }}
+
+      - name: Comment preview link on PR
+        if: github.event_name == 'pull_request'
+        env:
+          PREVIEW_URL: ${{ steps.cfg.outputs.site_url }}/preview-builds/${{ steps.cfg.outputs.slug }}/
+          PREVIEW_LABEL: ${{ steps.cfg.outputs.branch }}
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const marker = '<!-- note-haven-preview-build -->';
+            const url = process.env.PREVIEW_URL;
+            const label = process.env.PREVIEW_LABEL || 'this branch';
+            const body = [
+              marker,
+              '## 🔎 Preview build',
+              'The latest build of this branch is live at:',
+              '',
+              `**<${url}>**`,
+              '',
+              '> Branch: `' + label + '` · Uses isolated storage and shows a preview '
+              + 'banner, so it can\'t touch your real notes.',
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      # ---- main: build + publish the real app to the root, keeping previews ----
+      - name: Build main
+        if: github.event_name != 'pull_request'
+        env:
+          GITHUB_PAGES_BASE: ${{ steps.cfg.outputs.main_base }}
+          PAGES_ASSET_BASE_URL: ${{ steps.cfg.outputs.site_url }}/
+        run: npm run build
+
+      - name: Deploy main to root
+        if: github.event_name != 'pull_request'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          publish_branch: gh-pages
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: dist
+          destination_dir: ./
+          keep_files: true
+
+      # Force GitHub Pages to rebuild & serve the current gh-pages tree even if
+      # the published files here are unchanged (belt-and-braces, as in py-call-graph).
+      - name: Create files for redeploy
+        if: github.event_name != 'pull_request'
+        run: |
+          rm -rf tmp/bump
+          mkdir -p tmp/bump
+          echo $(date +"%Y-%m-%dT%H%M%S") > tmp/bump/last_deploy
+
+      - name: Force redeploy of GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          publish_branch: gh-pages
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: tmp/bump
+          destination_dir: ./
+          keep_files: true

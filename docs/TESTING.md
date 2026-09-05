@@ -159,4 +159,4 @@ Refresh with `npx playwright test --update-snapshots` inside the container.
 |---|---|---|
 | `.github/workflows/ci.yml` | lint, unit+component with coverage, build — Node 22/24/25 | push/PR to main + **Mondays 05:00 UTC (schedule)** |
 | `.github/workflows/devcontainer.yml` | the same checks **inside the devcontainer** (+ full E2E on schedule), per-arch image build & publish | push/PR touching devcontainer files + **Mondays 05:30 UTC (schedule)** |
-| `.github/workflows/deploy.yml` | build + Pages deploy | push to main |
+| `.github/workflows/github-pages.yml` | build + publish `main` to the `gh-pages` root (keeps `preview-builds/`), **and** publish each PR's branch as a live badged preview under `preview-builds/<branch>/` (isolated storage) | push to main + every PR to main (via `peaceiris/actions-gh-pages`) |

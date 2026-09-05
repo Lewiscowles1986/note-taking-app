@@ -90,6 +90,32 @@ Note Haven is built with a focus on type safety, performance, and extensibility.
    act --container-architecture linux/amd64
    ```
 
+### 🚀 Deploying & PR previews (GitHub Pages)
+
+The app is published to GitHub Pages from the **`gh-pages` branch** (Deploy from a
+branch, path `/`), so the published site and a live preview per PR live side by side:
+
+```
+https://<owner>.github.io/<repo>/                  <-- the real app (main)
+https://<owner>.github.io/<repo>/preview-builds/<branch>/   <-- a PR's preview
+```
+
+`.github/workflows/github-pages.yml` uses `peaceiris/actions-gh-pages` (the same
+pattern as the sibling `py-call-graph` repo):
+
+- **push to `main`** builds the app and publishes it to the `gh-pages` root with
+  `keep_files: true`, so existing `preview-builds/` are preserved.
+- **pull request** builds that branch as a clearly-badged **PREVIEW** (amber
+  banner, isolated per-branch IndexedDB) and publishes it to
+  `preview-builds/<branch>/`, then comments the link on the PR.
+
+Each push to `gh-pages` makes GitHub Pages rebuild, so a preview is live in the
+build — no waiting on a later `main` deploy.
+
+> **One-time setup:** ensure GitHub Pages is configured as **Source → Deploy from
+> a branch → `gh-pages` / (root)**. (The old config published from `main` via a
+> GitHub Actions workflow, which is why a PR branch could never publish.)
+
 ### 🧩 Extensibility
 
 The application is designed to be easily extended:
