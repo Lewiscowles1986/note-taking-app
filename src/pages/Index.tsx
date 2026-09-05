@@ -3,6 +3,8 @@ import { useNotes } from '@/hooks/useNotes';
 import { useEncryption } from '@/hooks/useEncryption';
 import NoteSidebar from '@/components/NoteSidebar';
 import NoteEditor from '@/components/NoteEditor';
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { useIsMobile } from '@/hooks/use-mobile';
 // NoteViewer pulls in the full react-markdown pipeline (~300 KB minified:
 // micromark, mdast, hast, remark/rehype plugins), so it is code-split and
 // only fetched the first time a note is opened in view mode.
@@ -12,10 +14,11 @@ import CalendarView from '@/components/CalendarView';
 import EncryptionDialog from '@/components/EncryptionDialog';
 import type { Note } from '@/lib/db';
 import type { StoredKeyPair } from '@/lib/crypto';
-import { Eye, Pencil, PanelLeftClose, PanelLeftOpen, Calendar, Lock } from 'lucide-react';
+import { Eye, Pencil, PanelLeftClose, PanelLeftOpen, Calendar, Lock, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Index() {
+  const isMobile = useIsMobile();
   const {
     notes,
     activeNote,
@@ -66,7 +69,9 @@ export default function Index() {
     await addNote();
     setMode('edit');
     setCalendarMode(false);
-  }, [addNote]);
+    // On mobile, drop straight into the new note's editor (close the list sheet).
+    if (isMobile) setSidebarOpen(false);
+  }, [addNote, isMobile]);
 
   const handleTogglePin = (note: Note) => {
     if (note.id) {
@@ -74,10 +79,19 @@ export default function Index() {
     }
   };
 
+  // Selecting a note from the list: desktop keeps the sidebar open, mobile
+  // closes the top sheet so the note opens full-screen.
+  const handleSelectNote = (noteId: number) => {
+    setActiveNoteId(noteId);
+    if (isMobile) setSidebarOpen(false);
+  };
+
   const handleCalendarSelect = (noteId: number, targetMode: 'edit' | 'view') => {
     setActiveNoteId(noteId);
     setMode(targetMode);
     setCalendarMode(false);
+    // Mobile: open the chosen note full-screen.
+    if (isMobile) setSidebarOpen(false);
   };
 
   const handleEncrypt = useCallback(async (
@@ -168,13 +182,13 @@ export default function Index() {
 
   if (calendarMode) {
     return (
-      <div className="flex h-screen bg-background overflow-hidden">
+      <div className="flex h-dvh bg-background overflow-hidden">
         <div className="flex-1 flex flex-col h-full min-w-0">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card">
+          <div className="flex items-center justify-between px-4 pb-2 pt-[calc(env(safe-area-inset-top)+0.5rem)] pr-[calc(env(safe-area-inset-right)+1rem)] border-b border-border bg-card">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setCalendarMode(false)}
-                className="p-1.5 rounded-md hover:bg-accent text-muted-foreground transition-colors"
+                className="p-2.5 min-w-11 min-h-11 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground transition-colors sm:min-w-min sm:min-h-min sm:p-1.5"
                 title="Back to notes"
               >
                 <PanelLeftOpen size={18} />
@@ -183,7 +197,7 @@ export default function Index() {
             </div>
             <button
               onClick={() => setCalendarMode(false)}
-              className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2.5 min-h-11 whitespace-nowrap rounded text-xs font-medium bg-muted text-muted-foreground hover:text-foreground transition-colors sm:py-1 sm:min-h-0"
             >
               <Pencil size={12} />
               Notes
@@ -202,52 +216,97 @@ export default function Index() {
   }
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
-      {sidebarOpen && (
-        <NoteSidebar
-          notes={notes}
-          activeNoteId={activeNoteId}
-          onSelectNote={setActiveNoteId}
-          onNewNote={handleNewNote}
-          onDeleteNote={removeNote}
-          onTogglePin={handleTogglePin}
-          searchQuery={searchQuery}
-          onSearch={setSearchQuery}
-          allTags={allTags}
-          allCategories={allCategories}
-          filterTag={filterTag}
-          filterCategory={filterCategory}
-          onFilterTag={setFilterTag}
-          onFilterCategory={setFilterCategory}
-          onRefresh={refresh}
-        />
+    <div className="flex h-dvh bg-background overflow-hidden">
+      {isMobile ? (
+        <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+          <SheetContent
+            side="top"
+            className="gap-0 p-0 overflow-hidden sm:max-w-none [&>button]:hidden"
+          >
+            <SheetTitle className="sr-only">Notes</SheetTitle>
+            <SheetDescription className="sr-only">
+              Search, filter, and select a note to open it.
+            </SheetDescription>
+            <NoteSidebar
+              notes={notes}
+              activeNoteId={activeNoteId}
+              onSelectNote={handleSelectNote}
+              onNewNote={handleNewNote}
+              onDeleteNote={removeNote}
+              onTogglePin={handleTogglePin}
+              searchQuery={searchQuery}
+              onSearch={setSearchQuery}
+              allTags={allTags}
+              allCategories={allCategories}
+              filterTag={filterTag}
+              filterCategory={filterCategory}
+              onFilterTag={setFilterTag}
+              onFilterCategory={setFilterCategory}
+              onRefresh={refresh}
+              className="w-full max-h-[80dvh] pt-[env(safe-area-inset-top)]"
+            />
+          </SheetContent>
+        </Sheet>
+      ) : (
+        sidebarOpen && (
+          <NoteSidebar
+            notes={notes}
+            activeNoteId={activeNoteId}
+            onSelectNote={handleSelectNote}
+            onNewNote={handleNewNote}
+            onDeleteNote={removeNote}
+            onTogglePin={handleTogglePin}
+            searchQuery={searchQuery}
+            onSearch={setSearchQuery}
+            allTags={allTags}
+            allCategories={allCategories}
+            filterTag={filterTag}
+            filterCategory={filterCategory}
+            onFilterTag={setFilterTag}
+            onFilterCategory={setFilterCategory}
+            onRefresh={refresh}
+          />
+        )
       )}
 
       <div className="flex-1 flex flex-col h-full min-w-0">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card">
+        <div className="flex items-center justify-between px-4 pb-2 pt-[calc(env(safe-area-inset-top)+0.5rem)] pr-[calc(env(safe-area-inset-right)+1rem)] border-b border-border bg-card">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-1.5 rounded-md hover:bg-accent text-muted-foreground transition-colors"
-            >
-              {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
-            </button>
+            {isMobile ? (
+              activeNote && !sidebarOpen && (
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="p-2.5 min-w-11 min-h-11 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground transition-colors sm:min-w-min sm:min-h-min sm:p-1.5"
+                  title="Back to notes"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+              )
+            ) : (
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="p-2.5 min-w-11 min-h-11 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground transition-colors sm:min-w-min sm:min-h-min sm:p-1.5"
+                title="Toggle sidebar"
+              >
+                {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+              </button>
+            )}
             {activeNote && (
               <div className="flex items-center gap-1.5">
                 {activeNote.encrypted && (
                   <Lock size={14} className="text-primary" />
                 )}
-                <h2 className="text-sm font-medium text-foreground truncate max-w-xs">
+                <h2 className="text-sm font-medium text-foreground truncate max-w-[50vw] sm:max-w-xs">
                   {activeNote.title}
                 </h2>
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 pr-[env(safe-area-inset-right)]">
             <button
               onClick={() => setCalendarMode(true)}
-              className="p-1.5 rounded-md hover:bg-accent text-muted-foreground transition-colors"
+              className="p-2.5 min-w-11 min-h-11 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground transition-colors sm:min-w-min sm:min-h-min sm:p-1.5"
               title="Calendar view"
             >
               <Calendar size={18} />
@@ -257,7 +316,7 @@ export default function Index() {
               <div className="flex items-center rounded-md bg-muted p-0.5">
                 <button
                   onClick={() => setMode('edit')}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+                  className={`flex items-center gap-1.5 px-3 py-2.5 min-h-11 whitespace-nowrap rounded text-xs font-medium transition-colors sm:py-1 sm:min-h-0 ${
                     mode === 'edit'
                       ? 'bg-card text-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground'
@@ -268,7 +327,7 @@ export default function Index() {
                 </button>
                 <button
                   onClick={() => setMode('view')}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+                  className={`flex items-center gap-1.5 px-3 py-2.5 min-h-11 whitespace-nowrap rounded text-xs font-medium transition-colors sm:py-1 sm:min-h-0 ${
                     mode === 'view'
                       ? 'bg-card text-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground'
@@ -301,7 +360,7 @@ export default function Index() {
                     </p>
                     <button
                       onClick={() => setEncryptionDialogOpen(true)}
-                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+                      className="px-4 py-2.5 min-h-11 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity sm:py-2 sm:min-h-0"
                     >
                       Unlock Note
                     </button>
@@ -332,7 +391,7 @@ export default function Index() {
               </p>
               <button
                 onClick={handleNewNote}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+                className="px-4 py-2.5 min-h-11 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity sm:py-2 sm:min-h-0"
               >
                 Create Note
               </button>
