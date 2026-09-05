@@ -273,7 +273,7 @@ export default function Index() {
         <div className="flex items-center justify-between px-4 pb-2 pt-[calc(env(safe-area-inset-top,0px)_+_0.5rem)] pr-[calc(env(safe-area-inset-right,0px)_+_1rem)] border-b border-border bg-card">
           <div className="flex items-center gap-2">
             {isMobile ? (
-              activeNote && !sidebarOpen && (
+              !sidebarOpen && (
                 <button
                   onClick={() => setSidebarOpen(true)}
                   className="p-2.5 min-w-11 min-h-11 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground transition-colors sm:min-w-min sm:min-h-min sm:p-1.5"

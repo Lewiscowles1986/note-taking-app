@@ -125,4 +125,22 @@ describe('Index — mobile (useIsMobile forced true)', () => {
     expect(await screen.findByRole('heading', { name: 'Untitled' })).toBeInTheDocument();
     expect(await db.notes.toArray()).toHaveLength(1);
   });
+
+  it('empty state: a back-to-menu button reopens the menu even with no note selected', async () => {
+    render(<Index />); // no notes
+
+    // The menu (top sheet) is open by default on load.
+    expect(await screen.findByPlaceholderText('Search notes...')).toBeInTheDocument();
+
+    // Dismiss the sheet (Escape) to reach the empty-state content area — no note is
+    // selected here. This is exactly where the back-to-menu navigator must still show.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByPlaceholderText('Search notes...')).toBeNull());
+
+    // Back button appears even though no note is active, and exists only to reopen the menu.
+    expect(backButton()).toBeInTheDocument();
+    fireEvent.click(backButton());
+    expect(await screen.findByPlaceholderText('Search notes...')).toBeInTheDocument();
+    expect(document.querySelector('.w-72')).toBeNull();
+  });
 });
