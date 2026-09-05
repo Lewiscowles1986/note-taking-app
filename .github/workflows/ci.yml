@@ -3,8 +3,37 @@ name: CI
 on:
   push:
     branches: [ main ]
+    # Only run when build-relevant files change, so docs/config-only commits
+    # don't burn the full matrix. Renovate PRs still trigger it (they touch
+    # package.json / package-lock.json).
+    paths:
+      - "src/**"
+      - "e2e/**"
+      - "scripts/**"
+      - "public/**"
+      - "package.json"
+      - "package-lock.json"
+      - "index.html"
+      - "*.config.*"
+      - "playwright-fixture.ts"
+      - "tsconfig*.json"
+      - "components.json"
+      - ".github/workflows/ci.yml"
   pull_request:
     branches: [ main ]
+    paths:
+      - "src/**"
+      - "e2e/**"
+      - "scripts/**"
+      - "public/**"
+      - "package.json"
+      - "package-lock.json"
+      - "index.html"
+      - "*.config.*"
+      - "playwright-fixture.ts"
+      - "tsconfig*.json"
+      - "components.json"
+      - ".github/workflows/ci.yml"
   # Weekly build/test against the latest locked dependencies so upstream rot
   # (registry, base images, actions) is caught even between PRs.
   schedule:
