@@ -113,15 +113,29 @@ Env knobs: `ANDROID_HOME`/`ANDROID_SDK_ROOT`, `AVD_NAME` (default `notehaven`),
 `SYSTEM_IMAGE`, `ANDROID_PREVIEW_PORT` (default `5220`), `KEEP_EMULATOR=1`,
 `ANDROID_BOOT_TIMEOUT_S`.
 
-**Prerequisites (any OS):** Android command-line tools, `sdkmanager`, and an AVD.
+**Prerequisites (any OS):** the Android SDK with `platform-tools` (adb), the
+`emulator`, and **an existing AVD** (`AVD_NAME`). The script requires `adb` +
+`emulator` + the AVD to exist; it does **not** need `sdkmanager`/`avdmanager`
+those are only used to *create* an AVD beforehand, so on machines that already
+have an AVD (e.g. `Pixel_3a_API_32_arm64-v8a` created by Android Studio) you can
+run it directly. Verified on macOS with an existing arm64 AVD:
 
 ```bash
-export ANDROID_HOME="$HOME/Library/Android/sdk"   # macOS (or $HOME/Android/Sdk on Linux)
-export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+export ANDROID_HOME="$HOME/Library/Android/sdk"     # macOS (or $HOME/Android/Sdk on Linux)
+export AVD_NAME=Pixel_3a_API_32_arm64-v8a           # use one of your existing AVDs
+bash scripts/android-smoke.sh
+```
 
+If you need to create an AVD first (the steps `sdkmanager`/`avdmanager` do):
+
+```bash
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 sdkmanager --licenses
 sdkmanager "platform-tools" "emulator" "platforms;android-34"
-SYSTEM_IMAGE="system-images;android-34;google_apis;arm64-v8a"
+# Use a playstore image so Chrome is preinstalled — a plain `google_apis` image
+# has NO browser, so the smoke boots fine but cannot render the app (it now
+# detects this and fails with a clear message instead of a misleading success).
+SYSTEM_IMAGE="system-images;android-34;google_apis_playstore;arm64-v8a"
 sdkmanager "$SYSTEM_IMAGE"
 echo no | avdmanager create avd -n "notehaven" -k "$SYSTEM_IMAGE" --device "pixel_7"
 ```
@@ -129,7 +143,9 @@ echo no | avdmanager create avd -n "notehaven" -k "$SYSTEM_IMAGE" --device "pixe
 What it covers: real Chrome rendering + touch on a phone AVD, on-device
 service-worker/offline (the SW only exists in `dist/`, so it uses `vite preview`,
 same as `scripts/e2e-pwa.sh`), and notch/safe-area. It is a load/render smoke with
-a screenshot — interactions stay in the Playwright suite.
+a screenshot — interactions stay in the Playwright suite. (Note: a Chrome
+"first-run"/`FirstRunActivity` screen can appear on the first launch; the smoke
+still resolves the intent, loads the page and captures the screenshot.)
 
 ## Pitfalls
 

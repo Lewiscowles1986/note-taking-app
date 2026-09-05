@@ -5,8 +5,7 @@
 #   This is a real Chromium-on-Android smoke: touch input on device, the actual
 #   mobile Chrome browser, service-worker/offline on-device, and safe-area
 #   handling on notched devices. It runs ONLY on a machine that already has the
-#   Android SDK + an AVD installed (this repo's machines do not — see the
-#   guard below).
+#   Android SDK + platform-tools + emulator + at least one AVD installed.
 #
 # INCREMENTAL VALUE OVER PLAYWRIGHT (read this before running)
 #   Because Android runs Chromium, the incremental value of THIS emulator suite
@@ -18,8 +17,10 @@
 #   Playwright browser suite (see docs/mobile-qa.md).
 #
 # WHAT IT DOES
-#   1. Guards: fails fast (exit 127) with install steps if adb/emulator/sdkmanager
-#      are missing or ANDROID_HOME is unset.
+#   1. Guards: fails fast (exit 127) with install steps if adb/emulator are
+#      missing, ANDROID_HOME is unset, or the target AVD does not exist. The
+#      sdkmanager/avdmanager command-line tools are only needed to CREATE an
+#      AVD (setup work done before running this smoke), so they are optional.
 #   2. Boots an AVD headless (emulator -no-window -no-audio -gpu swiftshader_indirect)
 #      and waits for `adb wait-for-device` + `sys.boot_completed == 1`.
 #   3. Builds the app (ROOT) and starts `vite preview --host 0.0.0.0` on :5220 in
@@ -107,15 +108,37 @@ resolve_tool() {
   printf '%s\n' "$found"
 }
 
-# --- Guard: the Android SDK must exist on this machine ------------------------
+# --- Guard: adb + emulator + an existing AVD are required ---------------------
+# We only boot a PRE-EXISTING AVD, so adb + emulator are hard requirements.
+# sdkmanager/avdmanager are NOT required to run this smoke (they're only needed
+# to create an AVD beforehand); they're resolved optionally so logs can show them.
 ADB="${ADB:-$(resolve_tool adb platform-tools/adb)}"
 EMULATOR_BIN="${EMULATOR_BIN:-$(resolve_tool emulator emulator/emulator)}"
-SDKMANAGER="${SDKMANAGER:-$(resolve_tool sdkmanager cmdline-tools/latest/bin/sdkmanager)}"
+
+SDKMANAGER="${SDKMANAGER:-$(command -v sdkmanager 2>/dev/null || true)}"
+AVDMANAGER="${AVDMANAGER:-$(command -v avdmanager 2>/dev/null || true)}"
+if [[ -n "$ANDROID_HOME" && -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]]; then
+  SDKMANAGER="${SDKMANAGER:-$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager}"
+fi
+if [[ -n "$ANDROID_HOME" && -x "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" ]]; then
+  AVDMANAGER="${AVDMANAGER:-$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager}"
+fi
 
 echo "[android-smoke] adb=$ADB"
 echo "[android-smoke] emulator=$EMULATOR_BIN"
-echo "[android-smoke] sdkmanager=$SDKMANAGER"
+echo "[android-smoke] sdkmanager=${SDKMANAGER:-<not found; only needed to CREATE an AVD>}"
 echo "[android-smoke] AVD=$AVD_NAME  system-image=$SYSTEM_IMAGE  port=$PORT"
+
+# The target AVD must already exist before we try to boot it.
+if ! "$EMULATOR_BIN" -list-avds 2>/dev/null | grep -qx "$AVD_NAME"; then
+  echo "[android-smoke] ERROR: AVD '$AVD_NAME' does not exist on this machine." >&2
+  echo "[android-smoke]   Existing AVDs:" >&2
+  "$EMULATOR_BIN" -list-avds 2>/dev/null | sed 's/^/^   - /' >&2 || true
+  echo >&2
+  install_help
+  exit 127
+fi
+echo "[android-smoke] found AVD '$AVD_NAME'."
 
 # --- Cleanup + traps (registered before anything mutates state) ---------------
 PREVIEW_PID=""
@@ -198,9 +221,20 @@ echo "[android-smoke] adb reverse tcp:$PORT -> tcp:$PORT"
 "$ADB" reverse "tcp:$PORT" "tcp:$PORT"
 
 echo "[android-smoke] opening http://localhost:$PORT in mobile Chrome..."
-"$ADB" shell am start -a android.intent.action.VIEW -d "http://localhost:$PORT"
-# Let the page load, the SW register, and the render settle.
-sleep 3
+BROWSER_OK=0
+START_OUT="$("$ADB" shell am start -a android.intent.action.VIEW -d "http://localhost:$PORT" 2>&1)"
+echo "[android-smoke] am start: $START_OUT"
+if printf '%s\n' "$START_OUT" | grep -qinE "unable to resolve intent|activity not started|no activity found"; then
+  echo "[android-smoke] WARNING: no browser on this AVD resolved the app URL (e.g. Chrome not
+  installed)." >&2
+  echo "[android-smoke]   The emulator + adb pipeline works, but the app did NOT render in a
+  browser." >&2
+else
+  BROWSER_OK=1
+  echo "[android-smoke] browser intent resolved; letting the page + SW load..."
+  # Let the page load, the SW register, and the render settle.
+  sleep 3
+fi
 
 # --- Screenshot -----------------------------------------------------------------
 mkdir -p "$REPORTS_DIR"
@@ -224,5 +258,13 @@ fi
 echo "  service-worker / host logcat hints (tail):"
 "$ADB" logcat -d 2>/dev/null | grep -iE 'sw\.js|localhost:'"$PORT" | tail -10 | sed 's/^/    /' || true
 
-echo "[android-smoke] SUCCESS: on-device smoke observed (see screenshot $SHOT)."
+if [[ "$BROWSER_OK" == "1" ]]; then
+  echo "[android-smoke] SUCCESS: app opened in a mobile browser (see screenshot $SHOT)."
+else
+  echo "[android-smoke] DEGRADED: emulator/adb pipeline OK, but no browser resolved the URL, so"
+  echo "[android-smoke]   the app did NOT render on-device (screenshot shows the launcher only)."
+  echo "[android-smoke]   Fix: use a browser-enabled system image (e.g. google_apis_playstore) or"
+  echo "[android-smoke]   install Chrome on the AVD, then re-run."
+  exit 2
+fi
 # EXIT trap handles teardown.
