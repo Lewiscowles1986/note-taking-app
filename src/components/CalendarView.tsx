@@ -197,9 +197,9 @@ export default function CalendarView({ notes, onSelectNote, onNewNote }: Calenda
                       className="flex items-center gap-1 px-1 py-px rounded text-[10px] leading-tight truncate bg-accent/60 text-accent-foreground"
                     >
                       {entry.type === 'created' ? (
-                        <FilePlus2 size={9} className="shrink-0 text-primary" />
+                        <FilePlus2 size={9} className="shrink-0 text-primary" aria-label="Created" />
                       ) : (
-                        <Pencil size={9} className="shrink-0 text-muted-foreground" />
+                        <Pencil size={9} className="shrink-0 text-muted-foreground" aria-label="Edited" />
                       )}
                       <span className="truncate">{entry.note.title || 'Untitled'}</span>
                     </div>
@@ -243,9 +243,9 @@ export default function CalendarView({ notes, onSelectNote, onNewNote }: Calenda
                   >
                     <div className="flex items-start gap-2">
                       {entry.type === 'created' ? (
-                        <FilePlus2 size={12} className="shrink-0 mt-0.5 text-primary" />
+                        <FilePlus2 size={12} className="shrink-0 mt-0.5 text-primary" aria-label="Created" />
                       ) : (
-                        <Pencil size={12} className="shrink-0 mt-0.5 text-muted-foreground" />
+                        <Pencil size={12} className="shrink-0 mt-0.5 text-muted-foreground" aria-label="Edited" />
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-foreground truncate">
