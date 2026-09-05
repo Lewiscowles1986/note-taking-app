@@ -9,7 +9,7 @@
 # (including ARG-before-FROM). Multi-arch: builds natively for whichever
 # platform buildx targets (linux/amd64, linux/arm64).
 
-ARG PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.58.2-noble
+ARG PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.63.0-noble
 
 # --- Stage 1: evaluate flake.lock and build the pinned toolchain -------------
 # flake.lock pins the exact nixpkgs revision, which pins Node.js, npm, git and
