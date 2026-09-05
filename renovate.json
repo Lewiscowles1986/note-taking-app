@@ -3,10 +3,45 @@
   "enabled": true,
   "prCreation": "immediate",
   "extends": ["config:recommended"],
-  "prConcurrentLimit": 0,
-  "branchConcurrentLimit": 0,
-  "schedule": ["at any time"],
+
+  // Throttle: stop the unlimited stampede (was 0 = unlimited).
+  "prConcurrentLimit": 6,
+  "prHourlyLimit": 4,
+  "branchConcurrentLimit": 6,
+
+  // Run the burst off-peak instead of "at any time".
+  // 0,6 = Saturday & Sunday (cron day-of-week, 0=Sunday). Adjust to your off-peak.
+  "schedule": ["* * 0,6 * *"],
+
+  // Automerge green patch/minor updates; keep majors as reviewable PRs.
+  "automerge": true,
+  "automergeType": "branch",
+  "platformAutomerge": true,
+  "separateMajorMinor": true,
+
+  // Wait until a release is 7 days old before proposing it, for every
+  // datasource (npm deps, GitHub Actions, etc.). Prefer 7 days of a stale
+  // (possibly broken) pipeline over pulling in a freshly published zero-day.
+  "minimumReleaseAge": "7 days",
+
   "packageRules": [
+    // All patch & minor npm deps -> ONE PR.
+    {
+      "matchDatasources": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "npm-all-minor-patch",
+      "automerge": true,
+      "automergeStrategy": "squash"
+    },
+    // All lockfile-only npm updates -> ONE PR.
+    {
+      "matchManagers": ["npm"],
+      "matchFileNames": ["package-lock.json"],
+      "groupName": "npm-lockfile-updates",
+      "automerge": true,
+      "automergeStrategy": "squash"
+    },
+    // Keep the existing github-actions rule.
     {
       "matchManagers": ["github-actions"],
       "enabled": true,

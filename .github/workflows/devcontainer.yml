@@ -24,11 +24,14 @@ on:
       - "scripts/build-devcontainer-base.sh"
       - ".github/workflows/devcontainer.yml"
   pull_request:
+    # Dependency-only PRs (e.g. a package-lock.json bump) don't change the
+    # Devcontainer image, so don't rebuild it per dependency bump. The image
+    # only changes when the pinned base/Playwright version changes, which is a
+    # deliberate, separate change (see failing PR #16).
     paths:
       - ".devcontainer/**"
       - "flake.nix"
       - "flake.lock"
-      - "package-lock.json"
       - ".dockerignore"
       - "scripts/build-devcontainer-base.sh"
       - ".github/workflows/devcontainer.yml"
