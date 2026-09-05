@@ -23,8 +23,8 @@ From the repo root (the worktree):
 npm run test:e2e
 
 # A single project
-npx playwright test --project=chromium          # desktop 1440x900
-npx playwright test --project=chromium-mobile    # mobile 1280x720
+npx playwright test --project=chromium          # desktop 1440x900 — full suite
+npx playwright test --project=chromium-mobile    # mobile — real Pixel 7 viewport, runs only *mobile*.spec.ts
 
 # A single spec file
 npx playwright test e2e/security.spec.ts
@@ -39,6 +39,27 @@ npx playwright test --debug
 
 The `webServer` config auto-starts `npx vite --port 5173 --strictPort` and reuses an
 already-running dev server when present.
+
+## Mobile, PWA/offline & device smoke
+
+- **`chromium-mobile` project scope.** It is a *genuine phone* (`devices['Pixel 7']`:
+  real viewport, touch, and `window.innerWidth < 768`, so the mobile branch of the UI
+  is exercised). It is scoped with `testMatch: '**/*mobile*.spec.ts'` so only the
+  mobile-targeted specs run at phone width — the desktop specs assume an
+  always-visible `.w-72` sidebar that mobile replaces with a top sheet, so running
+  them at a phone viewport was wrong. `app.spec.ts` runs under `chromium` only.
+- **PWA / service-worker offline coverage** — `npm run test:e2e:pwa` runs
+  `e2e/offline.mobile.spec.ts` against a *production* `vite preview` build (the
+  service worker is only emitted at build time, never in dev). It asserts the SW
+  caches the shell and a seeded note still loads while offline. The spec is
+  `test.skip`-gated on `E2E_PWA=1`, so it is skipped in normal runs.
+- **The browser suite is the primary regression layer.** See
+  [`docs/mobile-qa.md`](../../docs/mobile-qa.md) for the layered strategy: the
+  deterministic Playwright suite (both projects) is the every-commit backstop, while
+  the iOS Simulator (`scripts/ios-smoke.sh`, real WebKit/Safari — the only place
+  safe-area `env()` and `100dvh` are visible) and Android emulator
+  (`scripts/android-smoke.sh`) smokes are targeted on-demand device checks that
+  complement — not replace — the browser suite.
 
 ## Run modes
 
@@ -173,8 +194,13 @@ extension (`zip`/`json`/`html`/`pem`/`stl` magic bytes).
 | `calendar.spec.ts` | 3 | Notes on their edit dates, selecting a note returns to notes mode, reload-safe seeding (no duplicates) |
 | `security.spec.ts` | 5 | Password encrypt/lock, wrong-password rejection, correct-password unlock, RSA key-pair encrypt/decrypt, key-pair JWK export |
 | `export-import.spec.ts` | 4 | Single-note HTML export, full DB backup (JSON), export-all-as-ZIP, import from file |
+| `mobile.spec.ts` | 1 | Mobile top-sheet note list, select → full-screen edit → back |
+| `offline.mobile.spec.ts` | 1 | PWA/service-worker offline shell (skipped unless `E2E_PWA=1`, see PWA section) |
 
-**Total: 30 tests × 2 projects = 60 checks.**
+**Total: 32 unique specs.** `chromium` (desktop) runs all 32; `chromium-mobile`
+(real phone) runs only the two `*mobile*.spec.ts` entries at phone viewport. A
+default `npm run test:e2e` therefore runs 34 checks (32 desktop + 2 mobile); the
+two offline/PWA runs additionally require `E2E_PWA=1` against `vite preview`.
 
 ## Known APP BUGs (flagged in specs with `// APP BUG:`)
 
@@ -229,7 +255,6 @@ so the images and the page regenerate together atomically.
 Baselines are **platform-independent**: `playwright.config.ts` sets a
 `snapshotPathTemplate` that omits the `{-platform}` token (the default template
 appends `-darwin`/`-linux`/`-win32`), so the same committed PNG is used on every
-OS. The `{-projectName}` token is kept, so `chromium` and `chromium-mobile`
-baselines remain separate files (e.g. `empty-state-chromium.png` vs
-`empty-state-chromium-mobile.png`). After any `--update-snapshots`, run the spec
+OS. `app.spec.ts` runs under the `chromium` project only, so its baselines are
+`empty-state-chromium.png` etc. After any `--update-snapshots`, run the spec
 again **without** the flag to prove the no-update run passes before committing.
