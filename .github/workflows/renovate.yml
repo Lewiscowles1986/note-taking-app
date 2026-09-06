@@ -4,10 +4,10 @@ on:
   push:
     branches:
       - main
+  # Match renovate.json's "every weekend" schedule (Saturdays & Sundays, 06:00 UTC).
+  # Weekday runs would be no-ops anyway — Renovate gates itself on that schedule.
   schedule:
-    - cron: 0 6 1 * *
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
+    - cron: 0 6 * * 0,6
 
 jobs:
   renovate:
