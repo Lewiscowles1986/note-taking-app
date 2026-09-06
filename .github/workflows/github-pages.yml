@@ -99,7 +99,7 @@ jobs:
         env:
           PREVIEW_URL: ${{ steps.cfg.outputs.site_url }}/preview-builds/${{ steps.cfg.outputs.slug }}/
           PREVIEW_LABEL: ${{ steps.cfg.outputs.branch }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
