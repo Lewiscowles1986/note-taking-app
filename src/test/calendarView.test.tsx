@@ -156,8 +156,8 @@ describe('CalendarView component', () => {
     expect(todayCell.querySelector('span')?.className).toContain('bg-primary');
     expect(countBadge(todayCell)?.textContent).toBe('1');
     expect(pillTitles(todayCell)).toEqual(['Jotted today']);
-    // Created entries get the FilePlus2 icon.
-    expect(todayCell.querySelector('svg.lucide-file-plus2')).toBeTruthy();
+    // Created entries get the "Created" icon.
+    expect(todayCell.querySelector('svg[aria-label="Created"]')).toBeTruthy();
 
     // Days without notes show neither a count badge nor pills.
     const emptyCell = dayCell(container, 11);
@@ -192,13 +192,13 @@ describe('CalendarView component', () => {
     const createdCell = dayCell(container, 10);
     expect(countBadge(createdCell)?.textContent).toBe('1');
     expect(pillTitles(createdCell)).toEqual(['Edited note']);
-    expect(createdCell.querySelector('svg.lucide-file-plus2')).toBeTruthy();
-    expect(createdCell.querySelector('svg.lucide-pencil')).toBeNull();
+    expect(createdCell.querySelector('svg[aria-label="Created"]')).toBeTruthy();
+    expect(createdCell.querySelector('svg[aria-label="Edited"]')).toBeNull();
 
     const editedCell = dayCell(container, 12);
     expect(countBadge(editedCell)?.textContent).toBe('1');
     expect(pillTitles(editedCell)).toEqual(['Edited note']);
-    expect(editedCell.querySelector('svg.lucide-pencil')).toBeTruthy();
+    expect(editedCell.querySelector('svg[aria-label="Edited"]')).toBeTruthy();
 
     // A note without editDates still lands on its creation day — here a
     // lead-in day from May.
@@ -328,7 +328,7 @@ describe('CalendarView component', () => {
     expect(within(sidebar).getByText('alpha')).toBeTruthy();
     expect(within(sidebar).getByText('gamma')).toBeTruthy();
     expect(within(sidebar).queryByText('delta')).toBeNull();
-    expect(sidebar.querySelector('svg.lucide-file-plus2')).toBeTruthy();
+    expect(sidebar.querySelector('svg[aria-label="Created"]')).toBeTruthy();
     expect(sidebar.querySelector('.flex-wrap')).toBeTruthy();
 
     fireEvent.click(within(sidebar).getByRole('button', { name: 'View' }));
@@ -343,7 +343,7 @@ describe('CalendarView component', () => {
     const editedTitle = within(editedSidebar).getByText('Untitled');
     expect(editedTitle.nextElementSibling?.textContent).toBe('Edited');
     expect(editedSidebar.querySelector('.flex-wrap')).toBeNull();
-    expect(editedSidebar.querySelector('svg.lucide-pencil')).toBeTruthy();
+    expect(editedSidebar.querySelector('svg[aria-label="Edited"]')).toBeTruthy();
 
     fireEvent.click(within(editedSidebar).getByRole('button', { name: 'Edit' }));
     expect(onSelectNote).toHaveBeenCalledTimes(2);
