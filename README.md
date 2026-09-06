@@ -52,7 +52,7 @@ Note Haven is built with a focus on type safety, performance, and extensibility.
 - **Unit/Component:** [Vitest](https://vitest.dev/) + [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) for fast, reliable tests (`src/test/`).
 - **Coverage:** `npm run test:coverage` (V8 provider; text report in CI, HTML in `coverage/`).
 - **E2E Testing:** [Playwright](https://playwright.dev/) for browser automation. `npm run test:e2e` runs the headless Playwright suite (specs: app, notes, editor, calendar, security, export-import). See [e2e/README.md](e2e/README.md) for details.
-- **Linting:** [ESLint](https://eslint.org/) with modern flat-config and TypeScript support.
+- **Linting:** [oxlint](https://oxc.rs/docs/guide/usage/linter.html) — the Rust-based linter from the oxc project, with type-aware rules powered by tsgo (the native TypeScript compiler).
 - **What to write when:** [docs/TESTING.md](docs/TESTING.md) — the test pyramid, coverage workflow, and the opt-in tooling menu (mutation testing via StrykerJS, IndexedDB integration tests, network mocking).
 - **Local CI:** Run your GitHub Actions locally using [act](https://github.com/nektos/act).
 

@@ -150,8 +150,6 @@ Refresh with `npx playwright test --update-snapshots` inside the container.
 
 - `Model3DBlock` tests log React `act()` warnings.
 - React Router v7 future-flag warnings appear in every jsdom run.
-- `scripts/seed-environment.mjs:312` carries a stale `eslint-disable`
-  directive — the repo's only lint warning (owner's file, left untouched).
 
 ## CI at a glance
 

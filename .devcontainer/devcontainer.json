@@ -34,7 +34,7 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "dbaeumer.vscode-eslint",
+        "oxc.oxc-vscode",
         "bradlc.vscode-tailwindcss",
         "vitest.explorer",
         "ms-playwright.playwright",
