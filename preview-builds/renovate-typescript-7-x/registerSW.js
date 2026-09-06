@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/note-taking-app/preview-builds/renovate-typescript-7-x/sw.js', { scope: '/note-taking-app/preview-builds/renovate-typescript-7-x/' })})}
