@@ -10,7 +10,7 @@
 // Docker socket rationale: docs/technical/devcontainer/DIND.md
 {
   "name": "Note Haven",
-  "image": "ghcr.io/lewiscowles1986/note-taking-app/devcontainer:1.58.2",
+  "image": "ghcr.io/lewiscowles1986/note-taking-app/devcontainer:1.63.0",
   "remoteUser": "vscode",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "mounts": [
