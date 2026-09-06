@@ -17,9 +17,9 @@ function formatXml(xml: string): string {
   let indent = 0;
   for (const line of lines) {
     const trimmed = line.trim();
-    if (/^<\//.test(trimmed)) indent = Math.max(0, indent - 1);
+    if (trimmed.startsWith('</')) indent = Math.max(0, indent - 1);
     out.push('  '.repeat(indent) + trimmed);
-    if (/^<[^/?!][^>]*[^/]>$/.test(trimmed) && !/^<\?/.test(trimmed)) indent++;
+    if (/^<[^/?!][^>]*[^/]>$/.test(trimmed) && !trimmed.startsWith('<?')) indent++;
   }
   return out.join('\n');
 }

@@ -724,7 +724,7 @@ function Model3DViewport({
       renderer.dispose();
       container.innerHTML = '';
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [geometry, objGroup, modelType, config.camera, config.projection, system]);
 
   // Update material programmatically when renderMode or texture changes

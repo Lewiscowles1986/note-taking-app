@@ -94,6 +94,21 @@ mutants your tests kill. It is installed (`@stryker-mutator/core` +
 npx stryker run   # ~10 min in-container at concurrency 4; not for CI by default
 ```
 
+> **TypeScript 7 caveat (2026-09):** Stryker 10 needs the classic TS compiler
+> API (`ts.parseConfigFileTextToJson`), which TypeScript 7 (native/Go)
+> removed — see [stryker-js#6111](https://github.com/stryker-mutator/stryker-js/issues/6111).
+> Locally, run Stryker under the JS-based TS6 line without touching the
+> lockfile, then restore with a plain `npm install`:
+>
+> ```bash
+> npm install --no-save --no-audit --no-fund "typescript@npm:@typescript/typescript6@^6.0.2"
+> npx stryker run
+> npm install   # restore typescript@7
+> ```
+>
+> `test-quality.yml` does exactly this (the "Shadow typescript with TS6"
+> step) ahead of its Stryker run. Remove it once #6111 ships a fix.
+
 - Scope: `src/lib/**/*.ts`, `coverageAnalysis: "perTest"`. Baseline run
   (937 mutants): **86.87% total score, 89.45% on covered code** — 813 killed,
   96 survived, 1 timeout, 27 no-coverage. Target was >50%; met at baseline.
@@ -150,8 +165,6 @@ Refresh with `npx playwright test --update-snapshots` inside the container.
 
 - `Model3DBlock` tests log React `act()` warnings.
 - React Router v7 future-flag warnings appear in every jsdom run.
-- `scripts/seed-environment.mjs:312` carries a stale `eslint-disable`
-  directive — the repo's only lint warning (owner's file, left untouched).
 
 ## CI at a glance
 

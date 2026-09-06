@@ -58,6 +58,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Stryker 10 still needs the classic TS compiler API (ts.
+      # parseConfigFileTextToJson) which TypeScript 7 removed — tracked as
+      # stryker-mutator/stryker-js#6111. Until that ships, shadow the hoisted
+      # `typescript` with the JS-based TS6 line for this job only.
+      # --no-save keeps package.json/package-lock.json untouched; the next
+      # `npm ci` on main restores TS7.
+      - name: Shadow typescript with TS6 for Stryker
+        run: >
+          npm install --no-save --no-audit --no-fund
+          "typescript@npm:@typescript/typescript6@^6.0.2"
+
       - name: Unit & component tests with coverage
         run: npm run test:coverage
 
