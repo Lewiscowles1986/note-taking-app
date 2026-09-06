@@ -10,8 +10,8 @@
   "branchConcurrentLimit": 6,
 
   // Run the burst off-peak instead of "at any time".
-  // 0,6 = Saturday & Sunday (cron day-of-week, 0=Sunday). Adjust to your off-peak.
-  "schedule": ["* * 0,6 * *"],
+  // Weekends only (Saturday & Sunday). Adjust to your off-peak.
+  "schedule": ["every weekend"],
 
   // Automerge green patch/minor updates; keep majors as reviewable PRs.
   "automerge": true,
@@ -51,7 +51,7 @@
   "customManagers": [
     {
       "customType": "regex",
-      "managerFilePatterns": ["/^\\.github/workflows/.*\\.ya?ml$/"],
+      "fileMatch": [".github/workflows/*.{yml,yaml}"],
       "datasourceTemplate": "github-tags",
       "depNameTemplate": "actions/setup-node",
       "versioningTemplate": "docker",
