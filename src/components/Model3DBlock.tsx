@@ -557,6 +557,16 @@ function Model3DViewport({
     renderer.shadowMap.enabled = true;
     container.appendChild(renderer.domElement);
 
+    // Expose the live renderer so the HTML/print/PDF exporters can force a
+    // synchronous draw right before snapshotting the canvas. Chromium does not
+    // present frames for off-screen/invisible WebGL canvases, so without this
+    // the captured image would be blank.
+    (renderer.domElement as HTMLCanvasElement & { __webglSnapshot?: unknown }).__webglSnapshot = {
+      renderer,
+      scene,
+      camera,
+    };
+
     // 2. Setup Lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
     scene.add(ambientLight);

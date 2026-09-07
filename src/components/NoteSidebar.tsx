@@ -61,6 +61,27 @@ export default function NoteSidebar({
   const [showExport, setShowExport] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
+  const handleExportCurrent = async (mode: 'html' | 'pdf') => {
+    const active = notes.find((n) => n.id === activeNoteId);
+    if (!active) return;
+    try {
+      if (mode === 'html') await exportToHtml(active);
+      else await exportToPdf(active);
+      toast.success(`Exported as ${mode.toUpperCase()}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Export failed (${mode.toUpperCase()})`);
+    }
+  };
+
+  const handleExportZip = async () => {
+    try {
+      await exportToZip(notes);
+      toast.success('Exported all notes as ZIP');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'ZIP export failed');
+    }
+  };
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -152,27 +173,21 @@ export default function NoteSidebar({
       {showExport && (
         <div className="p-2 border-b border-sidebar-border bg-sidebar-accent/50 text-sm">
           <button
-            onClick={() => {
-              const active = notes.find((n) => n.id === activeNoteId);
-              if (active) exportToHtml(active);
-            }}
+            onClick={() => handleExportCurrent('html')}
             className="w-full text-left px-2 py-2.5 min-h-11 flex items-center rounded hover:bg-sidebar-accent sm:py-1 sm:min-h-0"
             disabled={!activeNoteId}
           >
             Export current as HTML
           </button>
           <button
-            onClick={() => {
-              const active = notes.find((n) => n.id === activeNoteId);
-              if (active) exportToPdf(active);
-            }}
+            onClick={() => handleExportCurrent('pdf')}
             className="w-full text-left px-2 py-2.5 min-h-11 flex items-center rounded hover:bg-sidebar-accent sm:py-1 sm:min-h-0"
             disabled={!activeNoteId}
           >
             Export current as PDF
           </button>
           <button
-            onClick={() => exportToZip(notes)}
+            onClick={handleExportZip}
             className="w-full text-left px-2 py-2.5 min-h-11 flex items-center rounded hover:bg-sidebar-accent sm:py-1 sm:min-h-0"
           >
             Export all as ZIP

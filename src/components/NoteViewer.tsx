@@ -5,7 +5,6 @@ import rehypeRaw from 'rehype-raw';
 import type { Note, NoteAttachment } from '@/lib/db';
 import type { Components } from 'react-markdown';
 import { getCalloutDef, calloutTypePattern } from '@/lib/callouts';
-import { registerExportRoot } from '@/lib/exportView';
 
 const CodeBlock = lazy(() => import('./CodeBlock'));
 const MermaidBlock = lazy(() => import('./MermaidBlock'));
@@ -397,7 +396,7 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
       <div className="border-b border-border px-4 py-2">
         <span className="font-mono text-xs text-muted-foreground">Viewing</span>
       </div>
-      <div ref={(el) => registerExportRoot(el)} className="prose-notes max-w-none p-6">
+      <div className="prose-notes max-w-none p-6">
         {note.content.trim() ? (
           segments.map((seg, idx) =>
             seg.type === 'callout' ? (

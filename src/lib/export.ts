@@ -1,6 +1,6 @@
 import type { Note } from './db';
 import { saveAs } from 'file-saver';
-import { exportViewToHtml } from './exportView';
+import { renderNoteViewToHtml } from './exportView';
 
 // JSZip (~95 KB minified) is only needed when the user exports a ZIP archive,
 // so it is loaded on demand to keep it out of the initial bundle.
@@ -61,22 +61,22 @@ function slugify(title: string): string {
 }
 
 /**
- * Build the HTML for a single note: capture the live rendered view when it is
- * on screen (preserves graphics: mermaid/BPMN/chart SVG, maps, 3D models, code
- * highlighting, images), otherwise fall back to a plain markdown conversion.
+ * Build rich HTML for a note by rendering it through the real viewer (graphics
+ * included). Falls back to a plain markdown conversion if the viewer render
+ * cannot complete (e.g. the browser disallows it).
  */
-function htmlForNote(note: Note): string {
-  return exportViewToHtml(note) ?? noteToHtml(note);
+async function htmlForNote(note: Note): Promise<string> {
+  return (await renderNoteViewToHtml(note)) ?? noteToHtml(note);
 }
 
-export function exportToHtml(note: Note) {
-  const html = htmlForNote(note);
+export async function exportToHtml(note: Note) {
+  const html = await htmlForNote(note);
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   saveAs(blob, `${note.title.replace(/[^a-zA-Z0-9]/g, '_')}.html`);
 }
 
-export function exportToPdf(note: Note) {
-  const html = htmlForNote(note);
+export async function exportToPdf(note: Note) {
+  const html = await htmlForNote(note);
   const printWindow = window.open('', '_blank');
   if (printWindow) {
     printWindow.document.write(html);
@@ -116,7 +116,7 @@ export async function exportToZip(notes: Note[]) {
     if (!noteFolder) continue;
 
     // Rendered HTML copy and the markdown source live side by side.
-    noteFolder.file(`${slug}.html`, noteToHtml(note));
+    noteFolder.file(`${slug}.html`, await htmlForNote(note));
     noteFolder.file('README.md', `# ${note.title}\n\nTags: ${note.tags.join(', ')}\nCategory: ${note.category}\n\n${note.content}`);
 
     // Attachments sit alongside the note's markdown/HTML.

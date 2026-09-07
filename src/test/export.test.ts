@@ -10,9 +10,21 @@ import { saveAs } from 'file-saver';
 import type { StoredKeyPair } from '@/lib/crypto';
 import { createNote, db, saveKeyPair, updateNote, type Note } from '@/lib/db';
 import { exportDatabase, exportToHtml, exportToPdf, exportToZip } from '@/lib/export';
-import { registerExportRoot } from '@/lib/exportView';
+import { renderNoteViewToHtml } from '@/lib/exportView';
 
 vi.mock('file-saver', () => ({ saveAs: vi.fn() }));
+
+// The unit tests exercise the export glue (file writing, popup printing, ZIP
+// layout), not the browser-only off-screen React renderer. Stub the renderer so
+// the deterministic fallback (`noteToHtml`) is used unless a test opts in by
+// overriding the mock's resolved value.
+vi.mock('@/lib/exportView', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/exportView')>();
+  return {
+    ...actual,
+    renderNoteViewToHtml: vi.fn(),
+  };
+});
 
 /** jsdom 20's Blob lacks arrayBuffer(); read the bytes through FileReader. */
 function blobToArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
@@ -106,22 +118,22 @@ async function resetDb(): Promise<void> {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  registerExportRoot(null);
   vi.restoreAllMocks();
 });
 
 beforeEach(() => {
   vi.mocked(saveAs).mockClear();
-  // Some tests stub open()/canvas; ensure the live-view root never leaks from
-  // one test into the next.
-  registerExportRoot(null);
+  // By default the rich renderer returns null -> the plain markdown conversion
+  // is used, keeping these tests focused on the export plumbing.
+  vi.mocked(renderNoteViewToHtml).mockReset();
+  vi.mocked(renderNoteViewToHtml).mockResolvedValue(null);
 });
 
 // ─── exportToHtml ────────────────────────────────────────────────────────────
 
 describe('exportToHtml', () => {
   it('saves the rendered note as a sanitized .html file', async () => {
-    exportToHtml(
+    await exportToHtml(
       makeNote({
         title: 'Round 6: Export!',
         tags: ['work', 'urgent'],
@@ -149,7 +161,7 @@ describe('exportToHtml', () => {
   });
 
   it('renders every markdown level and omits the tags row for untagged notes', async () => {
-    exportToHtml(
+    await exportToHtml(
       makeNote({
         title: 'Plain',
         content: '### three\n## two\n# one\nso *important* now\nnext line',
@@ -166,19 +178,17 @@ describe('exportToHtml', () => {
     expect(html).not.toContain('class="tags"');
   });
 
-  it('exports the live rendered view when one is mounted — preserving SVG and snapping canvases to images', async () => {
-    const root = document.createElement('div');
-    root.innerHTML = [
-      '<h1>Big idea</h1>',
-      '<div class="mermaid-diagram"><svg><g id="node1"><text>flow node</text></g></svg></div>',
-      '<canvas width="300" height="200"></canvas>',
+  it('embeds the rich rendered view (SVG + canvas image) into the saved HTML', async () => {
+    const rich = [
+      '<!DOCTYPE html><html lang="en"><head><title>With graphics</title></head><body>',
+      '<main class="note-export-root">',
+      '<div class="mermaid-diagram"><svg><text>flow node</text></svg></div>',
+      '<img src="data:image/png;base64,Uk5EZXJlZEdyYXBoaWM=" alt="rendered graphic">',
+      '</main></body></html>',
     ].join('');
-    // jsdom can't read canvas pixels; stub it to simulate a rendered graphic.
-    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,Uk5EZXJlZEdyYXBoaWM=');
-    document.body.appendChild(root);
-    registerExportRoot(root);
+    vi.mocked(renderNoteViewToHtml).mockResolvedValue(rich);
 
-    exportToHtml(makeNote({ title: 'With graphics', content: '' }));
+    await exportToHtml(makeNote({ title: 'With graphics', content: '' }));
 
     const [blob] = savedCall(0);
     const html = await blob.text();
@@ -186,18 +196,25 @@ describe('exportToHtml', () => {
     expect(html).toContain('flow node');
     expect(html).toContain('mermaid-diagram');
     expect(html).toContain('data:image/png;base64,Uk5EZXJlZEdyYXBoaWM=');
-    expect(html).not.toContain('<canvas');
-    // The exported page is self-contained: it carries its own <title>.
     expect(html).toContain('<title>With graphics</title>');
+  });
 
-    document.body.removeChild(root);
+  it('renders through the rich renderer and falls back to plain HTML when it fails', async () => {
+    const note = makeNote({ title: 'Fallback', content: '# Heading' });
+    vi.mocked(renderNoteViewToHtml).mockResolvedValueOnce(null);
+
+    await exportToHtml(note);
+
+    expect(renderNoteViewToHtml).toHaveBeenCalledWith(note);
+    const [blob] = savedCall(0);
+    expect(await blob.text()).toContain('<h1>Heading</h1>');
   });
 });
 
 // ─── exportToPdf ─────────────────────────────────────────────────────────────
 
 describe('exportToPdf', () => {
-  it('writes the rendered html into a popup window and prints on load', () => {
+  it('writes the rendered html into a popup window and prints on load', async () => {
     const fakeWindow = {
       document: { write: vi.fn(), close: vi.fn() },
       print: vi.fn(),
@@ -206,7 +223,7 @@ describe('exportToPdf', () => {
     const open = vi.fn(() => fakeWindow);
     vi.stubGlobal('open', open);
 
-    exportToPdf(makeNote({ title: 'Printable', content: '# plan' }));
+    await exportToPdf(makeNote({ title: 'Printable', content: '# plan' }));
 
     expect(open).toHaveBeenCalledTimes(1);
     expect(open).toHaveBeenCalledWith('', '_blank');
@@ -222,18 +239,18 @@ describe('exportToPdf', () => {
     expect(fakeWindow.print).toHaveBeenCalledTimes(1);
   });
 
-  it('does nothing when the browser blocks the popup', () => {
+  it('does nothing when the browser blocks the popup', async () => {
     const open = vi.fn(() => null);
     vi.stubGlobal('open', open);
 
-    expect(() => exportToPdf(makeNote({ title: 'Blocked' }))).not.toThrow();
+    await expect(exportToPdf(makeNote({ title: 'Blocked' }))).resolves.toBeUndefined();
     expect(open).toHaveBeenCalledTimes(1);
   });
 
-  it('prints the live rendered view when one is mounted', () => {
-    const root = document.createElement('div');
-    root.innerHTML = '<div class="mermaid-diagram"><svg><text>printable diagram</text></svg></div><p>body</p>';
-    registerExportRoot(root);
+  it('prints the rich rendered view with graphics', async () => {
+    vi.mocked(renderNoteViewToHtml).mockResolvedValue(
+      '<html><body><main class="note-export-root"><div class="mermaid-diagram"><svg><text>printable diagram</text></svg></div></main></body></html>'
+    );
 
     const fakeWindow = {
       document: { write: vi.fn(), close: vi.fn() },
@@ -243,7 +260,7 @@ describe('exportToPdf', () => {
     const open = vi.fn(() => fakeWindow);
     vi.stubGlobal('open', open);
 
-    exportToPdf(makeNote({ title: 'Printable' }));
+    await exportToPdf(makeNote({ title: 'Printable' }));
 
     expect(fakeWindow.document.write).toHaveBeenCalledWith(
       expect.stringContaining('<svg')
