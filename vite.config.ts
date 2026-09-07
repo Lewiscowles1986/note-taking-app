@@ -48,6 +48,9 @@ export default defineConfig(() => ({
         navigateFallbackDenylist: previewBuild
           ? [/[^/]+\.[^/]+$/]
           : [/preview-builds\//, /[^/]+\.[^/]+$/],
+        // PHP wasm builds are multi-MB binaries loaded on-demand by the code
+        // runner; precaching them would blow past workbox's 2 MiB per-file cap.
+        globIgnores: ["**/php-wasm/**"],
       },
       includeAssets: [
         "favicon.svg",

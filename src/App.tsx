@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { registerJSRunner } from "@/lib/jsRunner";
+import { registerPhpRunner } from "@/lib/phpRunner";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,6 +10,7 @@ import NotFound from "./pages/NotFound.tsx";
 
 // Register code block runners
 registerJSRunner();
+registerPhpRunner();
 
 const App = () => (
   <TooltipProvider>

@@ -46,6 +46,16 @@ Obsidian-style callouts like `> [!NOTE]` and `> [!WARNING]` add styled highlight
 
 JavaScript code blocks can be executed right inside a note. Press Run to see the output — including `console.log` — without leaving the page.
 
+PHP code blocks run in the browser too, via WebAssembly. A version selector next to Run lets you pick which PHP build to execute (e.g. `8.4.x`, `8.2.29`, `7.4.33`, `5.6.40`), and you can pin a default per block with a `version:` frontmatter line:
+
+````markdown
+```php
+version: 7.4.33
+---
+echo "Hello from PHP " . PHP_VERSION;
+```
+````
+
 ## Live Diagrams with Mermaid
 
 ![Live Diagrams with Mermaid](images/mermaid-diagram.png)

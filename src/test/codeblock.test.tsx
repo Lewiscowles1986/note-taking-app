@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import CodeBlock from '../components/CodeBlock';
-import { listRunners, registerRunner, unregisterRunner } from '@/lib/codeRunners';
+import { listRunners, registerRunner, registerVersionedRunner, unregisterRunner } from '@/lib/codeRunners';
 import { registerJSRunner } from '@/lib/jsRunner';
 
 // CodeBlock pulls shiki in with a dynamic import(); replace it with a
@@ -282,6 +282,42 @@ describe('CodeBlock component', () => {
     await waitFor(() => {
       expect(second.container.querySelector('.shiki-wrapper')).not.toBeNull();
     });
+  });
+
+  it('shows a version selector for versioned runners and passes the selection', async () => {
+    const run = vi.fn(async (_code: string, options?: { version?: string }) => {
+      return `ran with ${options?.version}`;
+    });
+    registerVersionedRunner('php', run, ['8.4.x', '8.2.29', '7.4.33'], '8.2.29');
+    render(<CodeBlock code={'echo "hi";'} language="php" />);
+
+    const select = screen.getByRole('combobox', { name: 'php version' });
+    expect(select).toBeInTheDocument();
+    // Defaults to the runner's declared default version.
+    expect(select).toHaveValue('8.2.29');
+    expect(screen.getByRole('option', { name: 'PHP 8.4.x' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'PHP 7.4.33' })).toBeInTheDocument();
+
+    fireEvent.change(select, { target: { value: '8.4.x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+
+    expect(await screen.findByText('ran with 8.4.x')).toBeInTheDocument();
+    expect(run).toHaveBeenCalledWith('echo "hi";', { version: '8.4.x' });
+  });
+
+  it('uses a frontmatter version as the initial selection', async () => {
+    const run = vi.fn(async () => 'ok');
+    registerVersionedRunner('php', run, ['8.4.x', '8.2.29'], '8.4.x');
+    render(<CodeBlock code={'version: 8.2.29\n---\necho "hi";'} language="php" />);
+
+    const select = screen.getByRole('combobox', { name: 'php version' });
+    expect(select).toHaveValue('8.2.29');
+  });
+
+  it('does not show a version selector for unversioned runners', async () => {
+    registerRunner('js', async () => '');
+    render(<CodeBlock code={'console.log(1)'} language="js" />);
+    expect(screen.queryByRole('combobox', { name: 'js version' })).not.toBeInTheDocument();
   });
 
   it('highlights empty code without crashing', async () => {

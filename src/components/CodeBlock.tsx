@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Check, Copy, Play, Loader2, Info } from 'lucide-react';
-import { getRunner, hasRunner } from '@/lib/codeRunners';
+import { getRunner, hasRunner, getRunnerVersions, getDefaultVersion } from '@/lib/codeRunners';
 import { parseCodeFrontmatter } from '@/lib/codeBlockFrontmatter';
 
 interface CodeBlockProps {
@@ -17,6 +17,11 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
   const [running, setRunning] = useState(false);
   const [output, setOutput] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [showNotes, setShowNotes] = useState(false);
+
+  const versions = useMemo(() => getRunnerVersions(language), [language]);
+  const [version, setVersion] = useState<string | undefined>(() =>
+    meta.version ?? getDefaultVersion(language),
+  );
 
   const hasMeta = !!(meta.compatible?.length || meta.incompatible?.length || meta.notes);
   const canRun = hasRunner(language);
@@ -63,7 +68,7 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
     setOutput(null);
 
     try {
-      const result = await runner(code);
+      const result = await runner(code, { version });
       setOutput({ type: 'success', text: result || '(no output)' });
     } catch (err) {
       setOutput({ type: 'error', text: err instanceof Error ? err.message : String(err) });
@@ -97,6 +102,20 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
               <Info size={12} />
               Notes
             </button>
+          )}
+          {versions && versions.length > 0 && (
+            <select
+              value={version ?? ''}
+              onChange={(e) => setVersion(e.target.value)}
+              className="text-xs font-mono bg-[#1a1f24] text-white/70 border border-white/10 rounded px-1.5 py-0.5 outline-none focus:border-emerald-500/50"
+              aria-label={`${language} version`}
+            >
+              {versions.map((v) => (
+                <option key={v} value={v}>
+                  PHP {v}
+                </option>
+              ))}
+            </select>
           )}
           {canRun && (
             <button
