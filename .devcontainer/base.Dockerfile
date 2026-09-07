@@ -56,8 +56,10 @@ ENV PATH="/nix/var/nix/profiles/toolchain/bin:${PATH}"
 
 # The Playwright image ships without sudo; dev containers conventionally give
 # the non-root user passwordless sudo (used by the docker socket setup below).
+# unzip is required by the e2e export/import suite (e2e/export-import.spec.ts
+# runs `unzip -t/-l` to verify the exported ZIP archive).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends sudo \
+ && apt-get install -y --no-install-recommends sudo unzip \
  && rm -rf /var/lib/apt/lists/*
 
 # Normalize the user: the base image carries ubuntu(1000) and pwuser(1001).
