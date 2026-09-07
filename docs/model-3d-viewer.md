@@ -52,8 +52,8 @@ For the inline image and link routes, the "content" that gets loaded is simply t
 flowchart TD
     A[Markdown content] --> B{How is it written?}
     B -->|code fence lang=3dmodel| C[Fenced block]
-    B -->|![alt](target.stl/obj)| D[Inline image]
-    B -->|[text](target.stl/obj ...)| E[Inline link]
+    B -->|inline image ref ends .stl or .obj| D[Inline image]
+    B -->|inline link ref .stl .obj or mime| E[Inline link]
 
     C --> F[(Model3DBlock)]
     D --> F

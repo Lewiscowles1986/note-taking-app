@@ -268,7 +268,7 @@ flowchart TD
     B -- 3dmodel --> E[Three.js model viewer]
     B -- bpmn --> F[BPMN diagram viewer]
     B -- no language tag --> G[Plain inline code]
-    B -- other \\w+ language --> H[Code Editor / CodeBlock]
+    B -- other tagged language --> H[Code Editor / CodeBlock]
     H --> H1[Parse frontmatter]
     H --> H2[Shiki highlight github-dark]
     H1 --> H1a[Version chips]
