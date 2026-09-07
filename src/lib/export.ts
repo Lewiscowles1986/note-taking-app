@@ -1,5 +1,6 @@
 import type { Note } from './db';
 import { saveAs } from 'file-saver';
+import { exportViewToHtml } from './exportView';
 
 // JSZip (~95 KB minified) is only needed when the user exports a ZIP archive,
 // so it is loaded on demand to keep it out of the initial bundle.
@@ -49,14 +50,33 @@ function noteToHtml(note: Note): string {
 </html>`;
 }
 
+/** Sanitize a title into a safe file/path slug (kebab-case). */
+function slugify(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'note';
+}
+
+/**
+ * Build the HTML for a single note: capture the live rendered view when it is
+ * on screen (preserves graphics: mermaid/BPMN/chart SVG, maps, 3D models, code
+ * highlighting, images), otherwise fall back to a plain markdown conversion.
+ */
+function htmlForNote(note: Note): string {
+  return exportViewToHtml(note) ?? noteToHtml(note);
+}
+
 export function exportToHtml(note: Note) {
-  const html = noteToHtml(note);
+  const html = htmlForNote(note);
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   saveAs(blob, `${note.title.replace(/[^a-zA-Z0-9]/g, '_')}.html`);
 }
 
 export function exportToPdf(note: Note) {
-  const html = noteToHtml(note);
+  const html = htmlForNote(note);
   const printWindow = window.open('', '_blank');
   if (printWindow) {
     printWindow.document.write(html);
@@ -91,26 +111,19 @@ export async function exportToZip(notes: Note[]) {
   if (!folder) return;
 
   for (const note of notes) {
-    const html = noteToHtml(note);
-    const filename = `${note.title.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
-    folder.file(filename, html);
+    const slug = slugify(note.title);
+    const noteFolder = folder.folder(slug);
+    if (!noteFolder) continue;
 
-    // Include markdown source
-    folder.file(
-      `${note.title.replace(/[^a-zA-Z0-9]/g, '_')}.md`,
-      `# ${note.title}\n\nTags: ${note.tags.join(', ')}\nCategory: ${note.category}\n\n${note.content}`
-    );
+    // Rendered HTML copy and the markdown source live side by side.
+    noteFolder.file(`${slug}.html`, noteToHtml(note));
+    noteFolder.file('README.md', `# ${note.title}\n\nTags: ${note.tags.join(', ')}\nCategory: ${note.category}\n\n${note.content}`);
 
-    // Include attachments
-    if (note.attachments.length > 0) {
-      const attachDir = folder.folder(`${note.title.replace(/[^a-zA-Z0-9]/g, '_')}_attachments`);
-      if (attachDir) {
-        for (const att of note.attachments) {
-          if (att.data.startsWith('data:')) {
-            const base64 = att.data.split(',')[1];
-            attachDir.file(att.name, base64, { base64: true });
-          }
-        }
+    // Attachments sit alongside the note's markdown/HTML.
+    for (const att of note.attachments) {
+      if (att.data.startsWith('data:')) {
+        const base64 = att.data.split(',')[1];
+        noteFolder.file(att.name, base64, { base64: true });
       }
     }
   }

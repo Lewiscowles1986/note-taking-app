@@ -10,6 +10,7 @@ import { saveAs } from 'file-saver';
 import type { StoredKeyPair } from '@/lib/crypto';
 import { createNote, db, saveKeyPair, updateNote, type Note } from '@/lib/db';
 import { exportDatabase, exportToHtml, exportToPdf, exportToZip } from '@/lib/export';
+import { registerExportRoot } from '@/lib/exportView';
 
 vi.mock('file-saver', () => ({ saveAs: vi.fn() }));
 
@@ -105,10 +106,15 @@ async function resetDb(): Promise<void> {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  registerExportRoot(null);
+  vi.restoreAllMocks();
 });
 
 beforeEach(() => {
   vi.mocked(saveAs).mockClear();
+  // Some tests stub open()/canvas; ensure the live-view root never leaks from
+  // one test into the next.
+  registerExportRoot(null);
 });
 
 // ─── exportToHtml ────────────────────────────────────────────────────────────
@@ -159,6 +165,33 @@ describe('exportToHtml', () => {
     expect(html).toContain('now<br/>next line');
     expect(html).not.toContain('class="tags"');
   });
+
+  it('exports the live rendered view when one is mounted — preserving SVG and snapping canvases to images', async () => {
+    const root = document.createElement('div');
+    root.innerHTML = [
+      '<h1>Big idea</h1>',
+      '<div class="mermaid-diagram"><svg><g id="node1"><text>flow node</text></g></svg></div>',
+      '<canvas width="300" height="200"></canvas>',
+    ].join('');
+    // jsdom can't read canvas pixels; stub it to simulate a rendered graphic.
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,Uk5EZXJlZEdyYXBoaWM=');
+    document.body.appendChild(root);
+    registerExportRoot(root);
+
+    exportToHtml(makeNote({ title: 'With graphics', content: '' }));
+
+    const [blob] = savedCall(0);
+    const html = await blob.text();
+    expect(html).toContain('<svg');
+    expect(html).toContain('flow node');
+    expect(html).toContain('mermaid-diagram');
+    expect(html).toContain('data:image/png;base64,Uk5EZXJlZEdyYXBoaWM=');
+    expect(html).not.toContain('<canvas');
+    // The exported page is self-contained: it carries its own <title>.
+    expect(html).toContain('<title>With graphics</title>');
+
+    document.body.removeChild(root);
+  });
 });
 
 // ─── exportToPdf ─────────────────────────────────────────────────────────────
@@ -195,6 +228,29 @@ describe('exportToPdf', () => {
 
     expect(() => exportToPdf(makeNote({ title: 'Blocked' }))).not.toThrow();
     expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it('prints the live rendered view when one is mounted', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<div class="mermaid-diagram"><svg><text>printable diagram</text></svg></div><p>body</p>';
+    registerExportRoot(root);
+
+    const fakeWindow = {
+      document: { write: vi.fn(), close: vi.fn() },
+      print: vi.fn(),
+      onload: undefined as (() => void) | undefined,
+    };
+    const open = vi.fn(() => fakeWindow);
+    vi.stubGlobal('open', open);
+
+    exportToPdf(makeNote({ title: 'Printable' }));
+
+    expect(fakeWindow.document.write).toHaveBeenCalledWith(
+      expect.stringContaining('<svg')
+    );
+    expect(fakeWindow.document.write).toHaveBeenCalledWith(
+      expect.stringContaining('printable diagram')
+    );
   });
 });
 
@@ -288,33 +344,36 @@ describe('exportToZip', () => {
     expect(filename).toBe('notes-export.zip');
 
     const zip = await readZip(blob);
+    // Each note becomes a slug folder holding its rendered HTML, its markdown
+    // source (README.md) and its attachments alongside.
     expect(Object.keys(zip.files).sort()).toEqual([
       'notes/',
-      'notes/Plain.html',
-      'notes/Plain.md',
-      'notes/Quarterly_Report_.html',
-      'notes/Quarterly_Report_.md',
-      'notes/Quarterly_Report__attachments/',
-      'notes/Quarterly_Report__attachments/plan.txt',
+      'notes/plain/',
+      'notes/plain/README.md',
+      'notes/plain/plain.html',
+      'notes/quarterly-report/',
+      'notes/quarterly-report/README.md',
+      'notes/quarterly-report/plan.txt',
+      'notes/quarterly-report/quarterly-report.html',
     ]);
 
-    const html = await zipText(zip, 'notes/Quarterly_Report_.html');
+    const html = await zipText(zip, 'notes/quarterly-report/quarterly-report.html');
     expect(html).toContain('<title>Quarterly Report!</title>');
     expect(html).toContain('<h1>Plan</h1>');
     expect(html).toContain('<strong>bold</strong>');
 
-    const md = await zipText(zip, 'notes/Quarterly_Report_.md');
+    const md = await zipText(zip, 'notes/quarterly-report/README.md');
     expect(md).toBe(
       '# Quarterly Report!\n\nTags: work, urgent\nCategory: Work\n\n# Plan\n**bold** move'
     );
 
-    const plainMd = await zipText(zip, 'notes/Plain.md');
+    const plainMd = await zipText(zip, 'notes/plain/README.md');
     expect(plainMd).toBe('# Plain\n\nTags: \nCategory: General\n\nnothing here');
 
     // data-url attachments are stored base64-decoded; remote URLs are skipped
-    const attachment = await zipText(zip, 'notes/Quarterly_Report__attachments/plan.txt');
+    const attachment = await zipText(zip, 'notes/quarterly-report/plan.txt');
     expect(attachment).toBe('hello');
-    expect(zip.file('notes/Quarterly_Report__attachments/big.bin')).toBeNull();
+    expect(zip.file('notes/quarterly-report/big.bin')).toBeNull();
   });
 
   it('reuses the memoized jszip module across consecutive exports', async () => {
@@ -323,6 +382,6 @@ describe('exportToZip', () => {
 
     expect(saveAs).toHaveBeenCalledTimes(2);
     const zip = await readZip(savedCall(1)[0]);
-    expect(await zipText(zip, 'notes/Second_note.md')).toContain('Second note');
+    expect(await zipText(zip, 'notes/second-note/README.md')).toContain('Second note');
   });
 });
