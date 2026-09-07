@@ -92,16 +92,41 @@ to the source markdown.
 ### Preferred: OpenSSL only (no JavaScript)
 
 `scripts/verify-encrypted-export.sh` decrypts using **standard system tools
-only** — `openssl`, `jq`, `perl`, `od`. It never runs the app's code and needs
-no Node.js. (Requires OpenSSL ≥ 3 on Linux/macOS — check `openssl version`.)
+only** — `openssl`, `jq`, `perl`, `od` — and **never writes a decrypted file
+until it is confirmed correct**. Requires OpenSSL ≥ 3 (Linux/macOS):
 
 ```bash
-bash scripts/verify-encrypted-export.sh note.html "your password" > roundtrip.md
-# or against the exported JSON payload directly:
-bash scripts/verify-encrypted-export.sh payload.json "your password" > roundtrip.md
+bash scripts/verify-encrypted-export.sh <encrypted> <original> [password] [-o out]
 ```
 
-What it does, step by step (all standard):
+- `<encrypted>` — the export to decrypt: either a `payload.json` or an exported
+  `.html` (the `<pre class="encrypted-payload">` block is read automatically).
+- `<original>` — the note's source markdown used as the checksum reference.
+- `[password]` — optional; else `VERIFY_PASSWORD=…` or a hidden prompt.
+- `-o <out>` — destination filename in the working directory (default
+  `roundtrip.md`).
+
+It is safe by construction:
+
+1. **Decrypt into a throwaway temp dir** — nothing is written to a real path.
+2. **Checksum** the decrypted bytes against `sha256 <original>`.
+3. **Only then copy into the working directory** (`./roundtrip.md`) — and only
+   if the checksums match. On mismatch (or wrong password) it exits non-zero and
+   leaves **nothing** behind.
+
+```
+decrypted sha256: a8933e6b…
+original  sha256: a8933e6b…   <- must be equal
+VERIFIED — checksums match. Wrote ./roundtrip.md
+
+on mismatch:  MISMATCH … nothing written.  (exit 1)
+```
+
+If you omit `<original>`, there is no checksum to verify against, so the script
+prints the decrypted bytes **unverified** to stdout instead of copying anything.
+
+Under the hood it does the standard primitive sequence (also the exact
+mechanism you could run by hand):
 
 ```bash
 # 1. get the payload fields (base64)                                  # 2. decode -> hex / binary
@@ -118,36 +143,32 @@ key=$(openssl kdf -keylen 32 \
 openssl enc -d -aes-256-cbc -K "$key" -iv "$ivhex" -in ct.bin -o plain.txt
 ```
 
-- Password may be passed as an argument, via `VERIFY_PASSWORD=…`, or prompted
-  (hidden) when omitted.
-- The script reads the `<pre class="encrypted-payload">` block straight from an
-  exported `.html` file, or a standalone `payload.json`.
-
-### Compare
-
-```bash
-diff <original-note-markdown> roundtrip.md   # empty output = identical
-```
-
-Both verifiers write the **exact bytes** the note held (no added trailing
-newline), so `diff` (or `cmp`) is byte-for-byte.
+> Because AES-CBC is unauthenticated, treat byte-equality as the definitive
+> check: the script's checksum gate is exactly that — the decrypted file is only
+> materialised once `sha256(decrypted) == sha256(original)`.
 
 ### Alternative: Node script (fallback)
 
-`scripts/verify-encrypted-export.mjs` does the same with Node's built-in
-`webcrypto`, fully offline. Useful if `openssl` or `jq` isn't installed.
+`scripts/verify-encrypted-export.mjs` decrypts with Node's built-in
+`webcrypto`, fully offline — useful if `openssl` or `jq` isn't installed. It
+prints the exact bytes to stdout (no gated copy):
 
 ```bash
 node scripts/verify-encrypted-export.mjs note.html "your password" > roundtrip.md
+diff <original-note-markdown> roundtrip.md   # empty output = identical
 ```
+
+Both paths write the **exact bytes** the note held (no added trailing newline),
+so the comparison is byte-for-byte.
 
 ## 6. Caveats worth knowing
 
 - **AES-CBC is not authenticated.** A wrong password normally causes decryption
   to fail, but occasionally it yields well-padded garbage instead of an error.
-  The script flags output that isn't valid UTF-8, and the practical check is the
-  `diff`: if the content isn't your original markdown, you used the wrong
-  password or the data is corrupted.
+  That is exactly why the preferred verifier checksum-gates the output: the
+  decrypted file is only written once `sha256(decrypted) == sha256(original)`.
+  If the checksums differ, it used the wrong password or the data is corrupted
+  — and (with the gated script) nothing is written.
 - **Key-pair (RSA) notes** are a different path: a random AES key is wrapped
   with RSA-OAEP. They still store the plaintext encrypted, but the verification
   script covers password notes only; a key-pair note requires its private key.
