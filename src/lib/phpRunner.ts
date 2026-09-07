@@ -15,20 +15,20 @@ export const PHP_VERSIONS = [
   '5.4.45',
   '7.4.33',
   '8.0.30',
-  '8.1.33',
-  '8.2.29',
-  '8.3.23',
-  '8.4.x',
-  '8.5.x',
+  '8.1.34',
+  '8.2.33',
+  '8.3.33',
+  '8.4.25',
+  '8.5.10',
 ] as const;
-export const DEFAULT_PHP_VERSION = '8.4.x';
+export const DEFAULT_PHP_VERSION = '8.4.25';
 
 /**
  * The "last" version of each major line (5.4, 7.4, 8.4). These are the ones we
  * expect to always be present; if any of them 404s we surface an alert. Other
  * versions are optional — if they're missing they're just skipped.
  */
-export const REQUIRED_PHP_VERSIONS = ['5.4.45', '7.4.33', '8.4.x'] as const;
+export const REQUIRED_PHP_VERSIONS = ['5.4.45', '7.4.33', '8.4.25'] as const;
 
 export type PhpVersion = (typeof PHP_VERSIONS)[number];
 

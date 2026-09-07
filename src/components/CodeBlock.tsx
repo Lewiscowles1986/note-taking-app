@@ -58,7 +58,7 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
     };
   }, [language]);
 
-  // If the selected version isn't available (e.g. the default 8.4.x 404s),
+  // If the selected version isn't available (e.g. the default 8.4.25 404s),
   // fall back to the first available one.
   useEffect(() => {
     if (availableVersions && version && !availableVersions.includes(version)) {

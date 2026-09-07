@@ -29,13 +29,13 @@ describe('PHP runner registration', () => {
       '5.4.45',
       '7.4.33',
       '8.0.30',
-      '8.1.33',
-      '8.2.29',
-      '8.3.23',
-      '8.4.x',
-      '8.5.x',
+      '8.1.34',
+      '8.2.33',
+      '8.3.33',
+      '8.4.25',
+      '8.5.10',
     ]);
-    expect(DEFAULT_PHP_VERSION).toBe('8.4.x');
+    expect(DEFAULT_PHP_VERSION).toBe('8.4.25');
   });
 
   it('registers a versioned php runner', () => {
@@ -54,7 +54,7 @@ describe('PHP runner registration', () => {
 
 describe('PHP version availability', () => {
   it('declares the required versions (last of each major line)', () => {
-    expect(REQUIRED_PHP_VERSIONS).toEqual(['5.4.45', '7.4.33', '8.4.x']);
+    expect(REQUIRED_PHP_VERSIONS).toEqual(['5.4.45', '7.4.33', '8.4.25']);
   });
 
   it('checkPhpVersionAvailable returns true for a 200 HEAD', async () => {
@@ -79,14 +79,14 @@ describe('PHP version availability', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation((url: string) =>
-        Promise.resolve({ ok: url.includes('8.4.x') || url.includes('7.4.33') }),
+        Promise.resolve({ ok: url.includes('8.4.25') || url.includes('7.4.33') }),
       ),
     );
     const avail = await getAvailablePhpVersions();
-    expect(avail).toContain('8.4.x');
+    expect(avail).toContain('8.4.25');
     expect(avail).toContain('7.4.33');
     expect(avail).not.toContain('5.4.45');
-    expect(avail).not.toContain('8.5.x');
+    expect(avail).not.toContain('8.5.10');
     vi.unstubAllGlobals();
   });
 });

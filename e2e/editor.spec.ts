@@ -158,7 +158,7 @@ test('runs a PHP code block via wasm and lets you switch PHP versions', async ({
   // PHP is a versioned runner, so a version selector appears next to Run.
   const versionSelect = page.getByRole('combobox', { name: 'php version' });
   await expect(versionSelect).toBeVisible({ timeout: 10000 });
-  await expect(versionSelect).toHaveValue('8.4.x');
+  await expect(versionSelect).toHaveValue('8.4.25');
 
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByText('Hello from PHP wasm!')).toBeVisible({ timeout: 30000 });
@@ -230,7 +230,7 @@ test('lists every bundled PHP version in the selector', async ({ page }) => {
   // Native <select> options are not exposed as visible role=option nodes, so
   // assert on the <option> elements directly.
   const allVersions = [
-    '5.4.45', '7.4.33', '8.0.30', '8.1.33', '8.2.29', '8.3.23', '8.4.x', '8.5.x',
+    '5.4.45', '7.4.33', '8.0.30', '8.1.34', '8.2.33', '8.3.33', '8.4.25', '8.5.10',
   ];
   await expect(versionSelect.locator('option')).toHaveCount(allVersions.length);
   for (const v of allVersions) {
