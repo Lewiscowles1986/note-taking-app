@@ -2,6 +2,14 @@ import { useState, useEffect, useMemo } from 'react';
 import { Check, Copy, Play, Loader2, Info } from 'lucide-react';
 import { getRunner, hasRunner, getRunnerVersions, getDefaultVersion } from '@/lib/codeRunners';
 import { parseCodeFrontmatter } from '@/lib/codeBlockFrontmatter';
+import { registerJSRunner } from '@/lib/jsRunner';
+import { registerPhpRunner } from '@/lib/phpRunner';
+
+// Register the language runners when this code viewer chunk is loaded, so the
+// runner modules (and their wasm/execution payloads) are only pulled in when a
+// code block is actually rendered — not at app boot.
+registerJSRunner();
+registerPhpRunner();
 
 interface CodeBlockProps {
   code: string;
