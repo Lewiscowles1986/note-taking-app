@@ -11,7 +11,22 @@
 
 import { registerVersionedRunner } from './codeRunners';
 
-export const PHP_VERSIONS = ['8.4.x', '8.2.29', '7.4.33', '5.6.40'] as const;
+export const PHP_VERSIONS = [
+  '5.4.45',
+  '5.5.38',
+  '5.6.40',
+  '7.0.33',
+  '7.1.33',
+  '7.2.34',
+  '7.3.33',
+  '7.4.33',
+  '8.0.30',
+  '8.1.33',
+  '8.2.29',
+  '8.3.23',
+  '8.4.x',
+  '8.5.x',
+] as const;
 export const DEFAULT_PHP_VERSION = '8.4.x';
 
 export type PhpVersion = (typeof PHP_VERSIONS)[number];

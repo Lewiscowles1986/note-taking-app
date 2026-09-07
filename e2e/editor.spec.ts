@@ -229,8 +229,12 @@ test('lists every bundled PHP version in the selector', async ({ page }) => {
   await expect(versionSelect).toBeVisible({ timeout: 10000 });
   // Native <select> options are not exposed as visible role=option nodes, so
   // assert on the <option> elements directly.
-  await expect(versionSelect.locator('option')).toHaveCount(4);
-  for (const v of ['8.4.x', '8.2.29', '7.4.33', '5.6.40']) {
+  const allVersions = [
+    '5.4.45', '5.5.38', '5.6.40', '7.0.33', '7.1.33', '7.2.34', '7.3.33',
+    '7.4.33', '8.0.30', '8.1.33', '8.2.29', '8.3.23', '8.4.x', '8.5.x',
+  ];
+  await expect(versionSelect.locator('option')).toHaveCount(allVersions.length);
+  for (const v of allVersions) {
     await expect(versionSelect.locator(`option[value="${v}"]`)).toHaveText(`PHP ${v}`);
   }
   await step(page, 'php-versions-list');
