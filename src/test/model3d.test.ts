@@ -148,6 +148,8 @@ vi.mock('three', async (importOriginal) => {
     lookAt: vi.fn(),
     updateProjectionMatrix: vi.fn(),
     zoom: 1,
+    isOrthographicCamera: false,
+    isPerspectiveCamera: true,
   }));
 
   // A real constructor (assigns to `this`, returns nothing) so that the
@@ -895,6 +897,30 @@ attachment:clip.stl`);
       expect(screen.getByTitle('Pause Rotation')).toBeInTheDocument();
       fireEvent.click(screen.getByTitle('Pause Rotation'));
       expect(lastControls().autoRotate).toBe(false);
+    });
+
+    it('inverts zoom for orthographic cameras so Zoom In/Out match their labels', async () => {
+      renderModel(`---
+viewports:
+  - name: Top
+    camera: [0, 30, 0]
+    projection: orthographic
+---
+attachment:clip.stl`);
+      await waitForModelReady();
+
+      // Mark the created camera as orthographic (OrbitControls' dollyIn/dollyOut
+      // are inverted for orthographic cameras).
+      (lastInstance(THREE.OrthographicCamera) as unknown as { isOrthographicCamera: boolean }).isOrthographicCamera = true;
+
+      const controls = lastControls();
+      fireEvent.click(screen.getByTitle('Zoom In'));
+      expect(controls.dollyOut).toHaveBeenCalledWith(1.15);
+      expect(controls.dollyIn).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByTitle('Zoom Out'));
+      expect(controls.dollyIn).toHaveBeenCalledWith(1.15);
+      expect(controls.dollyOut).toHaveBeenCalledTimes(1);
     });
 
     it('pans the camera in all four directions', async () => {

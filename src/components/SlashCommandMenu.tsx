@@ -22,6 +22,8 @@ export interface SlashCommand {
   description: string;
   icon: React.ReactNode;
   insert: string;
+  /** When set, the command is only offered while the cursor is inside a fenced code block of this language. */
+  context?: '3dmodel';
 }
 
 const baseCommands: SlashCommand[] = [
@@ -67,11 +69,88 @@ const calloutCommands: SlashCommand[] = calloutRegistry.map((def) => {
   };
 });
 
-const commands: SlashCommand[] = [...baseCommands, ...calloutCommands];
+// Frontmatter-setting helpers for the 3D model block. These are only offered
+// while the cursor is inside a ```3dmodel fence (see the `context` field).
+const modelHelperCommands: SlashCommand[] = [
+  {
+    label: '3D: Camera Position',
+    description: 'Set camera [x, y, z]',
+    context: '3dmodel',
+    icon: <Box size={16} />,
+    insert: 'camera: [20, 20, 20]\n',
+  },
+  {
+    label: '3D: Orthographic Projection',
+    description: 'Use an orthographic camera',
+    context: '3dmodel',
+    icon: <Box size={16} />,
+    insert: 'projection: orthographic\n',
+  },
+  {
+    label: '3D: Render Mode',
+    description: 'Solid / Surface Angle / Wireframe',
+    context: '3dmodel',
+    icon: <Box size={16} />,
+    insert: 'mode: Solid\n',
+  },
+  {
+    label: '3D: Coordinate System',
+    description: 'y-up or z-up (CAD)',
+    context: '3dmodel',
+    icon: <Box size={16} />,
+    insert: 'system: y-up\n',
+  },
+  {
+    label: '3D: Texture Override',
+    description: 'Map a texture onto the model',
+    context: '3dmodel',
+    icon: <Box size={16} />,
+    insert: 'texture: attachment:tex.png\n',
+  },
+  {
+    label: '3D: UV Projection',
+    description: 'planar-y / planar-x / planar-z',
+    context: '3dmodel',
+    icon: <Box size={16} />,
+    insert: 'uvProjection: planar-y\n',
+  },
+  {
+    label: '3D: Enable Pan',
+    description: 'Allow panning',
+    context: '3dmodel',
+    icon: <Box size={16} />,
+    insert: 'pan: true\n',
+  },
+  {
+    label: '3D: Enable Zoom',
+    description: 'Allow zooming',
+    context: '3dmodel',
+    icon: <Box size={16} />,
+    insert: 'zoom: true\n',
+  },
+  {
+    label: '3D: Enable Drag / Rotate',
+    description: 'Allow orbit dragging',
+    context: '3dmodel',
+    icon: <Box size={16} />,
+    insert: 'drag: true\n',
+  },
+  {
+    label: '3D: Add Viewport',
+    description: 'Add a multi-viewport config',
+    context: '3dmodel',
+    icon: <Box size={16} />,
+    insert: 'viewports:\n  - name: Isometric\n    camera: [20, 20, 20]\n    mode: Solid\n',
+  },
+];
+
+const commands: SlashCommand[] = [...baseCommands, ...calloutCommands, ...modelHelperCommands];
 interface SlashCommandMenuProps {
   visible: boolean;
   position: { top: number; left: number };
   filter: string;
+  /** Fence language the cursor is inside (e.g. '3dmodel'), or null/undefined outside any fence. */
+  context?: string | null;
   onSelect: (cmd: SlashCommand) => void;
   onClose: () => void;
 }
@@ -80,6 +159,7 @@ export default function SlashCommandMenu({
   visible,
   position,
   filter,
+  context,
   onSelect,
   onClose,
 }: SlashCommandMenuProps) {
@@ -90,8 +170,9 @@ export default function SlashCommandMenu({
 
   const filtered = commands.filter(
     (c) =>
-      c.label.toLowerCase().includes(filter.toLowerCase()) ||
-      c.description.toLowerCase().includes(filter.toLowerCase())
+      (!c.context || c.context === context) &&
+      (c.label.toLowerCase().includes(filter.toLowerCase()) ||
+        c.description.toLowerCase().includes(filter.toLowerCase()))
   );
 
   useEffect(() => {
