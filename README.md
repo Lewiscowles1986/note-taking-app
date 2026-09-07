@@ -8,6 +8,8 @@ Note Haven is a local-first, privacy-focused Markdown note-taking application. I
 
 > 📸 [Feature gallery](docs/FEATURES.md) — screenshots captured automatically by the E2E suite.
 
+> 📚 **Reference documentation:** [Code Editor](docs/code-editor.md) · [3D Model Viewer](docs/model-3d-viewer.md) — full syntax, options, and worked examples so you can use these features without reading the source.
+
 ### 🔒 Privacy & Security First
 
 - **Local-first:** Your notes are stored in your browser's IndexedDB. Your data never leaves your device unless you choose to export it.
