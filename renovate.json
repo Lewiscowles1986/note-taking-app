@@ -9,10 +9,6 @@
   "prHourlyLimit": 4,
   "branchConcurrentLimit": 6,
 
-  // Run the burst off-peak instead of "at any time".
-  // Weekends only (Saturday & Sunday). Adjust to your off-peak.
-  "schedule": ["every weekend"],
-
   // Automerge green patch/minor updates; keep majors as reviewable PRs.
   "automerge": true,
   "automergeType": "branch",
