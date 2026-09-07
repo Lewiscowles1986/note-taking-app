@@ -264,9 +264,10 @@ test('HTML export renders the 3D model', async ({ page }) => {
   expect(info.opaque).toBeGreaterThan(0);
 
   // Non-functional interactive 3D controls must not survive into the export:
-  // they can't work in a static HTML copy and would render as dead buttons
-  // over the model.
-  expect(html).not.toContain('data-export-control');
+  // they can't work in a static HTML copy and would render as dead buttons or
+  // leftover chrome bars over the model. (The `.model3d-export-ui` marker
+  // legitimately appears in the inlined stylesheet as a fallback rule, so we
+  // assert on the UI labels/buttons instead of the class name.)
   expect(html).not.toContain('Download 3D Model file');
   expect(html).not.toContain('Orbit Left');
   expect(html).not.toContain('Zoom In');

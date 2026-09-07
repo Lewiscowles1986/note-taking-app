@@ -103,12 +103,14 @@ function serializeViewNode(node: HTMLElement): string {
   for (const canvas of Array.from(node.querySelectorAll('canvas'))) {
     rasterizeCanvas(canvas as HTMLCanvasElement);
   }
-  // Drop non-functional interactive 3D controls (rotation / pan / zoom /
-  // reset, the render-mode switcher and the file-download button) from the
-  // exported markup: they rely on live JS/WebGL state and would appear in the
-  // static HTML/PDF as dead buttons over the model. The rasterized model image
-  // the canvas was replaced with above is what carries the graphics.
-  for (const ctl of Array.from(node.querySelectorAll('[data-export-control]'))) {
+  // Drop the non-functional interactive 3D control chrome (rotation / pan /
+  // zoom / reset overlays, the render-mode switcher, the model-name bar and
+  // the download button) from the exported markup — they rely on live JS/WebGL
+  // state and would render as dead buttons over the model. Matched by the
+  // stable `model3d-export-ui` class (also hidden by CSS in the exported
+  // stylesheet as a fallback). The rasterized model image the canvas was
+  // replaced with above is what carries the graphics.
+  for (const ctl of Array.from(node.querySelectorAll('.model3d-export-ui'))) {
     ctl.remove();
   }
   return node.outerHTML;
@@ -138,6 +140,10 @@ function wrapDocument(title: string, styles: string, body: string): string {
     html, body { margin: 0; padding: 0; background: #fff; color: #1f2937; }
     body { font-family: system-ui, -apple-system, sans-serif; }
     .note-export-root { max-width: 860px; margin: 0 auto; padding: 2rem 1.25rem; }
+    /* Interactive 3D control chrome (model-name bar, viewport bar, rotation /
+       pan / zoom / reset overlays, download button) has no function in a
+       static export. Fallback hide (primary path strips it from the markup). */
+    .model3d-export-ui { display: none !important; }
     @media print {
       .note-export-root { max-width: 100%; padding: 0; }
       button, .note-export-ui, .no-print { display: none !important; }

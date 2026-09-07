@@ -407,7 +407,7 @@ export default function Model3DBlock({ code, language, note }: Model3DBlockProps
   return (
     <div className="relative my-3 overflow-hidden rounded-md border border-border bg-card select-none">
       {/* Upper Control Bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-[#24292e]">
+      <div className="model3d-export-ui flex items-center justify-between px-4 py-2 bg-[#24292e]">
         <div className="flex items-center gap-2">
           <BoxIcon size={14} className="text-white/50" />
           <span className="text-xs font-mono text-white font-medium">{modelName}</span>
@@ -420,7 +420,6 @@ export default function Model3DBlock({ code, language, note }: Model3DBlockProps
         <div className="flex items-center gap-1.5">
           <button
             onClick={handleDownload}
-            data-export-control
             className="flex items-center gap-1 px-2.5 py-1 text-xs rounded transition-colors text-white/70 hover:text-white hover:bg-white/10"
             title="Download 3D Model file"
           >
@@ -903,9 +902,9 @@ function Model3DViewport({
   return (
     <div className="relative bg-white flex flex-col min-w-[280px]">
       {/* Sub Header for Name & Modes */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 bg-slate-50">
+      <div className="model3d-export-ui flex items-center justify-between px-3 py-1.5 border-b border-slate-100 bg-slate-50">
         <span className="text-xs font-semibold text-slate-500 font-sans">{config.name}</span>
-        <div data-export-control className="flex items-center rounded border border-slate-200 bg-white p-0.5 shadow-sm">
+        <div className="flex items-center rounded border border-slate-200 bg-white p-0.5 shadow-sm">
           {(['Solid', 'Surface Angle', 'Wireframe'] as const).map((mode) => (
             <button
               key={mode}
@@ -927,7 +926,7 @@ function Model3DViewport({
 
       {/* Navigation Overlay Buttons */}
       {showControls && (
-        <div data-export-control>
+        <div className="model3d-export-ui">
           {/* Rotation / Auto-play (Bottom-Left) */}
           {canRotate && (
             <div className="absolute bottom-3 left-3 flex flex-col gap-1 z-10">
