@@ -11,6 +11,16 @@ import { registerJSRunner } from '@/lib/jsRunner';
 const { codeToHtmlMock } = vi.hoisted(() => ({ codeToHtmlMock: vi.fn() }));
 vi.mock('shiki', () => ({ codeToHtml: codeToHtmlMock }));
 
+// CodeBlock 404-checks PHP builds via getAvailablePhpVersions(); stub it to
+// report every version as available so the version selector renders in tests.
+const { getAvailablePhpVersionsMock } = vi.hoisted(() => ({
+  getAvailablePhpVersionsMock: vi.fn(),
+}));
+vi.mock('@/lib/phpRunner', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/phpRunner')>();
+  return { ...actual, getAvailablePhpVersions: getAvailablePhpVersionsMock };
+});
+
 const HIGHLIGHTED = '<span data-testid="shiki-output">highlighted</span>';
 const REHIGHLIGHTED = '<span data-testid="shiki-output">rehighlighted</span>';
 
@@ -21,6 +31,11 @@ describe('CodeBlock component', () => {
   beforeEach(() => {
     codeToHtmlMock.mockReset();
     codeToHtmlMock.mockResolvedValue(HIGHLIGHTED);
+    getAvailablePhpVersionsMock.mockReset();
+    getAvailablePhpVersionsMock.mockResolvedValue([
+      '5.4.45', '5.5.38', '5.6.40', '7.0.33', '7.1.33', '7.2.34', '7.3.33',
+      '7.4.33', '8.0.30', '8.1.33', '8.2.29', '8.3.23', '8.4.x', '8.5.x',
+    ]);
   });
 
   afterEach(() => {

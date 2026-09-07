@@ -29,7 +29,45 @@ export const PHP_VERSIONS = [
 ] as const;
 export const DEFAULT_PHP_VERSION = '8.4.x';
 
+/**
+ * The "last" version of each major line (5.6, 7.4, 8.4). These are the ones we
+ * expect to always be present; if any of them 404s we surface an alert. Other
+ * versions are optional — if they're missing they're just skipped.
+ */
+export const REQUIRED_PHP_VERSIONS = ['5.6.40', '7.4.33', '8.4.x'] as const;
+
 export type PhpVersion = (typeof PHP_VERSIONS)[number];
+
+let availabilityCache: string[] | null = null;
+
+/**
+ * HEAD-request the version's php-web.mjs glue to see whether that build is
+ * actually present (e.g. served by the app or the service worker cache).
+ * Returns false on 404 or any network failure.
+ */
+export async function checkPhpVersionAvailable(version: string): Promise<boolean> {
+  const base = import.meta.env.BASE_URL || '/';
+  const url = `${base}php-wasm/build-${version}/php-web.mjs`;
+  try {
+    const res = await fetch(url, { method: 'HEAD' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns the subset of PHP_VERSIONS that are actually available, checking each
+ * once and caching the result for the session.
+ */
+export async function getAvailablePhpVersions(): Promise<string[]> {
+  if (availabilityCache) return availabilityCache;
+  const results = await Promise.all(
+    PHP_VERSIONS.map(async (v) => ({ v, ok: await checkPhpVersionAvailable(v) })),
+  );
+  availabilityCache = results.filter((r) => r.ok).map((r) => r.v);
+  return availabilityCache;
+}
 
 interface PhpModule {
   ccall: (

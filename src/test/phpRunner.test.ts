@@ -1,7 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   PHP_VERSIONS,
   DEFAULT_PHP_VERSION,
+  REQUIRED_PHP_VERSIONS,
+  checkPhpVersionAvailable,
+  getAvailablePhpVersions,
   createPhpRunner,
   registerPhpRunner,
 } from '@/lib/phpRunner';
@@ -52,5 +55,44 @@ describe('PHP runner registration', () => {
   it('createPhpRunner returns a callable runner', () => {
     const runner = createPhpRunner();
     expect(runner).toBeTypeOf('function');
+  });
+});
+
+describe('PHP version availability', () => {
+  it('declares the required versions (last of each major line)', () => {
+    expect(REQUIRED_PHP_VERSIONS).toEqual(['5.6.40', '7.4.33', '8.4.x']);
+  });
+
+  it('checkPhpVersionAvailable returns true for a 200 HEAD', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+    await expect(checkPhpVersionAvailable('8.4.x')).resolves.toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it('checkPhpVersionAvailable returns false for a 404', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+    await expect(checkPhpVersionAvailable('8.4.x')).resolves.toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('checkPhpVersionAvailable returns false on network failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    await expect(checkPhpVersionAvailable('8.4.x')).resolves.toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('getAvailablePhpVersions filters to the versions that respond 200', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) =>
+        Promise.resolve({ ok: url.includes('8.4.x') || url.includes('7.4.33') }),
+      ),
+    );
+    const avail = await getAvailablePhpVersions();
+    expect(avail).toContain('8.4.x');
+    expect(avail).toContain('7.4.33');
+    expect(avail).not.toContain('5.4.45');
+    expect(avail).not.toContain('8.5.x');
+    vi.unstubAllGlobals();
   });
 });
