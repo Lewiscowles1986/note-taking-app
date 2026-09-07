@@ -34,7 +34,10 @@ async function loadPhp(version: string): Promise<PhpModule> {
     return loadedModule;
   }
 
-  const mod = await import(/* @vite-ignore */ `/php-wasm/build-${version}/php-web.mjs`);
+  // Resolve against the app's base URL (e.g. "/" in dev, "/note-taking-app/"
+  // on GitHub Pages) so the wasm is loaded from THIS repo, not the domain root.
+  const base = import.meta.env.BASE_URL || '/';
+  const mod = await import(/* @vite-ignore */ `${base}php-wasm/build-${version}/php-web.mjs`);
   const createPhpModule = mod.default as (
     opts: Record<string, unknown>,
   ) => Promise<PhpModule>;
