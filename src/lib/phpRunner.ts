@@ -43,7 +43,9 @@ let availabilityCache: string[] | null = null;
 /**
  * HEAD-request the version's php-web.mjs glue to see whether that build is
  * actually present (e.g. served by the app or the service worker cache).
- * Returns false on 404 or any network failure.
+ * Only an explicit 404 (or other non-OK status) marks a version as missing;
+ * a network error or aborted request can't confirm a 404, so we optimistically
+ * treat the build as present rather than dropping it from the selector.
  */
 export async function checkPhpVersionAvailable(version: string): Promise<boolean> {
   const base = import.meta.env.BASE_URL || '/';
@@ -52,7 +54,7 @@ export async function checkPhpVersionAvailable(version: string): Promise<boolean
     const res = await fetch(url, { method: 'HEAD' });
     return res.ok;
   } catch {
-    return false;
+    return true;
   }
 }
 

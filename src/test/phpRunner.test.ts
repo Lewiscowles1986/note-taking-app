@@ -75,9 +75,9 @@ describe('PHP version availability', () => {
     vi.unstubAllGlobals();
   });
 
-  it('checkPhpVersionAvailable returns false on network failure', async () => {
+  it('checkPhpVersionAvailable is optimistic on network failure (keeps the version)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
-    await expect(checkPhpVersionAvailable('8.4.x')).resolves.toBe(false);
+    await expect(checkPhpVersionAvailable('8.4.x')).resolves.toBe(true);
     vi.unstubAllGlobals();
   });
 
