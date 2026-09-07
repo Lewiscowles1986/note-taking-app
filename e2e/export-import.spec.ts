@@ -113,13 +113,156 @@ test('exports all notes as a ZIP', async ({ page }) => {
   //    matches. Throws (non-zero exit) if the archive is corrupt.
   execFileSync('unzip', ['-t', savePath], { stdio: 'pipe' });
 
-  // 3) Contents: the archive must contain each seeded note as .html + .md.
+  // 3) Contents: each note is a slug folder holding its rendered HTML + source.
   const listing = execFileSync('unzip', ['-l', savePath], { encoding: 'utf8' });
-  expect(listing).toContain('notes/ZipOne.html');
-  expect(listing).toContain('notes/ZipOne.md');
-  expect(listing).toContain('notes/ZipTwo.html');
-  expect(listing).toContain('notes/ZipTwo.md');
+  expect(listing).toContain('notes/zipone/zipone.html');
+  expect(listing).toContain('notes/zipone/README.md');
+  expect(listing).toContain('notes/ziptwo/ziptwo.html');
+  expect(listing).toContain('notes/ziptwo/README.md');
   await step(page, 'zip-export');
+});
+
+test('ZIP keeps raw markdown (edit view) and rich HTML (view) separate', async ({ page }) => {
+  const diagram = ['graph TD', '  A[Start] --> B[End]'].join('\n');
+  await seedNotes(page, [
+    makeNote({
+      title: 'ZipMermaid',
+      content: ['# ZipMermaid', '', '```mermaid', 'graph TD', '  A[Start] --> B[End]', '```', ''].join('\n'),
+    }),
+  ]);
+  await page.goto(APP_PATH);
+  await expect(page.getByText('ZipMermaid', { exact: true })).toBeVisible();
+  await debugBreak(page, 'zip mermaid note seeded');
+
+  await page.getByTitle('Export').click();
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export all as ZIP' }).click();
+  const download = await downloadPromise;
+
+  fs.mkdirSync(downloadsDir, { recursive: true });
+  const savePath = path.join(downloadsDir, download.suggestedFilename());
+  await download.saveAs(savePath);
+
+  // Markdown is the edit-view source: the mermaid code fence is preserved verbatim.
+  const md = execFileSync('unzip', ['-p', savePath, 'notes/zipmermaid/README.md'], { encoding: 'utf8' });
+  expect(md).toContain('```mermaid');
+  expect(md).toContain(diagram);
+
+  // HTML is the rendered view: the diagram is embedded as SVG, not a code fence.
+  const html = execFileSync('unzip', ['-p', savePath, 'notes/zipmermaid/zipmermaid.html'], { encoding: 'utf8' });
+  expect(html).toContain('<svg');
+  expect(html).not.toContain('```mermaid');
+  await step(page, 'zip-markdown-vs-html');
+});
+
+test('HTML export includes rendered mermaid graphics', async ({ page }) => {
+  await seedNotes(page, [
+    makeNote({
+      title: 'DiagramNote',
+      content: [
+        '# DiagramNote',
+        '',
+        '```mermaid',
+        'graph TD',
+        '  A[Start] --> B[End]',
+        '```',
+      ].join('\n'),
+    }),
+  ]);
+  await page.goto(APP_PATH);
+  await page.locator('div.group', { hasText: 'DiagramNote' }).click();
+  await expect(page.getByRole('heading', { name: 'DiagramNote', level: 2 })).toBeVisible();
+
+  // Open the export dropdown and trigger the single-note HTML export.
+  await page.getByTitle('Export').click();
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export current as HTML' }).click();
+  const download = await downloadPromise;
+
+  fs.mkdirSync(downloadsDir, { recursive: true });
+  const savePath = path.join(downloadsDir, download.suggestedFilename());
+  await download.saveAs(savePath);
+  const html = fs.readFileSync(savePath, 'utf8');
+
+  // The note view (not the raw markdown) is exported, so the mermaid block is
+  // present as rendered SVG rather than a ```mermaid code fence.
+  expect(html).toContain('<svg');
+  expect(html).toContain('Start');
+  expect(html).not.toContain('```mermaid');
+  await step(page, 'rich-html-export');
+});
+
+test('HTML export renders the 3D model', async ({ page }) => {
+  // A minimal valid ASCII STL (tetrahedron) embedded as a data URL — matches
+  // the fixtures used by model3d.spec.ts.
+  const STL = [
+    'solid tetra',
+    'facet normal 0 0 1',
+    '  outer loop',
+    '    vertex 0 0 0',
+    '    vertex 1 0 0',
+    '    vertex 0 1 0',
+    '  endloop',
+    'endfacet',
+    'facet normal 0 0 1',
+    '  outer loop',
+    '    vertex 0 0 0',
+    '    vertex 0 0 1',
+    '    vertex 1 0 0',
+    '  endloop',
+    'endfacet',
+    'endsolid tetra',
+  ].join('\n');
+  const STL_DATA_URL = 'data:application/octet-stream;base64,' + Buffer.from(STL).toString('base64');
+
+  await seedNotes(page, [
+    makeNote({
+      title: 'ModelNote',
+      content: ['# ModelNote', '', '```3dmodel', STL_DATA_URL, '```', ''].join('\n'),
+    }),
+  ]);
+  await page.goto(APP_PATH);
+  await page.locator('div.group', { hasText: 'ModelNote' }).click();
+  await page.getByTitle('Export').click();
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export current as HTML' }).click();
+  const download = await downloadPromise;
+
+  fs.mkdirSync(downloadsDir, { recursive: true });
+  const savePath = path.join(downloadsDir, download.suggestedFilename());
+  await download.saveAs(savePath);
+  const html = fs.readFileSync(savePath, 'utf8');
+
+  // The 3D viewport canvas must have been snapped to an embedded image.
+  expect(html).not.toContain('<canvas');
+  const match = html.match(/src="(data:image\/png;base64,[^"]+)"/);
+  expect(match).not.toBeNull();
+
+  // And that image must hold real pixels (a blank/transparent WebGL canvas
+  // would otherwise be captured when 3D is off-screen at export time).
+  const info = await page.evaluate(async (src) => {
+    const img = new Image();
+    img.src = src;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext('2d');
+    if (!ctx) return { distinct: 0, opaque: 0 };
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    const colors = new Set<string>();
+    let opaque = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] > 0) opaque++;
+      colors.add(`${d[i]},${d[i + 1]},${d[i + 2]}`);
+    }
+    return { distinct: colors.size, opaque };
+  }, match[1]);
+
+  expect(info.distinct).toBeGreaterThan(1);
+  expect(info.opaque).toBeGreaterThan(0);
+  await step(page, 'rich-html-export-3d');
 });
 
 test('imports notes from a file', async ({ page }) => {
