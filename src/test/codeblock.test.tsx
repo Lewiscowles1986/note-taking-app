@@ -33,8 +33,7 @@ describe('CodeBlock component', () => {
     codeToHtmlMock.mockResolvedValue(HIGHLIGHTED);
     getAvailablePhpVersionsMock.mockReset();
     getAvailablePhpVersionsMock.mockResolvedValue([
-      '5.4.45', '7.0.33', '7.1.33', '7.2.34', '7.3.33', '7.4.33',
-      '8.0.30', '8.1.33', '8.2.29', '8.3.23', '8.4.x', '8.5.x',
+      '5.4.45', '7.4.33', '8.0.30', '8.1.33', '8.2.29', '8.3.23', '8.4.x', '8.5.x',
     ]);
   });
 
