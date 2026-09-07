@@ -123,7 +123,21 @@ export function createPhpRunner() {
     const version = options?.version ?? DEFAULT_PHP_VERSION;
     const php = await loadPhp(version);
     outputBuffer = [];
-    php.ccall('phpw_run', null, ['string'], [normalizePhpCode(code)]);
+    try {
+      php.ccall('phpw_run', null, ['string'], [normalizePhpCode(code)]);
+    } catch (err) {
+      // Wasm runtime traps (e.g. "function signature mismatch" from an indirect
+      // call, or "null function" for a function not compiled into the build)
+      // surface as opaque JS errors. Translate them into something actionable.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/signature mismatch|null function/i.test(msg)) {
+        throw new Error(
+          `This PHP ${version} wasm build hit a runtime error (${msg}). ` +
+            'The build may not support this function — try a newer PHP version.',
+        );
+      }
+      throw err;
+    }
     const output = outputBuffer.join('');
     // Fatal/parse errors are written to stdout by the embedded SAPI; surface
     // them as a thrown error so the code block renders them as error output
