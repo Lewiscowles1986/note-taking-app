@@ -4,6 +4,7 @@ import { getRunner, hasRunner, getRunnerVersions, getDefaultVersion } from '@/li
 import { parseCodeFrontmatter } from '@/lib/codeBlockFrontmatter';
 import { registerJSRunner } from '@/lib/jsRunner';
 import { registerPhpRunner } from '@/lib/phpRunner';
+import { looksLikeHtml } from '@/lib/htmlOutput';
 
 // Register the language runners when this code viewer chunk is loaded, so the
 // runner modules (and their wasm/execution payloads) are only pulled in when a
@@ -168,17 +169,30 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
           dangerouslySetInnerHTML={{ __html: html }}
         />
       )}
-      {output && (
-        <div
-          className={`px-4 py-3 text-xs font-mono whitespace-pre-wrap border-t border-white/10 ${
-            output.type === 'error'
-              ? 'bg-red-950/50 text-red-300'
-              : 'bg-[#1a1f24] text-green-300'
-          }`}
-        >
-          <span className="text-white/30 select-none">{output.type === 'error' ? '✗ ' : '▸ '}</span>
-          {output.text}
-        </div>
+      {output && output.type === 'success' && looksLikeHtml(output.text) ? (
+        // HTML output (e.g. PHP echo "<h1>…</h1>") renders in a sandboxed
+        // iframe via srcdoc. allow-scripts lets embedded JS run, but the frame
+        // is a unique origin so it can't touch the parent page.
+        <iframe
+          title="HTML output"
+          sandbox="allow-scripts"
+          srcDoc={output.text}
+          className="w-full border-t border-white/10 bg-white"
+          style={{ minHeight: '200px' }}
+        />
+      ) : (
+        output && (
+          <div
+            className={`px-4 py-3 text-xs font-mono whitespace-pre-wrap border-t border-white/10 ${
+              output.type === 'error'
+                ? 'bg-red-950/50 text-red-300'
+                : 'bg-[#1a1f24] text-green-300'
+            }`}
+          >
+            <span className="text-white/30 select-none">{output.type === 'error' ? '✗ ' : '▸ '}</span>
+            {output.text}
+          </div>
+        )
       )}
     </div>
   );

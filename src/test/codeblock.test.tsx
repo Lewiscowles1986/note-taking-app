@@ -161,6 +161,25 @@ describe('CodeBlock component', () => {
     expect(screen.getByRole('button', { name: 'Run' })).toBeEnabled();
   });
 
+  it('renders HTML output in a sandboxed iframe via srcdoc', async () => {
+    registerRunner('php', async () => '<h1>Hello</h1>');
+    render(<CodeBlock code={'echo "<h1>Hello</h1>";'} language="php" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+    const iframe = await screen.findByTitle('HTML output');
+    expect(iframe).toHaveAttribute('srcdoc', '<h1>Hello</h1>');
+    expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
+  });
+
+  it('renders non-HTML output as plain text, not an iframe', async () => {
+    registerRunner('php', async () => 'Hello world');
+    render(<CodeBlock code={'echo "Hello world";'} language="php" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+    expect(await screen.findByText('Hello world')).toBeInTheDocument();
+    expect(screen.queryByTitle('HTML output')).not.toBeInTheDocument();
+  });
+
   it('keeps the Run button pending until a slow runner settles', async () => {
     let resolveRun!: (value: string) => void;
     registerRunner(
