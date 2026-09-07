@@ -129,6 +129,87 @@ beforeEach(() => {
   vi.mocked(renderNoteViewToHtml).mockResolvedValue(null);
 });
 
+// ─── encrypted notes are only ever exported with the ciphertext ──────────────
+
+describe('encrypted notes are only ever exported encrypted', () => {
+  // Plaintext string that must NEVER appear in any exported artifact.
+  const PLANE = 'the top secret plaintext';
+  const encryptedNote = makeNote({
+    title: 'Secret note',
+    content: '[encrypted]',
+    category: 'Private',
+    tags: ['secret'],
+    encrypted: {
+      method: 'password',
+      ciphertext: 'SGVsbG8gdGhpcyBpcyBlbmNyeXB0ZWQ=',
+      iv: 'aXZlY3Rvcg==',
+      salt: 'c2FsdA==',
+    },
+  });
+
+  it('exportToHtml embeds the ciphertext and never the plaintext', async () => {
+    await exportToHtml(encryptedNote);
+
+    const [blob] = savedCall(0);
+    const html = await blob.text();
+    expect(html).not.toContain(PLANE);
+    expect(html).not.toContain('[encrypted]');
+    expect(html).toContain('Password encrypted');
+    expect(html).toContain('<title>Secret note</title>');
+    expect(html).toContain('SGVsbG8gdGhpcyBpcyBlbmNyeXB0ZWQ=');
+    // The rich (decrypting) renderer must never run for an encrypted note.
+    expect(renderNoteViewToHtml).not.toHaveBeenCalled();
+  });
+
+  it('prints only the encrypted form for PDF export', async () => {
+    const fakeWindow = {
+      document: { write: vi.fn(), close: vi.fn() },
+      print: vi.fn(),
+      onload: undefined as (() => void) | undefined,
+    };
+    vi.stubGlobal('open', vi.fn(() => fakeWindow));
+
+    await exportToPdf(encryptedNote);
+
+    const written = fakeWindow.document.write.mock.calls[0][0] as string;
+    expect(written).not.toContain(PLANE);
+    expect(written).toContain('Password encrypted');
+    expect(written).toContain('SGVsbG8gdGhpcyBpcyBlbmNyeXB0ZWQ=');
+    expect(renderNoteViewToHtml).not.toHaveBeenCalled();
+  });
+
+  it('zip export keeps an encrypted note encrypted (ciphertext, not plaintext)', async () => {
+    await exportToZip([encryptedNote]);
+
+    const [blob] = savedCall(0);
+    const zip = await readZip(blob);
+    const md = await zipText(zip, 'notes/secret-note/README.md');
+    const html = await zipText(zip, 'notes/secret-note/secret-note.html');
+
+    expect(md).toContain('SGVsbG8gdGhpcyBpcyBlbmNyeXB0ZWQ=');
+    expect(md).not.toContain(PLANE);
+    expect(md).not.toContain('[encrypted]');
+    expect(html).toContain('SGVsbG8gdGhpcyBpcyBlbmNyeXB0ZWQ=');
+    expect(html).toContain('Password encrypted');
+    expect(html).not.toContain(PLANE);
+    expect(renderNoteViewToHtml).not.toHaveBeenCalled();
+  });
+
+  it('never leaks decrypted content even if a caller passes a decrypted note that is still marked encrypted', async () => {
+    // Simulates a hypothetical misuse where a caller hands the export a note
+    // whose .content was replaced with plaintext while .encrypted is still set.
+    // The exporter must ignore .content and emit only the ciphertext.
+    const leaked = { ...encryptedNote, content: PLANE };
+    await exportToHtml(leaked);
+
+    const [blob] = savedCall(0);
+    const html = await blob.text();
+    expect(html).not.toContain(PLANE);
+    expect(html).toContain('SGVsbG8gdGhpcyBpcyBlbmNyeXB0ZWQ=');
+    expect(renderNoteViewToHtml).not.toHaveBeenCalled();
+  });
+});
+
 // ─── exportToHtml ────────────────────────────────────────────────────────────
 
 describe('exportToHtml', () => {
