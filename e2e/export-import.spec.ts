@@ -262,6 +262,15 @@ test('HTML export renders the 3D model', async ({ page }) => {
 
   expect(info.distinct).toBeGreaterThan(1);
   expect(info.opaque).toBeGreaterThan(0);
+
+  // Non-functional interactive 3D controls must not survive into the export:
+  // they can't work in a static HTML copy and would render as dead buttons
+  // over the model.
+  expect(html).not.toContain('data-export-control');
+  expect(html).not.toContain('Download 3D Model file');
+  expect(html).not.toContain('Orbit Left');
+  expect(html).not.toContain('Zoom In');
+  expect(html).not.toContain('Reset Camera View');
   await step(page, 'rich-html-export-3d');
 });
 

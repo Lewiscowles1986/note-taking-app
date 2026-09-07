@@ -103,6 +103,14 @@ function serializeViewNode(node: HTMLElement): string {
   for (const canvas of Array.from(node.querySelectorAll('canvas'))) {
     rasterizeCanvas(canvas as HTMLCanvasElement);
   }
+  // Drop non-functional interactive 3D controls (rotation / pan / zoom /
+  // reset, the render-mode switcher and the file-download button) from the
+  // exported markup: they rely on live JS/WebGL state and would appear in the
+  // static HTML/PDF as dead buttons over the model. The rasterized model image
+  // the canvas was replaced with above is what carries the graphics.
+  for (const ctl of Array.from(node.querySelectorAll('[data-export-control]'))) {
+    ctl.remove();
+  }
   return node.outerHTML;
 }
 
