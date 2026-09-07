@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/note-taking-app/preview-builds/feat-3d-model-slash-helpers-and-zoom-fix/sw.js', { scope: '/note-taking-app/preview-builds/feat-3d-model-slash-helpers-and-zoom-fix/' })})}
