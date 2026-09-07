@@ -220,7 +220,7 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
           sandbox="allow-scripts"
           srcDoc={output.text}
           className="w-full border-t border-white/10 bg-white"
-          style={{ minHeight: '200px' }}
+          style={{ minHeight: '50svh' }}
         />
       ) : (
         output && (
