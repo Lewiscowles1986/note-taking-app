@@ -918,11 +918,25 @@ function Model3DViewport({
 
   const triggerZoom = (zoomIn: boolean) => {
     const controls = controlsRef.current;
+    const camera = cameraRef.current;
     if (!controls) return;
+    // OrbitControls' dollyIn/dollyOut are inverted for orthographic cameras:
+    // dollyIn divides the zoom (zooms out) and dollyOut multiplies it (zooms
+    // in), the opposite of perspective cameras. Branch on the camera type so
+    // the Zoom In/Out buttons always behave as labeled.
+    const isOrtho = camera ? (camera as THREE.OrthographicCamera).isOrthographicCamera : false;
     if (zoomIn) {
-      controls.dollyIn(1.15);
+      if (isOrtho) {
+        controls.dollyOut(1.15);
+      } else {
+        controls.dollyIn(1.15);
+      }
     } else {
-      controls.dollyOut(1.15);
+      if (isOrtho) {
+        controls.dollyIn(1.15);
+      } else {
+        controls.dollyOut(1.15);
+      }
     }
     controls.update();
   };

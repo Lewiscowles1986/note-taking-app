@@ -11,7 +11,7 @@ const TOTAL_COMMANDS = 19;
  * props (visible / position / filter) and window-level key events, so no
  * parent editor scaffolding is needed.
  */
-function renderMenu({ visible = true, filter = '' }: { visible?: boolean; filter?: string } = {}) {
+function renderMenu({ visible = true, filter = '', context }: { visible?: boolean; filter?: string; context?: string | null } = {}) {
   const onSelect = vi.fn();
   const onClose = vi.fn();
   const view = render(
@@ -19,6 +19,7 @@ function renderMenu({ visible = true, filter = '' }: { visible?: boolean; filter
       visible={visible}
       position={{ top: 120, left: 40 }}
       filter={filter}
+      context={context}
       onSelect={onSelect}
       onClose={onClose}
     />,
@@ -275,5 +276,47 @@ describe('SlashCommandMenu component', () => {
     expect(fireEvent.keyDown(document, { key: 'Enter' })).toBe(true);
     expect(view.onSelect).not.toHaveBeenCalled();
     expect(view.onClose).not.toHaveBeenCalled();
+  });
+
+  it('hides the 3D-model helper commands outside a 3dmodel fence', () => {
+    // No context (or a non-3dmodel context) must not surface the helpers.
+    const { container } = renderMenu({ context: null });
+    const labels = [...container.querySelectorAll('.slash-menu-item')].map(
+      (item) => item.querySelector('.font-medium')?.textContent,
+    );
+    expect(labels).toHaveLength(TOTAL_COMMANDS);
+    expect(labels.some((l) => l?.startsWith('3D:'))).toBe(false);
+  });
+
+  it('offers the 3D-model helper commands only inside a 3dmodel fence', () => {
+    const { container } = renderMenu({ context: '3dmodel' });
+    const labels = [...container.querySelectorAll('.slash-menu-item')].map(
+      (item) => item.querySelector('.font-medium')?.textContent,
+    );
+    // The 10 helpers are added on top of the 19 base/callout commands.
+    expect(labels).toHaveLength(TOTAL_COMMANDS + 10);
+    expect(labels.filter((l) => l?.startsWith('3D:'))).toHaveLength(10);
+    expect(screen.getByText('3D: Camera Position')).toBeInTheDocument();
+    expect(screen.getByText('3D: Add Viewport')).toBeInTheDocument();
+  });
+
+  it('filters 3D-model helpers by label inside a 3dmodel fence', () => {
+    const { container } = renderMenu({ context: '3dmodel', filter: 'viewport' });
+    const labels = [...container.querySelectorAll('.slash-menu-item')].map(
+      (item) => item.querySelector('.font-medium')?.textContent,
+    );
+    expect(labels).toEqual(['3D: Add Viewport']);
+  });
+
+  it('selects a 3D-model helper with its frontmatter insert payload', () => {
+    const { onSelect } = renderMenu({ context: '3dmodel' });
+
+    fireEvent.click(screen.getByText('3D: Add Viewport').closest('.slash-menu-item') as HTMLElement);
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        label: '3D: Add Viewport',
+        insert: 'viewports:\n  - name: Isometric\n    camera: [20, 20, 20]\n    mode: Solid\n',
+      }),
+    );
   });
 });

@@ -8,6 +8,30 @@ interface NoteEditorProps {
   onSave: (changes: Partial<Note>) => void;
 }
 
+/**
+ * Returns the language of the fenced code block the cursor is inside, or null
+ * when the cursor is outside any fence. Scans the text before the cursor and
+ * toggles on/off at each ``` marker, tracking the opening language.
+ */
+function fenceContextAt(content: string, pos: number): string | null {
+  const before = content.slice(0, pos);
+  let inFence = false;
+  let lang: string | null = null;
+  for (const line of before.split('\n')) {
+    const m = line.match(/^```(\w*)/);
+    if (m) {
+      if (!inFence) {
+        inFence = true;
+        lang = m[1] || null;
+      } else {
+        inFence = false;
+        lang = null;
+      }
+    }
+  }
+  return inFence ? lang : null;
+}
+
 export default function NoteEditor({ note, onSave }: NoteEditorProps) {
   const [content, setContent] = useState(note.content);
   const [title, setTitle] = useState(note.title);
@@ -19,6 +43,7 @@ export default function NoteEditor({ note, onSave }: NoteEditorProps) {
   const [slashFilter, setSlashFilter] = useState('');
   const [slashPos, setSlashPos] = useState({ top: 0, left: 0 });
   const [slashStart, setSlashStart] = useState(-1);
+  const [slashContext, setSlashContext] = useState<string | null>(null);
 
   const lastNoteId = useRef(note.id);
 
@@ -58,6 +83,7 @@ export default function NoteEditor({ note, onSave }: NoteEditorProps) {
       setSlashVisible(true);
       setSlashFilter(filter);
       setSlashStart(lastNewline + 1);
+      setSlashContext(fenceContextAt(val, pos));
 
       // Position the menu
       if (textareaRef.current) {
@@ -350,6 +376,7 @@ export default function NoteEditor({ note, onSave }: NoteEditorProps) {
           visible={slashVisible}
           position={slashPos}
           filter={slashFilter}
+          context={slashContext}
           onSelect={handleSlashSelect}
           onClose={() => setSlashVisible(false)}
         />
