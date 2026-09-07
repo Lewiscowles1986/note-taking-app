@@ -223,6 +223,11 @@ test('HTML export renders the 3D model', async ({ page }) => {
   ]);
   await page.goto(APP_PATH);
   await page.locator('div.group', { hasText: 'ModelNote' }).click();
+  // Open the note in rendered (view) mode, where the live 3D controls appear.
+  await page.getByRole('button', { name: 'View', exact: true }).click();
+  // "Save camera view" is a live-only control: it captures the current camera
+  // back into the note's frontmatter, so it must show while viewing the model.
+  await expect(page.getByRole('button', { name: 'Save camera view' })).toBeVisible();
   await page.getByTitle('Export').click();
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export current as HTML' }).click();
@@ -269,6 +274,7 @@ test('HTML export renders the 3D model', async ({ page }) => {
   // legitimately appears in the inlined stylesheet as a fallback rule, so we
   // assert on the UI labels/buttons instead of the class name.)
   expect(html).not.toContain('Download 3D Model file');
+  expect(html).not.toContain('Save camera view');
   expect(html).not.toContain('Orbit Left');
   expect(html).not.toContain('Zoom In');
   expect(html).not.toContain('Reset Camera View');
