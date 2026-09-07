@@ -14,6 +14,10 @@ dist-ssr
 .npm-cache
 .worktrees
 
+# Scratch/analysis artifacts
+.ghcache/
+.pw-browsers/
+
 # Playwright E2E artifacts (baselines in e2e/*-snapshots stay tracked)
 test-results/
 playwright-report/

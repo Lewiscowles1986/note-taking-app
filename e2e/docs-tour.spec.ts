@@ -84,7 +84,9 @@ const STL_DATA_URL = 'data:application/octet-stream;base64,' + Buffer.from(STL).
 async function shot(page: Page, name: string, opts?: { fullPage?: boolean }): Promise<string> {
   fs.mkdirSync(IMAGES_DIR, { recursive: true });
   const filePath = path.join(IMAGES_DIR, `${name}.png`);
-  await page.screenshot({ path: filePath, fullPage: opts?.fullPage ?? false });
+  // Generous timeout: fullPage capture can blow through the shared 10s action
+  // timeout under runner load (see Devcontainer scheduled e2e failures).
+  await page.screenshot({ path: filePath, fullPage: opts?.fullPage ?? false, timeout: 60_000 });
   console.log(`[docs] ${name}: ${filePath}`);
   return filePath;
 }

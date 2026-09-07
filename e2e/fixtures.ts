@@ -288,7 +288,10 @@ export async function step(
   const dir = path.join(process.cwd(), 'e2e', 'artifacts', fileBase, title);
   await fs.promises.mkdir(dir, { recursive: true });
   const filePath = path.join(dir, `${name}.png`);
-  await page.screenshot({ path: filePath, fullPage: opts?.fullPage ?? true });
+  // Diagnostic screenshot (not an assertion): a generous timeout protects CI
+  // where fullPage capture of taller pages can blow through the shared 10s
+  // action timeout under runner load (see Devcontainer scheduled e2e failures).
+  await page.screenshot({ path: filePath, fullPage: opts?.fullPage ?? true, timeout: 60_000 });
   console.log(`[step] ${name}: ${filePath}`);
   return filePath;
 }
