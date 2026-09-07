@@ -815,9 +815,17 @@ function Model3DViewport({
     // the Zoom In/Out buttons always behave as labeled.
     const isOrtho = camera ? (camera as THREE.OrthographicCamera).isOrthographicCamera : false;
     if (zoomIn) {
-      isOrtho ? controls.dollyOut(1.15) : controls.dollyIn(1.15);
+      if (isOrtho) {
+        controls.dollyOut(1.15);
+      } else {
+        controls.dollyIn(1.15);
+      }
     } else {
-      isOrtho ? controls.dollyIn(1.15) : controls.dollyOut(1.15);
+      if (isOrtho) {
+        controls.dollyIn(1.15);
+      } else {
+        controls.dollyOut(1.15);
+      }
     }
     controls.update();
   };
