@@ -1,5 +1,6 @@
 import type { Note } from './db';
 import { saveAs } from 'file-saver';
+import { renderNoteViewToHtml } from './exportView';
 
 // JSZip (~95 KB minified) is only needed when the user exports a ZIP archive,
 // so it is loaded on demand to keep it out of the initial bundle.
@@ -49,14 +50,110 @@ function noteToHtml(note: Note): string {
 </html>`;
 }
 
-export function exportToHtml(note: Note) {
-  const html = noteToHtml(note);
+/** Sanitize a title into a safe file/path slug (kebab-case). */
+function slugify(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'note';
+}
+
+/** HTML-escape a string for embedding in exported documents/attributes. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Standalone HTML document for an ENCRYPTED note. It embeds only the encrypted
+ * payload (ciphertext + metadata) — never the plaintext — so the exported file
+ * preserves the note in an unreadable state that still requires the encryption
+ * credential. Deliberately reads `note.encrypted` and ignores `note.content`
+ * (which is the "[encrypted]" placeholder, and would be a leak if a caller ever
+ * passed decrypted content while the note was still marked encrypted).
+ */
+function encryptedNoteToHtml(note: Note): string {
+  const encrypted = note.encrypted ?? null;
+  const methodLabel =
+    encrypted?.method === 'keypair'
+      ? `Key-pair encrypted${encrypted.keyFingerprint ? ` (key fingerprint ${escapeHtml(encrypted.keyFingerprint)})` : ''}`
+      : 'Password encrypted';
+  const payloadJson = encrypted ? JSON.stringify(encrypted, null, 2) : '(no encrypted payload recorded)';
+  const tagsRow = note.tags.length
+    ? `<div class="tags">Tags: ${note.tags.map(t => `<span>${escapeHtml(t)}</span>`).join(' ')}</div>`
+    : '';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(note.title)}</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; color: #333; line-height: 1.6; }
+    .meta { color: #888; font-size: 0.85rem; margin-bottom: 2rem; }
+    .tags span { background: #f0e6d3; color: #8b6914; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; margin-right: 4px; }
+    .encrypted-banner { border: 1px solid #d7b94c; background: #fdf9e8; color: #6b5a12; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; }
+    .encrypted-payload { background: #f4f4f4; padding: 1rem; border-radius: 8px; color: #444; white-space: pre-wrap; word-break: break-all; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(note.title)}</h1>
+  <div class="meta">
+    <div>Created: ${note.createdAt.toLocaleDateString()}</div>
+    <div>Category: ${escapeHtml(note.category)}</div>
+    ${tagsRow}
+  </div>
+  <div class="encrypted-banner">
+    <strong>${methodLabel}</strong> — this note was exported in its encrypted form.
+    Its content cannot be read without the encryption credential; no plaintext was exported.
+  </div>
+  <h2>Encrypted content</h2>
+  <pre class="encrypted-payload">${escapeHtml(payloadJson)}</pre>
+</body>
+</html>`;
+}
+
+/**
+ * Build rich HTML for a note by rendering it through the real viewer (graphics
+ * included). Falls back to a plain markdown conversion if the viewer render
+ * cannot complete (e.g. the browser disallows it).
+ *
+ * Encrypted notes are a hard exception: they are never rendered or decrypted
+ * for export — only the encrypted payload is emitted.
+ */
+async function htmlForNote(note: Note): Promise<string> {
+  if (note.encrypted) return encryptedNoteToHtml(note);
+  return (await renderNoteViewToHtml(note)) ?? noteToHtml(note);
+}
+
+/**
+ * The raw-markdown source that ships in a ZIP folder's README.md. For an
+ * encrypted note there is no readable source, so the encrypted payload is
+ * embedded instead — content is preserved, plaintext never leaves the app.
+ */
+function noteMarkdownSource(note: Note): string {
+  const header = `# ${note.title}\n\nTags: ${note.tags.join(', ')}\nCategory: ${note.category}\n`;
+  if (note.encrypted) {
+    const payloadJson = JSON.stringify(note.encrypted, null, 2);
+    return `${header}\n> Password-encrypted note — exported in encrypted form. Content is embedded below and requires the encryption credential to decrypt.\n\n\`\`\`json\n${payloadJson}\n\`\`\`\n`;
+  }
+  return `${header}\n${note.content}`;
+}
+
+export async function exportToHtml(note: Note) {
+  const html = await htmlForNote(note);
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   saveAs(blob, `${note.title.replace(/[^a-zA-Z0-9]/g, '_')}.html`);
 }
 
-export function exportToPdf(note: Note) {
-  const html = noteToHtml(note);
+export async function exportToPdf(note: Note) {
+  const html = await htmlForNote(note);
   const printWindow = window.open('', '_blank');
   if (printWindow) {
     printWindow.document.write(html);
@@ -91,26 +188,19 @@ export async function exportToZip(notes: Note[]) {
   if (!folder) return;
 
   for (const note of notes) {
-    const html = noteToHtml(note);
-    const filename = `${note.title.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
-    folder.file(filename, html);
+    const slug = slugify(note.title);
+    const noteFolder = folder.folder(slug);
+    if (!noteFolder) continue;
 
-    // Include markdown source
-    folder.file(
-      `${note.title.replace(/[^a-zA-Z0-9]/g, '_')}.md`,
-      `# ${note.title}\n\nTags: ${note.tags.join(', ')}\nCategory: ${note.category}\n\n${note.content}`
-    );
+    // Rendered HTML copy and the markdown source live side by side.
+    noteFolder.file(`${slug}.html`, await htmlForNote(note));
+    noteFolder.file('README.md', noteMarkdownSource(note));
 
-    // Include attachments
-    if (note.attachments.length > 0) {
-      const attachDir = folder.folder(`${note.title.replace(/[^a-zA-Z0-9]/g, '_')}_attachments`);
-      if (attachDir) {
-        for (const att of note.attachments) {
-          if (att.data.startsWith('data:')) {
-            const base64 = att.data.split(',')[1];
-            attachDir.file(att.name, base64, { base64: true });
-          }
-        }
+    // Attachments sit alongside the note's markdown/HTML.
+    for (const att of note.attachments) {
+      if (att.data.startsWith('data:')) {
+        const base64 = att.data.split(',')[1];
+        noteFolder.file(att.name, base64, { base64: true });
       }
     }
   }

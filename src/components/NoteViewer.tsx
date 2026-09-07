@@ -247,7 +247,7 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
       if ((isStl || isObj) && needsModel3D) {
         return (
           <Suspense fallback={<div className="my-3 h-48 animate-pulse rounded-sm bg-muted p-4 flex items-center justify-center text-xs text-muted-foreground font-sans">Loading 3D model...</div>}>
-            <Model3DBlock code={src || ''} language={isStl ? 'stl' : 'obj'} note={note} />
+            <Model3DBlock code={src || ''} language={isStl ? 'stl' : 'obj'} note={note} onSave={onSave} />
           </Suspense>
         );
       }
@@ -280,7 +280,7 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
       if ((isStl || isObj) && needsModel3D) {
         return (
           <Suspense fallback={<div className="my-3 h-48 animate-pulse rounded-sm bg-muted p-4 flex items-center justify-center text-xs text-muted-foreground font-sans">Loading 3D model...</div>}>
-            <Model3DBlock code={href || ''} language={isStl ? 'stl' : 'obj'} note={note} />
+            <Model3DBlock code={href || ''} language={isStl ? 'stl' : 'obj'} note={note} onSave={onSave} />
           </Suspense>
         );
       }
@@ -357,7 +357,7 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
       if (lang === '3dmodel' && needsModel3D) {
         return (
           <Suspense fallback={<div className="my-3 h-48 animate-pulse rounded-sm bg-muted p-4 flex items-center justify-center text-xs text-muted-foreground">Loading 3D model...</div>}>
-            <Model3DBlock code={String(children).trim()} language="" note={note} />
+            <Model3DBlock code={String(children).trim()} language="" note={note} onSave={onSave} />
           </Suspense>
         );
       }

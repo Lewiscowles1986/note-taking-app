@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
@@ -16,6 +16,7 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
+  Camera,
   Box as BoxIcon
 } from 'lucide-react';
 import type { Note, NoteAttachment } from '@/lib/db';
@@ -24,6 +25,9 @@ interface Model3DBlockProps {
   code: string;
   language: string;
   note: Note;
+  /** Called with the rendered block's content so a captured camera view can be
+   *  written back into the note without going through decrypt-on-disk. */
+  onSave?: (changes: Partial<Note>) => void;
 }
 
 interface ViewportConfig {
@@ -47,6 +51,83 @@ interface FrontmatterConfig {
   grab?: boolean;
   mode?: 'Solid' | 'Surface Angle' | 'Wireframe';
   viewports?: ViewportConfig[];
+}
+
+// Capture helpers: write a live camera position back into a `3dmodel` block's
+// frontmatter as `camera: [x, y, z]`. We edit the original frontmatter text
+// surgically rather than regenerating it, so every other key and the model data
+// payload are preserved verbatim.
+function cameraArrayToString(camera: [number, number, number]): string {
+  return `[${camera.map((n) => Math.round(n * 1000) / 1000).join(', ')}]`;
+}
+
+// Update the `camera:` line for the given viewport inside a block's YAML.
+// viewportIndex 0 targets the top-level `camera:` when there is no
+// `viewports:` list; otherwise it targets the N-th `- name:` entry.
+function setCameraLine(yaml: string, viewportIndex: number, camera: [number, number, number]): string {
+  const lines = yaml.split('\n');
+  const value = cameraArrayToString(camera);
+  const hasViewports = /(^|\n)\s*viewports\s*:/.test(yaml);
+
+  if (!hasViewports) {
+    const idx = lines.findIndex((l) => /^camera\s*:/.test(l));
+    if (idx !== -1) {
+      lines[idx] = `camera: ${value}`;
+    } else {
+      lines.splice(0, 0, `camera: ${value}`);
+    }
+    return lines.join('\n');
+  }
+
+  // Multi-viewport: locate the viewportIndex-th `-` entry and its `camera:`.
+  const entryIdx: number[] = [];
+  lines.forEach((l, i) => {
+    if (/^\s*-\s*[^\s]/.test(l)) entryIdx.push(i);
+  });
+  const start = entryIdx[viewportIndex];
+  if (start === undefined) return yaml;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^\s*-\s*[^\s]/.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+  let found = -1;
+  for (let i = start; i < end; i++) {
+    if (/^[ \t]+camera\s*:/.test(lines[i])) {
+      found = i;
+      break;
+    }
+  }
+  if (found !== -1) {
+    const indent = lines[found].match(/^[ \t]*/)?.[0] || '  ';
+    lines[found] = `${indent}camera: ${value}`;
+  } else {
+    lines.splice(start + 1, 0, `  camera: ${value}`);
+  }
+  return lines.join('\n');
+}
+
+// Rebuild a block's inner text with the captured camera, leaving the model
+// payload untouched. Returns null when the block has no editable frontmatter.
+// Exported for unit testing.
+export function applyCameraToBlock(code: string, viewportIndex: number, camera: [number, number, number]): string | null {
+  const match = code.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+  if (!match) return null;
+  const yaml = match[1];
+  const body = match[2];
+  return `---\n${setCameraLine(yaml, viewportIndex, camera)}\n---\n${body}`;
+}
+
+// Replace the captured block's inner text in the full note body. The inner text
+// always contains the leading `${'---'}` frontmatter plus the unique model
+// payload, so a single substring replace is safe. Exported for unit testing.
+export function applyCameraToNoteContent(content: string, blockContent: string, newBlock: string): string {
+  if (content.includes(blockContent)) {
+    return content.replace(blockContent, newBlock);
+  }
+  return content;
 }
 
 function parseFrontmatterAndContent(code: string) {
@@ -192,7 +273,7 @@ async function dataUrlToArrayBuffer(dataUrl: string): Promise<ArrayBuffer> {
   return bytes.buffer;
 }
 
-export default function Model3DBlock({ code, language, note }: Model3DBlockProps) {
+export default function Model3DBlock({ code, language, note, onSave }: Model3DBlockProps) {
   const { config, content } = useMemo(() => parseFrontmatterAndContent(code), [code]);
 
   // Identify file target (attachment or URL pointer)
@@ -368,6 +449,21 @@ export default function Model3DBlock({ code, language, note }: Model3DBlockProps
     }
   };
 
+  // Persist the current camera (of the active viewport) back into the block's
+  // frontmatter so the view a user composes is what the note renders next time.
+  const handleSaveCamera = useCallback(
+    (camera: [number, number, number]) => {
+      if (!onSave) return;
+      const newBlock = applyCameraToBlock(code, activeViewportIndex, camera);
+      if (!newBlock) return;
+      const newContent = applyCameraToNoteContent(note.content, code, newBlock);
+      if (newContent !== note.content) {
+        onSave({ content: newContent });
+      }
+    },
+    [onSave, code, activeViewportIndex, note.content]
+  );
+
   // Determine viewport configurations from frontmatter
   const viewportsList = useMemo<ViewportConfig[]>(() => {
     if (config.viewports && Array.isArray(config.viewports)) {
@@ -407,7 +503,7 @@ export default function Model3DBlock({ code, language, note }: Model3DBlockProps
   return (
     <div className="relative my-3 overflow-hidden rounded-md border border-border bg-card select-none">
       {/* Upper Control Bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-[#24292e]">
+      <div className="model3d-export-ui flex items-center justify-between px-4 py-2 bg-[#24292e]">
         <div className="flex items-center gap-2">
           <BoxIcon size={14} className="text-white/50" />
           <span className="text-xs font-mono text-white font-medium">{modelName}</span>
@@ -468,6 +564,7 @@ export default function Model3DBlock({ code, language, note }: Model3DBlockProps
                   config={vpConfig}
                   system={config.system}
                   showControls={isActive || viewportsList.length === 1}
+                  onSaveCamera={handleSaveCamera}
                 />
               </div>
             );
@@ -486,6 +583,7 @@ interface Model3DViewportProps {
   config: ViewportConfig;
   system?: string;
   showControls: boolean;
+  onSaveCamera?: (camera: [number, number, number]) => void;
 }
 
 function Model3DViewport({
@@ -495,7 +593,8 @@ function Model3DViewport({
   texture,
   config,
   system,
-  showControls
+  showControls,
+  onSaveCamera
 }: Model3DViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [renderMode, setRenderMode] = useState<'Solid' | 'Surface Angle' | 'Wireframe'>(
@@ -549,11 +648,23 @@ function Model3DViewport({
     }
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    // preserveDrawingBuffer keeps the rendered frame addressable so the live
+    // view can be snapshotted into an image by the HTML/print/PDF exporters.
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(width, height);
     renderer.shadowMap.enabled = true;
     container.appendChild(renderer.domElement);
+
+    // Expose the live renderer so the HTML/print/PDF exporters can force a
+    // synchronous draw right before snapshotting the canvas. Chromium does not
+    // present frames for off-screen/invisible WebGL canvases, so without this
+    // the captured image would be blank.
+    (renderer.domElement as HTMLCanvasElement & { __webglSnapshot?: unknown }).__webglSnapshot = {
+      renderer,
+      scene,
+      camera,
+    };
 
     // 2. Setup Lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
@@ -890,7 +1001,7 @@ function Model3DViewport({
   return (
     <div className="relative bg-white flex flex-col min-w-[280px]">
       {/* Sub Header for Name & Modes */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 bg-slate-50">
+      <div className="model3d-export-ui flex items-center justify-between px-3 py-1.5 border-b border-slate-100 bg-slate-50">
         <span className="text-xs font-semibold text-slate-500 font-sans">{config.name}</span>
         <div className="flex items-center rounded border border-slate-200 bg-white p-0.5 shadow-sm">
           {(['Solid', 'Surface Angle', 'Wireframe'] as const).map((mode) => (
@@ -914,7 +1025,7 @@ function Model3DViewport({
 
       {/* Navigation Overlay Buttons */}
       {showControls && (
-        <>
+        <div className="model3d-export-ui">
           {/* Rotation / Auto-play (Bottom-Left) */}
           {canRotate && (
             <div className="absolute bottom-3 left-3 flex flex-col gap-1 z-10">
@@ -968,6 +1079,18 @@ function Model3DViewport({
 
           {/* Panning / Zooming / Reset (Bottom-Right) */}
           <div className="absolute bottom-3 right-3 flex gap-2 items-end z-10">
+            {/* Save current camera back into the note's frontmatter */}
+            <button
+              onClick={() => {
+                const cam = cameraRef.current;
+                if (cam) onSaveCamera?.([cam.position.x, cam.position.y, cam.position.z]);
+              }}
+              title="Save the current view as this model's default camera"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-white bg-slate-900/80 hover:bg-primary hover:text-white rounded-lg border border-white/10 backdrop-blur-sm shadow-lg transition-colors select-none"
+            >
+              <Camera size={14} />
+              Save camera view
+            </button>
             {/* Pan Directional Controls */}
             {canPan && (
               <div className="grid grid-cols-3 grid-rows-3 gap-1 w-24 h-24 p-1 bg-slate-900/80 rounded-xl backdrop-blur-sm border border-white/10 shadow-lg select-none">
@@ -1046,7 +1169,7 @@ function Model3DViewport({
               </div>
             )}
           </div>
-        </>
+        </div>
       )}
     </div>
   );
