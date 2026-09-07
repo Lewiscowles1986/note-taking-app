@@ -27,8 +27,6 @@ describe('PHP runner registration', () => {
   it('exposes the full set of PHP versions', () => {
     expect(PHP_VERSIONS).toEqual([
       '5.4.45',
-      '5.5.38',
-      '5.6.40',
       '7.0.33',
       '7.1.33',
       '7.2.34',
@@ -60,7 +58,7 @@ describe('PHP runner registration', () => {
 
 describe('PHP version availability', () => {
   it('declares the required versions (last of each major line)', () => {
-    expect(REQUIRED_PHP_VERSIONS).toEqual(['5.6.40', '7.4.33', '8.4.x']);
+    expect(REQUIRED_PHP_VERSIONS).toEqual(['5.4.45', '7.4.33', '8.4.x']);
   });
 
   it('checkPhpVersionAvailable returns true for a 200 HEAD', async () => {

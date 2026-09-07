@@ -13,8 +13,6 @@ import { registerVersionedRunner } from './codeRunners';
 
 export const PHP_VERSIONS = [
   '5.4.45',
-  '5.5.38',
-  '5.6.40',
   '7.0.33',
   '7.1.33',
   '7.2.34',
@@ -30,11 +28,11 @@ export const PHP_VERSIONS = [
 export const DEFAULT_PHP_VERSION = '8.4.x';
 
 /**
- * The "last" version of each major line (5.6, 7.4, 8.4). These are the ones we
+ * The "last" version of each major line (5.4, 7.4, 8.4). These are the ones we
  * expect to always be present; if any of them 404s we surface an alert. Other
  * versions are optional — if they're missing they're just skipped.
  */
-export const REQUIRED_PHP_VERSIONS = ['5.6.40', '7.4.33', '8.4.x'] as const;
+export const REQUIRED_PHP_VERSIONS = ['5.4.45', '7.4.33', '8.4.x'] as const;
 
 export type PhpVersion = (typeof PHP_VERSIONS)[number];
 
