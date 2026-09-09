@@ -49,11 +49,15 @@ function parseExportFormat(body: string): { title: string; tags: string[]; categ
   let tags: string[] = [];
   let category = 'General';
   let contentStart = 0;
+  let seenTitle = false;
+  let headerEnded = false;
 
   for (let i = 0; i < Math.min(lines.length, 6); i++) {
+    if (headerEnded) break;
     const line = lines[i];
-    if (line.startsWith('# ')) {
+    if (!seenTitle && line.startsWith('# ')) {
       title = line.slice(2).trim();
+      seenTitle = true;
       contentStart = i + 1;
     } else if (line.startsWith('Tags: ')) {
       tags = line.slice(6).split(',').map((t) => t.trim()).filter(Boolean);
@@ -61,8 +65,15 @@ function parseExportFormat(body: string): { title: string; tags: string[]; categ
     } else if (line.startsWith('Category: ')) {
       category = line.slice(10).trim();
       contentStart = i + 1;
+      // The header block is complete once Category is seen; anything after it
+      // is body content — even if the note's own text starts with "# " or
+      // "Tags: " (which must not be swallowed into the metadata).
+      headerEnded = true;
     } else if (line.trim() === '' && contentStart > 0) {
       contentStart = i + 1;
+    } else {
+      // First non-header line: everything from here on is body content.
+      headerEnded = true;
     }
   }
 

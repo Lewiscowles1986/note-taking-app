@@ -187,8 +187,16 @@ export async function exportToZip(notes: Note[]) {
   const folder = zip.folder('notes');
   if (!folder) return;
 
+  // Distinct titles can slugify to the same folder name ("Note!" and "Note?"
+  // both become "note"); JSZip silently overwrites same-path members, which
+  // would drop a note from the archive. Disambiguate with a numeric suffix.
+  const usedSlugs = new Set<string>();
+
   for (const note of notes) {
-    const slug = slugify(note.title);
+    const base = slugify(note.title);
+    let slug = base;
+    for (let n = 2; usedSlugs.has(slug); n++) slug = `${base}-${n}`;
+    usedSlugs.add(slug);
     const noteFolder = folder.folder(slug);
     if (!noteFolder) continue;
 
