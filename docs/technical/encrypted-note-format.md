@@ -29,13 +29,36 @@ always has a plain string to work with without exposing the plaintext.
   "ciphertext": "<base64>",          // AES-256-CBC ciphertext
   "iv":         "<base64>",          // 128-bit IV
   "salt":       "<base64>",          // PBKDF2 salt (password method, 256-bit)
+  "mac":        "<base64>",          // HMAC-SHA-256 tag (payloads from v2026-09+)
   // keypair method only:
   "wrappedKey":     "<base64>",      // RSA-OAEP-wrapped random AES key
-  "keyFingerprint": "<string>",      // which key pair encrypted the note
+  "keyFingerprint": "<string>"      // which key pair encrypted the note
 }
 ```
 
 All octet-string values are standard base64.
+
+### Integrity (`mac` field)
+
+AES-CBC is **unauthenticated** (malleable): a flipped byte in the final block
+produces a random PKCS#7 pad byte that is still valid roughly 1-in-255 times,
+so a tampered payload could previously "decrypt successfully" into garbage.
+New payloads carry an encrypt-then-MAC tag that makes tamper detection
+deterministic:
+
+- **Password method** — the tag is HMAC-SHA-256 over
+  `"note-haven/v1:password" ‖ iv ‖ ciphertext`, with a key derived from the
+  same PBKDF2 run (bytes 32–63 of the 512-bit derivation; bytes 0–31 remain the
+  AES key, byte-identical to the legacy derivation).
+- **Key-pair method** — the tag is HMAC-SHA-256 over
+  `"note-haven/v1:keypair" ‖ iv ‖ ciphertext ‖ wrappedKey`, with a key equal to
+  SHA-256 of the raw wrapped AES key bytes.
+
+Decryption verifies the tag **before** decrypting and throws on mismatch.
+Payloads **without** a `mac` (stored notes and exports from older builds) keep
+decrypting unchanged — they simply lack the tamper guarantee. The OpenSSL
+verification flow below is unaffected: it never checks the tag and continues
+to work byte-for-byte on old and new payloads.
 
 ## 3. The exact cryptography (password method)
 

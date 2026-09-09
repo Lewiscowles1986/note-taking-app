@@ -45,6 +45,7 @@ describe('password-based encryption (PBKDF2 + AES-256-CBC)', () => {
     expect(byteLength(payload.salt!)).toBe(32); // PBKDF2 salt
     expect(byteLength(payload.ciphertext)).toBeGreaterThan(0);
     expect(byteLength(payload.ciphertext) % 16).toBe(0); // AES block alignment
+    expect(byteLength(payload.mac!)).toBe(32); // HMAC-SHA-256 tag
     await expect(decryptWithPassword(payload, PASSWORD)).resolves.toBe(PLAINTEXT);
   });
 
@@ -69,16 +70,42 @@ describe('password-based encryption (PBKDF2 + AES-256-CBC)', () => {
   it('rejects tampered ciphertext', async () => {
     const payload = await encryptWithPassword(PLAINTEXT, PASSWORD);
     const tampered: EncryptedPayload = { ...payload, ciphertext: flipLastByte(payload.ciphertext) };
-    await expect(decryptWithPassword(tampered, PASSWORD)).rejects.toThrow();
+    // Deterministic thanks to the encrypt-then-MAC tag — AES-CBC alone only
+    // caught this ~255/256 of the time (valid-PKCS#7-by-chance flakes).
+    await expect(decryptWithPassword(tampered, PASSWORD)).rejects.toThrow(/integrity/i);
+  });
+
+  it('rejects tampered ciphertext on the FIRST block too', async () => {
+    // Multi-block payload: flip a byte in the first block (not just the final
+    // padding block) — the MAC covers the whole ciphertext.
+    const payload = await encryptWithPassword(PLAINTEXT, PASSWORD);
+    const bytes = Uint8Array.from(atob(payload.ciphertext), (ch) => ch.charCodeAt(0));
+    bytes[0] ^= 0xff;
+    const tampered: EncryptedPayload = { ...payload, ciphertext: btoa(String.fromCharCode(...bytes)) };
+    await expect(decryptWithPassword(tampered, PASSWORD)).rejects.toThrow(/integrity/i);
+  });
+
+  it('rejects a tampered MAC', async () => {
+    const payload = await encryptWithPassword(PLAINTEXT, PASSWORD);
+    const tampered: EncryptedPayload = { ...payload, mac: flipLastByte(payload.mac!) };
+    await expect(decryptWithPassword(tampered, PASSWORD)).rejects.toThrow(/integrity/i);
+  });
+
+  it('decrypts a legacy payload without a mac field (backward compatible)', async () => {
+    // Payloads from before the integrity layer have no `mac`; they must keep
+    // decrypting so existing stored notes and old exports remain readable.
+    const payload = await encryptWithPassword(PLAINTEXT, PASSWORD);
+    const { mac: _omitted, ...legacy } = payload;
+    expect('mac' in legacy).toBe(false);
+    await expect(decryptWithPassword(legacy, PASSWORD)).resolves.toBe(PLAINTEXT);
   });
 
   it('rejects a tampered IV', async () => {
-    // Single-block ciphertext ('short' → one AES block) so the corrupted IV is
-    // the only input to the final padding block; flipping its last byte turns
-    // the PKCS#7 pad byte into 0xF4, which is deterministically invalid.
-    const payload = await encryptWithPassword('short', PASSWORD);
+    // The MAC covers the IV, so tampering is rejected deterministically —
+    // regardless of which block the flipped byte lands in.
+    const payload = await encryptWithPassword(PLAINTEXT, PASSWORD);
     const tampered: EncryptedPayload = { ...payload, iv: flipLastByte(payload.iv) };
-    await expect(decryptWithPassword(tampered, PASSWORD)).rejects.toThrow();
+    await expect(decryptWithPassword(tampered, PASSWORD)).rejects.toThrow(/integrity/i);
   });
 
   it('rejects a tampered salt (different derived key)', async () => {
@@ -86,7 +113,6 @@ describe('password-based encryption (PBKDF2 + AES-256-CBC)', () => {
     const tampered: EncryptedPayload = { ...payload, salt: flipLastByte(payload.salt!) };
     await expect(decryptWithPassword(tampered, PASSWORD)).rejects.toThrow();
   });
-
   it('rejects a payload without a salt field', async () => {
     const payload = await encryptWithPassword('short', PASSWORD);
     const missingSalt: EncryptedPayload = {
@@ -149,6 +175,7 @@ describe('key-pair based encryption (RSA-OAEP + AES-256-CBC)', () => {
     expect(payload.salt).toBeUndefined();
     expect(payload.wrappedKey).toBeDefined();
     expect(payload.keyFingerprint).toBe(kp.fingerprint);
+    expect(byteLength(payload.mac!)).toBe(32); // HMAC-SHA-256 tag
     await expect(decryptWithPrivateKey(payload, kp.privateKeyJwk)).resolves.toBe(secret);
   });
 
@@ -179,7 +206,29 @@ describe('key-pair based encryption (RSA-OAEP + AES-256-CBC)', () => {
   it('rejects tampered ciphertext', async () => {
     const payload = await encryptWithPublicKey('secret', kp.publicKeyJwk);
     const tampered: EncryptedPayload = { ...payload, ciphertext: flipLastByte(payload.ciphertext) };
+    // Deterministic via the MAC over iv‖ciphertext‖wrappedKey.
+    await expect(decryptWithPrivateKey(tampered, kp.privateKeyJwk)).rejects.toThrow(/integrity/i);
+  });
+
+  it('rejects a tampered wrapped AES key (key substitution)', async () => {
+    const payload = await encryptWithPublicKey('secret', kp.publicKeyJwk);
+    const tampered: EncryptedPayload = {
+      ...payload,
+      wrappedKey: flipLastByte(payload.wrappedKey!),
+    };
     await expect(decryptWithPrivateKey(tampered, kp.privateKeyJwk)).rejects.toThrow();
+  });
+
+  it('rejects a tampered MAC on a keypair payload', async () => {
+    const payload = await encryptWithPublicKey('secret', kp.publicKeyJwk);
+    const tampered: EncryptedPayload = { ...payload, mac: flipLastByte(payload.mac!) };
+    await expect(decryptWithPrivateKey(tampered, kp.privateKeyJwk)).rejects.toThrow(/integrity/i);
+  });
+
+  it('decrypts a legacy keypair payload without a mac field (backward compatible)', async () => {
+    const payload = await encryptWithPublicKey('secret', kp.publicKeyJwk);
+    const { mac: _omitted, ...legacy } = payload;
+    await expect(decryptWithPrivateKey(legacy, kp.privateKeyJwk)).resolves.toBe('secret');
   });
 
   it('exportKeyPairAsJwk returns the stored JWKs unchanged', async () => {
