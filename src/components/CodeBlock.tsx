@@ -119,11 +119,10 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
       </div>
       {showNotes && meta.notes && (
         // Solid brand band — same background token as the sidebar "New note"
-        // button (bg-primary), with dark ink text/borders (#24292e, the block's
-        // header/code background) for ~6:1 contrast. Borders are symmetric
-        // (border-y): the same strong rule on top and bottom, so the band sits
-        // evenly between the header bar and the highlighted code.
-        <div className="px-4 py-2 text-xs bg-primary text-[#24292e] border-y-2 border-[#24292e] whitespace-pre-wrap">
+        // button (bg-primary), with dark ink text (#24292e, the block's
+        // header/code background) for ~6:1 contrast. Symmetric 1px #ccc
+        // hairlines on top and bottom frame the band without visual weight.
+        <div className="px-4 py-2 text-xs bg-primary text-[#24292e] border-y border-[#ccc] whitespace-pre-wrap">
           {meta.notes}
         </div>
       )}
