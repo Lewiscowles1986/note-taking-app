@@ -92,7 +92,7 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
           {meta.notes && (
             <button
               onClick={() => setShowNotes(!showNotes)}
-              className="flex items-center gap-1 text-xs text-amber-400/70 hover:text-amber-400 transition-colors"
+              className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
             >
               <Info size={12} />
               Notes
@@ -118,7 +118,11 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
         </div>
       </div>
       {showNotes && meta.notes && (
-        <div className="px-4 py-2 text-xs bg-amber-950/40 text-amber-200/80 border-b border-white/10 whitespace-pre-wrap">
+        // Solid brand band — same background token as the sidebar "New note"
+        // button (bg-primary), with dark ink text (#24292e, the block's
+        // header/code background) for ~6:1 contrast. Symmetric 1px #ccc
+        // hairlines on top and bottom frame the band without visual weight.
+        <div className="px-4 py-2 text-xs bg-primary text-[#24292e] border-y border-[#ccc] whitespace-pre-wrap">
           {meta.notes}
         </div>
       )}
