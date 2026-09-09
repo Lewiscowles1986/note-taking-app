@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/note-taking-app/preview-builds/fix-codeblock-notes-contrast/sw.js', { scope: '/note-taking-app/preview-builds/fix-codeblock-notes-contrast/' })})}
