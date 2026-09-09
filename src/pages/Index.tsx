@@ -14,6 +14,7 @@ import CalendarView from '@/components/CalendarView';
 import EncryptionDialog from '@/components/EncryptionDialog';
 import type { Note } from '@/lib/db';
 import type { StoredKeyPair } from '@/lib/crypto';
+import { runInFlight } from '@/lib/inFlight';
 import { Eye, Pencil, PanelLeftClose, PanelLeftOpen, Calendar, Lock, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -100,12 +101,17 @@ export default function Index() {
   ) => {
     if (!activeNote || !activeNoteId) return;
     const plaintext = decryptedCache[activeNoteId] ?? activeNote.content;
-    const payload = await encryption.encryptContent(plaintext, method, credential);
-    // Store encrypted payload, clear plaintext
-    await saveNote(activeNoteId, {
-      content: '[encrypted]',
-      encrypted: payload,
-    });
+    await runInFlight(
+      { label: 'Encrypting note', group: 'encryption' },
+      async () => {
+        const payload = await encryption.encryptContent(plaintext, method, credential);
+        // Store encrypted payload, clear plaintext
+        await saveNote(activeNoteId, {
+          content: '[encrypted]',
+          encrypted: payload,
+        });
+      },
+    );
     // Remove from cache
     setDecryptedCache((prev) => {
       const next = { ...prev };
@@ -117,12 +123,17 @@ export default function Index() {
 
   const handleDecrypt = useCallback(async (credential: string) => {
     if (!activeNote || !activeNoteId || !activeNote.encrypted) return;
-    const plaintext = await encryption.decryptContent(activeNote.encrypted, credential);
-    // Save decrypted content back, remove encryption marker
-    await saveNote(activeNoteId, {
-      content: plaintext,
-      encrypted: null,
-    });
+    await runInFlight(
+      { label: 'Decrypting note', group: 'encryption' },
+      async () => {
+        const plaintext = await encryption.decryptContent(activeNote.encrypted!, credential);
+        // Save decrypted content back, remove encryption marker
+        await saveNote(activeNoteId, {
+          content: plaintext,
+          encrypted: null,
+        });
+      },
+    );
     // Clear from cache
     setDecryptedCache((prev) => {
       const next = { ...prev };

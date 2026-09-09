@@ -216,7 +216,7 @@ describe('NoteSidebar component', () => {
     expect((screen.getByPlaceholderText('Search notes...') as HTMLInputElement).value).toBe('needle');
   });
 
-  it('toggles the export panel and wires every export action', () => {
+  it('toggles the export panel and wires every export action', async () => {
     const notes = [makeNote({ id: 7, title: 'Active note' })];
     const props = makeProps({ notes, activeNoteId: 7 });
     render(<NoteSidebar {...props} />);
@@ -225,15 +225,23 @@ describe('NoteSidebar component', () => {
     expect(screen.queryByText('Export all as ZIP')).toBeNull();
     fireEvent.click(screen.getByTitle('Export'));
 
+    // Each export runs through the in-flight registry: it must fully settle
+    // (a microtask flush) before the next same-group action can start.
     fireEvent.click(screen.getByText('Export current as HTML'));
-    expect(vi.mocked(exportToHtml)).toHaveBeenCalledWith(notes[0]);
+    await waitFor(() => expect(vi.mocked(exportToHtml)).toHaveBeenCalledWith(notes[0]));
+    await waitFor(() => expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Exported as HTML'));
+
     fireEvent.click(screen.getByText('Export current as PDF'));
-    expect(vi.mocked(exportToPdf)).toHaveBeenCalledWith(notes[0]);
+    await waitFor(() => expect(vi.mocked(exportToPdf)).toHaveBeenCalledWith(notes[0]));
+    await waitFor(() => expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Exported as PDF'));
+
     fireEvent.click(screen.getByText('Export all as ZIP'));
-    expect(vi.mocked(exportToZip)).toHaveBeenCalledWith(notes);
+    await waitFor(() => expect(vi.mocked(exportToZip)).toHaveBeenCalledWith(notes));
+    await waitFor(() => expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Exported all notes as ZIP'));
+
     fireEvent.click(screen.getByText('Download full database backup'));
-    expect(vi.mocked(exportDatabase)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Database backup downloaded');
+    await waitFor(() => expect(vi.mocked(exportDatabase)).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Database backup downloaded'));
 
     // A second toggle click closes the panel again.
     fireEvent.click(screen.getByTitle('Export'));
