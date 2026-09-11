@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { exportToHtml, exportToPdf, exportToZip, exportDatabase } from '@/lib/export';
 import { importFiles } from '@/lib/import';
+import { runInFlight } from '@/lib/inFlight';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -65,33 +66,47 @@ export default function NoteSidebar({
     const active = notes.find((n) => n.id === activeNoteId);
     if (!active) return;
     try {
-      if (mode === 'html') await exportToHtml(active);
-      else await exportToPdf(active);
+      await runInFlight({ label: `Exporting as ${mode.toUpperCase()}`, group: 'export' }, async () => {
+        if (mode === 'html') await exportToHtml(active);
+        else await exportToPdf(active);
+      });
       toast.success(`Exported as ${mode.toUpperCase()}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : `Export failed (${mode.toUpperCase()})`);
+      if (!(err instanceof Error && err.name === 'CancelledError')) {
+        toast.error(err instanceof Error ? err.message : `Export failed (${mode.toUpperCase()})`);
+      }
     }
   };
 
   const handleExportZip = async () => {
     try {
-      await exportToZip(notes);
+      await runInFlight({ label: 'Exporting ZIP', group: 'export' }, () => exportToZip(notes));
       toast.success('Exported all notes as ZIP');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'ZIP export failed');
+      if (!(err instanceof Error && err.name === 'CancelledError')) {
+        toast.error(err instanceof Error ? err.message : 'ZIP export failed');
+      }
     }
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    const result = await importFiles(files);
-    if (result.imported > 0) {
-      toast.success(`Imported ${result.imported} note${result.imported !== 1 ? 's' : ''}`);
-      onRefresh();
-    }
-    if (result.errors.length > 0) {
-      toast.error(result.errors.join('\n'));
+    try {
+      const result = await runInFlight({ label: 'Importing notes', group: 'import' }, () =>
+        importFiles(files),
+      );
+      if (result.imported > 0) {
+        toast.success(`Imported ${result.imported} note${result.imported !== 1 ? 's' : ''}`);
+        onRefresh();
+      }
+      if (result.errors.length > 0) {
+        toast.error(result.errors.join('\n'));
+      }
+    } catch (err) {
+      if (!(err instanceof Error && err.name === 'CancelledError')) {
+        toast.error(err instanceof Error ? err.message : 'Import failed');
+      }
     }
     // Reset input so same file can be re-imported
     e.target.value = '';
@@ -194,8 +209,13 @@ export default function NoteSidebar({
           </button>
           <button
             onClick={() => {
-              exportDatabase();
-              toast.success('Database backup downloaded');
+              void runInFlight({ label: 'Backing up database', group: 'export' }, () => exportDatabase())
+                .then(() => toast.success('Database backup downloaded'))
+                .catch((err: unknown) => {
+                  if (!(err instanceof Error && err.name === 'CancelledError')) {
+                    toast.error(err instanceof Error ? err.message : 'Database backup failed');
+                  }
+                });
             }}
             className="w-full text-left px-2 py-2.5 min-h-11 flex items-center rounded hover:bg-sidebar-accent sm:py-1 sm:min-h-0"
           >

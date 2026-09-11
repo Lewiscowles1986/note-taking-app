@@ -3,6 +3,7 @@ import { registerJSRunner } from "@/lib/jsRunner";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import InFlightManager from "@/components/InFlightManager";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
@@ -13,6 +14,8 @@ const App = () => (
   <TooltipProvider>
     <Toaster />
     <Sonner />
+    {/* Non-blocking in-flight action indicator + cancel-conflict dialog. */}
+    <InFlightManager />
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route path="/" element={<Index />} />
