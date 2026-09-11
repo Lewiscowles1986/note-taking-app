@@ -150,6 +150,28 @@ browser. E2E remains the layer for WebGL, downloads and real-browser flows.
 (Upgrading jsdom to ≥21 would make `Blob.text`/`File.text` native and let
 those polyfills be removed.)
 
+### Round-trip veracity — `zipRoundTrip.test.ts`
+
+`src/test/zipRoundTrip.test.ts` closes the export→import loop end to end:
+real `exportToZip` bytes are fed straight into `importZipFile` (and
+`exportDatabase` → `importDatabaseBackup`), and the re-imported notes are
+compared field-by-field with the originals. It caught two real bugs on
+introduction (both fixed here):
+
+- **Slug-collision data loss**: two notes whose titles slugify identically
+  ("Note!" / "Note?") produced one ZIP folder, with the second note's members
+  silently overwriting the first's. `exportToZip` now disambiguates with
+  `-2`, `-3`… suffixes.
+- **Body's leading heading swallowed**: the import format parser treated any
+  early `# …` line as the title, so a note whose body began with a heading
+  (or `Tags:`/`Category:`-looking text) lost that line on re-import. The
+  header block now ends at `Category:`, and everything after is body.
+
+Encrypted notes are asserted on the invariant that matters: the ciphertext
+payload survives byte-for-byte, is still decryptable after a backup restore
+(password and key-pair methods, fresh-device simulation), and no plaintext
+ever appears in any exported artifact.
+
 ### Network mocking — MSW
 
 Not currently needed: the app is local-first with no backend. Add
