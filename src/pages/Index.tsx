@@ -10,6 +10,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 // only fetched the first time a note is opened in view mode.
 const NoteViewer = lazy(() => import('@/components/NoteViewer'));
 import NoteMetaBar from '@/components/NoteMetaBar';
+import ShareDialog from '@/components/ShareDialog';
 import CalendarView from '@/components/CalendarView';
 import EncryptionDialog from '@/components/EncryptionDialog';
 import type { Note } from '@/lib/db';
@@ -45,6 +46,7 @@ export default function Index() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [calendarMode, setCalendarMode] = useState(false);
   const [encryptionDialogOpen, setEncryptionDialogOpen] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
 
   // Decrypted content cache: noteId -> plaintext (in memory only)
   const [decryptedCache, setDecryptedCache] = useState<Record<number, string>>({});
@@ -359,6 +361,7 @@ export default function Index() {
               allCategories={allCategories}
               onSave={handleSave}
               onEncryptClick={() => setEncryptionDialogOpen(true)}
+              onShareClick={() => setShareDialogOpen(true)}
             />
             <div className="flex-1 overflow-y-auto">
               {isLocked ? (
@@ -410,6 +413,11 @@ export default function Index() {
           </div>
         )}
       </div>
+
+      {/* Share dialog */}
+      {shareDialogOpen && activeNote && (
+        <ShareDialog note={activeNote} onClose={() => setShareDialogOpen(false)} />
+      )}
 
       {/* Encryption dialog */}
       {encryptionDialogOpen && activeNote && (

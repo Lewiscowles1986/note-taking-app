@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import type { Note } from '@/lib/db';
-import { Tag, FolderOpen, Plus, X, Lock, Unlock } from 'lucide-react';
+import { Tag, FolderOpen, Plus, X, Lock, Unlock, Share2 } from 'lucide-react';
 
 interface NoteMetaBarProps {
   note: Note;
   allCategories: string[];
   onSave: (changes: Partial<Note>) => void;
   onEncryptClick?: () => void;
+  onShareClick?: () => void;
 }
 
-export default function NoteMetaBar({ note, allCategories, onSave, onEncryptClick }: NoteMetaBarProps) {
+export default function NoteMetaBar({ note, allCategories, onSave, onEncryptClick, onShareClick }: NoteMetaBarProps) {
   const [newTag, setNewTag] = useState('');
   const [editingCategory, setEditingCategory] = useState(false);
   const [categoryInput, setCategoryInput] = useState(note.category);
@@ -101,6 +102,18 @@ export default function NoteMetaBar({ note, allCategories, onSave, onEncryptClic
           )}
         </div>
       </div>
+
+      {/* Share button */}
+      {onShareClick && (
+        <button
+          onClick={onShareClick}
+          className="flex items-center gap-1 px-2.5 py-2.5 min-h-11 rounded text-muted-foreground hover:text-foreground transition-colors sm:py-0.5 sm:min-h-0"
+          title="Share this note via a link"
+        >
+          <Share2 size={12} />
+          <span>Share</span>
+        </button>
+      )}
 
       {/* Encryption indicator / toggle */}
       <button

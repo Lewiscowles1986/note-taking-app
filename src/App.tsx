@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import InFlightManager from "@/components/InFlightManager";
 import Index from "./pages/Index.tsx";
+import ShareView from "./pages/ShareView.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 // Register code block runners
@@ -19,6 +20,7 @@ const App = () => (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route path="/" element={<Index />} />
+        <Route path="/share" element={<ShareView />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>

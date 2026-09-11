@@ -248,4 +248,25 @@ describe('NoteMetaBar component', () => {
     expect(chipCount(container)).toBe(0);
     expect(screen.queryByRole('button', { name: 'Inbox' })).toBeTruthy();
   });
+
+  it('renders the share button only when onShareClick is provided and fires on click', () => {
+    const onShareClick = vi.fn();
+    const { rerender } = render(
+      <NoteMetaBar note={makeNote()} allCategories={[]} onSave={vi.fn()} />,
+    );
+    expect(screen.queryByTitle('Share this note via a link')).toBeNull();
+
+    rerender(
+      <NoteMetaBar
+        note={makeNote()}
+        allCategories={[]}
+        onSave={vi.fn()}
+        onShareClick={onShareClick}
+      />,
+    );
+    const share = screen.getByTitle('Share this note via a link');
+    expect(share.textContent).toBe('Share');
+    fireEvent.click(share);
+    expect(onShareClick).toHaveBeenCalledTimes(1);
+  });
 });
