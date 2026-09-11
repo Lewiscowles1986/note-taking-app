@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChangeEvent } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import Index from '@/pages/Index';
 import { generateKeyPair, type StoredKeyPair } from '@/lib/crypto';
 import { createNote, db, saveKeyPair, type Note } from '@/lib/db';
@@ -215,8 +216,16 @@ describe('Index page (Round 22 — 100% line coverage)', () => {
     await resetDb();
   });
 
+  /** Index uses useSearchParams (?open= deep link) — needs a Router context. */
+  const renderIndex = () =>
+    render(
+      <MemoryRouter>
+        <Index />
+      </MemoryRouter>,
+    );
+
   it('renders the empty state and creates the first note from it', async () => {
-    const { container } = render(<Index />);
+    const { container } = renderIndex();
 
     expect(await screen.findByRole('heading', { name: 'No note selected' })).toBeInTheDocument();
     expect(screen.getByText('No notes yet. Create one!'));
@@ -233,7 +242,7 @@ describe('Index page (Round 22 — 100% line coverage)', () => {
     await seed({ title: 'Home recipes', content: 'apple pie needle', tags: ['home'], category: 'Personal', createdAt: minutesAgo(5), updatedAt: minutesAgo(5) });
     const workId = await seed({ title: 'Work chart', content: 'roadmap details', tags: ['work'], category: 'Projects', createdAt: minutesAgo(30), updatedAt: minutesAgo(30) });
     const scratchId = await seed({ title: 'Scratch', content: 'misc', tags: [], category: 'Projects', createdAt: minutesAgo(60), updatedAt: minutesAgo(60) });
-    const { container } = render(<Index />);
+    const { container } = renderIndex();
 
     await screen.findByText('Home recipes');
 
@@ -302,7 +311,7 @@ describe('Index page (Round 22 — 100% line coverage)', () => {
 
   it('autosaves edits through the real editor and drives the meta-bar save callbacks', async () => {
     const draftId = await seed({ title: 'Draft', content: 'hello world' });
-    const { container } = render(<Index />);
+    const { container } = renderIndex();
 
     await selectNote(container, 'Draft');
     expect(editorTextarea()).toHaveValue('hello world');
@@ -335,7 +344,7 @@ describe('Index page (Round 22 — 100% line coverage)', () => {
 
   it('switches between edit mode and the lazily-loaded viewer', async () => {
     await seed({ title: 'Doc', content: 'body text' });
-    const { container } = render(<Index />);
+    const { container } = renderIndex();
 
     await selectNote(container, 'Doc');
     expect(editorTextarea()).toHaveValue('body text');
@@ -352,7 +361,7 @@ describe('Index page (Round 22 — 100% line coverage)', () => {
   it('calendar mode: open, select note in view/edit, both back buttons, new note', async () => {
     await seed({ title: 'Alpha note', content: 'alpha contents' });
     await seed({ title: 'Beta note', content: 'beta contents', createdAt: minutesAgo(60), updatedAt: minutesAgo(60) });
-    render(<Index />);
+    renderIndex();
     await screen.findByText('Alpha note');
 
     fireEvent.click(screen.getByTitle('Calendar view'));
@@ -393,7 +402,7 @@ describe('Index page (Round 22 — 100% line coverage)', () => {
 
   it('encrypts the active note with a password end-to-end', async () => {
     const secretId = await seed({ title: 'Secret plan', content: 'hidden treasure' });
-    const { container } = render(<Index />);
+    const { container } = renderIndex();
 
     await selectNote(container, 'Secret plan');
 
@@ -409,7 +418,7 @@ describe('Index page (Round 22 — 100% line coverage)', () => {
 
   it('locked note: unlock dialog, wrong-password error, successful decrypt', async () => {
     const diaryId = await seed({ title: 'Locked diary', content: 'secret contents' });
-    const { container } = render(<Index />);
+    const { container } = renderIndex();
 
     await selectNote(container, 'Locked diary');
     await encryptWithPasswordViaDialog('supersecret9');
@@ -442,7 +451,7 @@ describe('Index page (Round 22 — 100% line coverage)', () => {
 
   it('encrypted autosave caches plaintext in memory and never persists it', async () => {
     const guardedId = await seed({ title: 'Guarded note', content: 'original words' });
-    const { container } = render(<Index />);
+    const { container } = renderIndex();
 
     await selectNote(container, 'Guarded note');
     await encryptWithPasswordViaDialog('supersecret9');
@@ -472,7 +481,7 @@ describe('Index page (Round 22 — 100% line coverage)', () => {
   it('encrypts and decrypts with a key pair', async () => {
     const keyedId = await seed({ title: 'Keyed note', content: 'asymmetric secret' });
     await saveKeyPair(baseKp);
-    const { container } = render(<Index />);
+    const { container } = renderIndex();
 
     await selectNote(container, 'Keyed note');
 
@@ -506,7 +515,7 @@ describe('Index page (Round 22 — 100% line coverage)', () => {
   it('exports the stored key pair as JWK and PEM', async () => {
     await saveKeyPair(baseKp);
     await seed({ title: 'Export host', content: 'host body' });
-    const { container } = render(<Index />);
+    const { container } = renderIndex();
 
     await selectNote(container, 'Export host');
     await openEncryptionKeysTab();
@@ -530,7 +539,7 @@ describe('Index page (Round 22 — 100% line coverage)', () => {
 
   it('imports a key pair from pasted JWK JSON', async () => {
     await seed({ title: 'Import host', content: 'host body' });
-    const { container } = render(<Index />);
+    const { container } = renderIndex();
 
     await selectNote(container, 'Import host');
     await openEncryptionKeysTab();
@@ -551,7 +560,7 @@ describe('Index page (Round 22 — 100% line coverage)', () => {
 
   it('surfaces the invalid-format error for non-JWK paste', async () => {
     await seed({ title: 'Bad paste host', content: 'host body' });
-    const { container } = render(<Index />);
+    const { container } = renderIndex();
 
     await selectNote(container, 'Bad paste host');
     await openEncryptionKeysTab();

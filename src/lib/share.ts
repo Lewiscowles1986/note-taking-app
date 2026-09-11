@@ -168,12 +168,19 @@ function isEnvelopeV1(value: unknown): value is SharedNoteEnvelopeV1 {
   return true;
 }
 
-/** Build the full share URL for the encoded envelope. */
+/**
+ * Build the full share URL for the encoded envelope.
+ *
+ * Points at the `/share` route under the app's deployed base path (Vite's
+ * `BASE_URL`, e.g. `/note-taking-app/` on GitHub Pages) — NOT the current
+ * page's path, which is the notes workspace (`/`) and would drop the
+ * receiver onto the editor instead of the consent-gated share view.
+ */
 export function buildShareUrl(encoded: string): string {
-  const base = `${location.origin}${location.pathname}`;
+  const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
   const params = new URLSearchParams();
   params.set(SHARE_QUERY_PARAM, encoded);
-  return `${base}?${params.toString()}`;
+  return `${location.origin}${base}/share?${params.toString()}`;
 }
 
 /** Extract + decode a shared note from a URL query string (or raw param). */

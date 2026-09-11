@@ -1,4 +1,5 @@
-import { useState, useCallback, lazy, Suspense } from 'react';
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useNotes } from '@/hooks/useNotes';
 import { useEncryption } from '@/hooks/useEncryption';
 import NoteSidebar from '@/components/NoteSidebar';
@@ -47,6 +48,19 @@ export default function Index() {
   const [calendarMode, setCalendarMode] = useState(false);
   const [encryptionDialogOpen, setEncryptionDialogOpen] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Deep-link: /?open=<id> (e.g. after saving a shared note) selects that note
+  // once the list has loaded, then the param is consumed.
+  const openParam = searchParams.get('open');
+  useEffect(() => {
+    if (!openParam || !notes.length) return;
+    const id = Number(openParam);
+    if (Number.isFinite(id) && notes.some((n) => n.id === id)) {
+      setActiveNoteId(id);
+      setSearchParams({}, { replace: true });
+    }
+  }, [openParam, notes, setActiveNoteId, setSearchParams]);
 
   // Decrypted content cache: noteId -> plaintext (in memory only)
   const [decryptedCache, setDecryptedCache] = useState<Record<number, string>>({});

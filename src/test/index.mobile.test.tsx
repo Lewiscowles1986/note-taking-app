@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import Index from '@/pages/Index';
 import { createNote, db, type Note } from '@/lib/db';
 
@@ -66,9 +67,17 @@ describe('Index — mobile (useIsMobile forced true)', () => {
     await resetDb();
   });
 
+  /** Index uses useSearchParams (?open= deep link) — needs a Router context. */
+  const renderIndex = () =>
+    render(
+      <MemoryRouter>
+        <Index />
+      </MemoryRouter>,
+    );
+
   it('renders the note list as a top sheet, not an inline .w-72 column', async () => {
     await createNote({ title: 'Mobile note', content: 'mobile body' });
-    const { container } = render(<Index />);
+    const { container } = renderIndex();
 
     // The inline desktop column must NOT be present on mobile.
     expect(container.querySelector('.w-72')).toBeNull();
@@ -79,7 +88,7 @@ describe('Index — mobile (useIsMobile forced true)', () => {
 
   it('selecting a note closes the sheet, shows the editor and a back button', async () => {
     await createNote({ title: 'Picked', content: 'peekaboo' });
-    const { container } = render(<Index />);
+    const { container } = renderIndex();
 
     fireEvent.click(await within(document.body).findByText('Picked').then((el) => {
       const row = el.closest('.cursor-pointer');
@@ -98,7 +107,7 @@ describe('Index — mobile (useIsMobile forced true)', () => {
 
   it('back button returns to the note list (reopens the sheet)', async () => {
     await createNote({ title: 'Return me', content: 'body' });
-    render(<Index />);
+    renderIndex();
 
     fireEvent.click(await screen.findByText('Return me').then((el) => {
       const row = el.closest('.cursor-pointer');
@@ -116,7 +125,7 @@ describe('Index — mobile (useIsMobile forced true)', () => {
   });
 
   it('New note closes the sheet and lands in the editor', async () => {
-    render(<Index />);
+    renderIndex();
 
     // Empty state: the sheet's own New-note button is the primary path.
     fireEvent.click(screen.getByTitle('New note'));
@@ -127,7 +136,7 @@ describe('Index — mobile (useIsMobile forced true)', () => {
   });
 
   it('empty state: a back-to-menu button reopens the menu even with no note selected', async () => {
-    render(<Index />); // no notes
+    renderIndex(); // no notes
 
     // The menu (top sheet) is open by default on load.
     expect(await screen.findByPlaceholderText('Search notes...')).toBeInTheDocument();
