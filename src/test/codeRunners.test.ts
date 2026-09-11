@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   registerRunner,
+  registerVersionedRunner,
   unregisterRunner,
   getRunner,
   hasRunner,
   listRunners,
+  getRunnerVersions,
+  getDefaultVersion,
 } from '@/lib/codeRunners';
 import { createSandboxedJSRunner } from '@/lib/jsRunner';
 
@@ -45,6 +48,31 @@ describe('codeRunners registry', () => {
     registerRunner('js', async () => '');
     registerRunner('python', async () => '');
     expect(listRunners()).toEqual(expect.arrayContaining(['js', 'python']));
+  });
+
+  it('registers a versioned runner with versions and default', () => {
+    const runner = async (code: string) => code;
+    registerVersionedRunner('php', runner, ['8.4.x', '8.2.29'], '8.2.29');
+    expect(hasRunner('php')).toBe(true);
+    expect(getRunner('php')).toBe(runner);
+    expect(getRunnerVersions('php')).toEqual(['8.4.x', '8.2.29']);
+    expect(getDefaultVersion('php')).toBe('8.2.29');
+  });
+
+  it('defaults to the first version when none is given', () => {
+    registerVersionedRunner('php', async () => '', ['8.4.x', '8.2.29']);
+    expect(getDefaultVersion('php')).toBe('8.4.x');
+  });
+
+  it('returns undefined versions for unversioned runners', () => {
+    registerRunner('js', async () => '');
+    expect(getRunnerVersions('js')).toBeUndefined();
+    expect(getDefaultVersion('js')).toBeUndefined();
+  });
+
+  it('is case-insensitive for version lookups', () => {
+    registerVersionedRunner('PHP', async () => '', ['8.4.x']);
+    expect(getRunnerVersions('php')).toEqual(['8.4.x']);
   });
 });
 
