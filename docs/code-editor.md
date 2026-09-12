@@ -267,6 +267,7 @@ flowchart TD
     B -- geojson --> D[Interactive GeoJSON map]
     B -- 3dmodel --> E[Three.js model viewer]
     B -- bpmn --> F[BPMN diagram viewer]
+    B -- openapi / swagger --> S[Swagger API docs viewer]
     B -- no language tag --> G[Plain inline code]
     B -- other tagged language --> H[Code Editor / CodeBlock]
     H --> H1[Parse frontmatter]
@@ -294,6 +295,115 @@ flowchart TD
 ```
 
 There is no `---` *closing* marker required for the frontmatter itself — the *first* `---` line always ends the header. The code then runs through Shiki, where an unknown or failing grammar automatically falls back to plain-text highlighting (the `text` grammar) so the block never looks broken.
+
+---
+
+## Swagger / OpenAPI viewer
+
+A fenced block tagged `openapi`, `swagger`, or `openapi3` is rendered as an
+interactive API reference instead of highlighted code. Both JSON and YAML
+specifications work — the format is detected automatically.
+
+````markdown
+```openapi
+openapi: 3.0.3
+info:
+  title: Pet Store API
+  version: 1.0.0
+paths:
+  /pets:
+    get:
+      tags: [pets]
+      summary: List pets
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            example: 5
+      responses:
+        "200":
+          description: A list of pets
+```
+````
+
+The viewer shows:
+
+1. **A header bar** — an `openapi` label, the spec version chip, an
+   **Online/Offline** badge that tracks real connectivity, and tabs for
+   **API Preview** and **Spec** (the raw spec text, with a Copy button).
+2. **Tag groups** — operations grouped by their `tags` (ungrouped operations
+   land under `default`), each with a colored method chip: `GET` blue,
+   `POST` green, `PUT` orange, `DELETE` red, `PATCH` purple.
+3. **Expandable operations** — click a row to see its summary/description,
+   a parameters table (name, location, type, description), the request body
+   content types, the response codes, and a **Try it out** button.
+
+### Servers (frontmatter)
+
+The spec's own `servers` list populates a dropdown at the top of the block —
+but frontmatter **overrides it entirely**, which is the point: you can keep a
+canonical spec in a note and repoint it at a local/mock environment.
+
+The header uses the same conventions as the [frontmatter](#frontmatter)
+section: keys are case-insensitive, and it ends at the first `---` line. An
+optional opening `---` before the header also works:
+
+````markdown
+```openapi
+---
+servers:
+  - https://staging.example.com/api
+  - http://localhost:4000/v1
+basePath: /api/v2          # Swagger 2.0-style; appended to every server
+notes: Internal API — do not share
+---
+openapi: 3.0.3
+info:
+  title: My API
+  version: 2.0.0
+paths:
+  /status:
+    get:
+      responses:
+        "200": { description: OK }
+```
+````
+
+| Frontmatter key | Type | Effect |
+| --------------- | ---- | ------ |
+| `servers` / `server` | inline list or block list of URLs | Replaces the spec's servers in the dropdown |
+| `host` | string | Swagger 2.0 style — becomes a `http(s)://host` server entry |
+| `basePath` | string | Appended to every server URL (never duplicated) |
+| `notes` | string | Amber notes panel below the header, like code-block notes |
+
+Server URLs must include a scheme (`https://…`). Swagger 2.0 specs
+(`swagger: "2.0"`) render with the same viewer and get a small notice.
+
+### Try it out
+
+Each operation has a **Try it out** button that sends a real request against
+the selected server using `fetch()`:
+
+- Query parameters with a schema `example` are appended to the URL
+  automatically.
+- The response status line plus a pretty-printed JSON body (or raw text) is
+  shown below the button. Errors (network failures, refused connections) show
+  in a red panel.
+- **While the browser is offline, requests are refused** with an
+  `Offline — reconnect to send requests` message — the badge in the header
+  flips to `Offline` at the same moment. The app re-checks on every
+  browser online/offline event.
+
+Requests are only ever sent when you click the button — viewing a spec never
+touches the network.
+
+### Spec parsing notes
+
+The YAML support is a deliberately simple subset — nested mappings,
+block/flow lists, flow maps, quoted scalars, comments, and `|` / `>` block
+scalars. This covers real-world specs, but exotic YAML (anchors, multi-doc,
+tags) is not supported; use JSON for those.
 
 ---
 
