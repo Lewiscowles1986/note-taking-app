@@ -26,7 +26,9 @@ export default function MultipartBodyForm({
 
   const update = (next: MultipartField[]) => {
     setFields(next);
-    onChange(serializeMultipartFields(next));
+    // Strip the ephemeral row ids from the serialized draft — parse
+    // regenerates them from array order anyway.
+    onChange(serializeMultipartFields(next.map(({ id: _id, ...rest }) => rest)));
   };
 
   const setField = (id: number, patch: Partial<MultipartField>) =>
