@@ -392,6 +392,44 @@ describe('Try it out', () => {
     expect(screen.queryByTestId('body-media-post:/pets')).not.toBeInTheDocument();
   });
 
+  it('shows the example dropdown even with a single built-in example', async () => {
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    const select = (await screen.findByTestId('body-example-post:/pets')) as HTMLSelectElement;
+    const labels = Array.from(select.options).map((o) => o.textContent);
+    expect(labels).toContain('Schema sample');
+    expect(labels).toContain('Empty');
+    expect(labels[0]).toBe('Load example…');
+  });
+
+  it('multipart bodies get a field editor and send real FormData', async () => {
+    const multipartSpec = JSON_SPEC.replace(
+      '"application/json": {',
+      '"multipart/form-data": { "schema": { "type": "object" } },\n          "application/json": {'
+    );
+    const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<SwaggerBlock code={multipartSpec} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    const media = await screen.findByTestId('body-media-post:/pets');
+    fireEvent.change(media, { target: { value: 'multipart/form-data' } });
+    const nameInput = await screen.findByTestId('multipart-name-post:/pets-0');
+    fireEvent.change(nameInput, { target: { value: 'name' } });
+    const valueInput = await screen.findByTestId('multipart-value-post:/pets-0');
+    fireEvent.change(valueInput, { target: { value: 'Rex' } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('try-post:/pets'));
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.body).toBeInstanceOf(FormData);
+    expect((init.body as FormData).get('name')).toBe('Rex');
+    // No manual Content-Type: the browser must add the multipart boundary.
+    expect(init.headers['Content-Type']).toBeUndefined();
+  });
+
   it('edits the body and sends it with a Content-Type header', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('"ok"', { status: 201 }));
     vi.stubGlobal('fetch', fetchMock);

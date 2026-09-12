@@ -271,7 +271,11 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
 
     const headers: Record<string, string> = {};
     if (hasBody && body) {
-      headers['Content-Type'] = body.mediaType;
+      // multipart/form-data is the exception: the browser must generate the
+      // Content-Type with its own boundary, so never set it manually.
+      if (!/multipart\//i.test(body.mediaType)) {
+        headers['Content-Type'] = body.mediaType;
+      }
     }
     for (const param of params) {
       if (param.in !== 'header') continue;
@@ -592,7 +596,7 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
                                   <span className="text-[10px] font-mono text-white/40">{draft.mediaType}</span>
                                 )}
 
-                                {(examples.length > 1 || saved.length > 0) && (
+                                {(examples.length > 0 || saved.length > 0) && (
                                   <select
                                     value=""
                                     onChange={(e) => {
@@ -762,8 +766,11 @@ const LazyJsonBodyForm = lazy(() => import('./bodyForms/JsonBodyForm'));
 const LazyTextBodyForm = lazy(() => import('./bodyForms/TextBodyForm'));
 const LazyFileBodyForm = lazy(() => import('./bodyForms/FileBodyForm'));
 
+const LazyMultipartBodyForm = lazy(() => import('./bodyForms/MultipartBodyForm'));
+
 const BODY_FORMS: Record<string, React.LazyExoticComponent<BodyFormComponent>> = {
   json: LazyJsonBodyForm,
+  multipart: LazyMultipartBodyForm,
   file: LazyFileBodyForm,
   text: LazyTextBodyForm,
 };
@@ -781,9 +788,11 @@ function LazyBodyForm({
 }) {
   const kind = /json/i.test(mediaType)
     ? 'json'
-    : /octet-stream|image\/|audio\/|video\/|pdf|zip|gzip|protobuf|msgpack/i.test(mediaType)
-      ? 'file'
-      : 'text';
+    : /multipart\//i.test(mediaType)
+      ? 'multipart'
+      : /octet-stream|image\/|audio\/|video\/|pdf|zip|gzip|protobuf|msgpack/i.test(mediaType)
+        ? 'file'
+        : 'text';
 
   const Form = BODY_FORMS[kind];
   return (
