@@ -389,27 +389,29 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
                         )}
 
                         {row.operation.parameters && row.operation.parameters.length > 0 && (
+                          // Inline styles: `.prose-notes th/td` would otherwise paint
+                          // light `bg-muted` + white text inside this dark panel.
                           <table className="w-full text-left font-mono mb-2" data-testid="op-params">
                             <thead>
-                              <tr className="text-white/40">
-                                <th className="pr-3 font-normal">Name</th>
-                                <th className="pr-3 font-normal">In</th>
-                                <th className="pr-3 font-normal">Type</th>
-                                <th className="font-normal">Description</th>
+                              <tr style={{ color: 'rgba(255,255,255,0.4)' }}>
+                                <th className="pr-3 py-1 font-normal" style={{ background: 'transparent', border: 'none' }}>Name</th>
+                                <th className="pr-3 py-1 font-normal" style={{ background: 'transparent', border: 'none' }}>In</th>
+                                <th className="pr-3 py-1 font-normal" style={{ background: 'transparent', border: 'none' }}>Type</th>
+                                <th className="py-1 font-normal" style={{ background: 'transparent', border: 'none' }}>Description</th>
                               </tr>
                             </thead>
                             <tbody>
                               {row.operation.parameters.map((p) => (
                                 <tr key={`${p.in}-${p.name}`} className="border-t border-white/5">
-                                  <td className="pr-3 py-1 text-white/85">
+                                  <td className="pr-3 py-1 text-white/85" style={{ background: 'transparent', border: 'none' }}>
                                     {p.name}
                                     {p.required && <span className="text-red-400"> *</span>}
                                   </td>
-                                  <td className="pr-3 py-1 text-white/50">{p.in}</td>
-                                  <td className="pr-3 py-1 text-sky-300">
+                                  <td className="pr-3 py-1 text-white/50" style={{ background: 'transparent', border: 'none' }}>{p.in}</td>
+                                  <td className="pr-3 py-1 text-sky-300" style={{ background: 'transparent', border: 'none' }}>
                                     {typeOfParam(p)}
                                   </td>
-                                  <td className="py-1 text-white/50">{p.description || ''}</td>
+                                  <td className="py-1 text-white/50" style={{ background: 'transparent', border: 'none' }}>{p.description || ''}</td>
                                 </tr>
                               ))}
                             </tbody>
