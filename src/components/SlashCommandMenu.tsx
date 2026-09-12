@@ -14,6 +14,7 @@ import {
   Table,
   Map,
   Box,
+  Network,
 } from 'lucide-react';
 import { calloutRegistry } from '@/lib/callouts';
 
@@ -55,6 +56,12 @@ const baseCommands: SlashCommand[] = [
     description: 'Render interactive STL or OBJ',
     icon: <Box size={16} />,
     insert: '```3dmodel\n---\nviewports:\n  - name: Isometric\n    camera: [20, 20, 20]\n    mode: Solid\n  - name: Top View\n    camera: [0, 30, 0]\n    mode: Wireframe\n    projection: orthographic\n---\nattachment:clip.stl\n```',
+  },
+  {
+    label: 'OpenAPI / Swagger',
+    description: 'Render API docs with Try-it-out',
+    icon: <Network size={16} />,
+    insert: '```openapi\n---\nservers:\n  - https://petstore.swagger.io/v2\n---\nopenapi: 3.0.3\ninfo:\n  title: Sample API\n  version: 1.0.0\npaths:\n  /pets:\n    get:\n      tags: [pets]\n      summary: List pets\n      parameters:\n        - name: limit\n          in: query\n          schema:\n            type: integer\n            example: 5\n      responses:\n        "200":\n          description: A list of pets\n```',
   },
 ];
 

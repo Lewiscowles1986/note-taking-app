@@ -11,6 +11,7 @@ const MermaidBlock = lazy(() => import('./MermaidBlock'));
 const GeoJsonBlock = lazy(() => import('./GeoJsonBlock'));
 const Model3DBlock = lazy(() => import('./Model3DBlock'));
 const BpmnBlock = lazy(() => import('./BpmnBlock'));
+const SwaggerBlock = lazy(() => import('./SwaggerBlock'));
 
 
 interface NoteViewerProps {
@@ -366,6 +367,14 @@ export default function NoteViewer({ note, onSave }: NoteViewerProps) {
         return (
           <Suspense fallback={<div className="my-3 h-24 animate-pulse rounded-sm bg-muted p-4" />}>
             <BpmnBlock code={String(children).trim()} />
+          </Suspense>
+        );
+      }
+
+      if (lang === 'openapi' || lang === 'swagger' || lang === 'openapi3') {
+        return (
+          <Suspense fallback={<div className="my-3 h-48 animate-pulse rounded-sm bg-muted p-4 flex items-center justify-center text-xs text-muted-foreground">Loading API docs...</div>}>
+            <SwaggerBlock code={String(children).trim()} />
           </Suspense>
         );
       }
