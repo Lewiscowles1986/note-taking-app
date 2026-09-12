@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
   Copy,
@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import {
   SpecParseError,
+  defaultRequestBody,
+  mediaTypeLabel,
   parseSpec,
   type SwaggerOperation,
   type SwaggerParameter,
@@ -131,6 +133,10 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
   const [execState, setExecState] = useState<
     { key: string; status: 'loading' | 'done' | 'error'; text: string } | null
   >(null);
+  /** Per-operation request bodies: opKey → { mediaType, text }. */
+  const [bodyDrafts, setBodyDrafts] = useState<
+    Record<string, { mediaType: string; text: string }>
+  >({});
 
   const spec = parsed.spec;
   const groups = useMemo(() => (spec ? groupOperations(spec) : new Map<string, OperationRow[]>()), [spec]);
@@ -181,7 +187,8 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
     key: string,
     method: Method,
     path: string,
-    params: SwaggerParameter[]
+    params: SwaggerParameter[],
+    body?: { mediaType: string; text: string }
   ) => {
     const base = servers[serverIdx]?.url || hostServer || '';
     if (!base) {
@@ -213,16 +220,30 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
       }
     }
 
+    // Non-empty trimmed body is sent with its content type; blank bodies are
+    // treated as "no request body".
+    const trimmedBody = body?.text.trim() ?? '';
+    const hasBody = trimmedBody.length > 0;
+
+    const headers: Record<string, string> = {};
+    if (hasBody && body) {
+      headers['Content-Type'] = body.mediaType;
+    }
+
     try {
-      const response = await fetch(url.toString(), { method: method.toUpperCase() });
-      const body = await response.text();
+      const response = await fetch(url.toString(), {
+        method: method.toUpperCase(),
+        headers,
+        body: hasBody ? trimmedBody : undefined,
+      });
+      const body_ = await response.text();
       const statusLine = `HTTP ${response.status} ${response.statusText}`;
-      let pretty = body;
+      let pretty = body_;
       try {
-        pretty = JSON.stringify(JSON.parse(body), null, 2);
+        pretty = JSON.stringify(JSON.parse(body_), null, 2);
       } catch {
         // Not JSON — show raw text (truncated).
-        pretty = body.slice(0, 2000);
+        pretty = body_.slice(0, 2000);
       }
       setExecState({ key, status: 'done', text: `${statusLine}\n\n${pretty || '(empty body)'}` });
     } catch (err) {
@@ -442,12 +463,53 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
                           </table>
                         )}
 
-                        {row.operation.requestBody?.content && (
-                          <div className="mb-2 text-white/60" data-testid="op-request-body">
-                            <span className="text-white/40">Request body:</span>{' '}
-                            {Object.keys(row.operation.requestBody.content).join(', ')}
-                          </div>
-                        )}
+                        {row.operation.requestBody?.content && (() => {
+                          const mediaTypes = Object.keys(row.operation.requestBody.content);
+                          const draft =
+                            bodyDrafts[key] ||
+                            { mediaType: mediaTypes[0], text: defaultRequestBody(mediaTypes[0], row.operation.requestBody.content) };
+
+                          const setDraft = (patch: Partial<typeof draft>) =>
+                            setBodyDrafts((prev) => ({ ...prev, [key]: { ...draft, ...patch } }));
+
+                          return (
+                            // Nested editor. !my-0 / !p-0 neutralize .prose-notes
+                            // pre margins + padding so the surface sits flush in
+                            // this dark panel (same treatment as CodeBlock's shiki
+                            // wrapper).
+                            <div className="mb-2" data-testid="op-request-body">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-white/40">Request body</span>
+                                {mediaTypes.length > 1 ? (
+                                  <select
+                                    value={draft.mediaType}
+                                    onChange={(e) =>
+                                      setDraft({ mediaType: e.target.value, text: defaultRequestBody(e.target.value, row.operation.requestBody!.content) })
+                                    }
+                                    className="bg-[#24292e] border border-white/15 rounded px-1.5 py-0.5 text-[10px] font-mono text-white/80"
+                                    data-testid={`body-media-${key}`}
+                                  >
+                                    {mediaTypes.map((mt) => (
+                                      <option key={mt} value={mt}>
+                                        {mediaTypeLabel(mt)} — {mt}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="text-[10px] font-mono text-white/40">{draft.mediaType}</span>
+                                )}
+                              </div>
+                              <div className="relative rounded border border-white/10 overflow-hidden focus-within:border-emerald-500/60">
+                                <RequestBodyEditor
+                                  value={draft.text}
+                                  lang={mediaTypeLang(draft.mediaType)}
+                                  onChange={(text) => setDraft({ text })}
+                                  testId={`body-input-${key}`}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         {row.operation.responses && (
                           <div className="mb-2" data-testid="op-responses">
@@ -472,7 +534,13 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
 
                         <button
                           onClick={() =>
-                            handleTryIt(key, row.method, row.path, row.operation.parameters || [])
+                            handleTryIt(
+                              key,
+                              row.method,
+                              row.path,
+                              row.operation.parameters || [],
+                              row.operation.requestBody?.content ? bodyDrafts[key] || { mediaType: Object.keys(row.operation.requestBody.content)[0], text: defaultRequestBody(Object.keys(row.operation.requestBody.content)[0], row.operation.requestBody.content) } : undefined
+                            )
                           }
                           disabled={execState?.key === key && execState.status === 'loading'}
                           className="mt-1 flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-emerald-700/80 text-white hover:bg-emerald-600 transition-colors disabled:opacity-50"
@@ -522,4 +590,91 @@ function typeOfParam(p: SwaggerParameter): string {
     if (s.type) return s.format ? `${s.type} (${s.format})` : s.type;
   }
   return 'string';
+}
+
+/** Shiki grammar for a media type (falls back to txt). */
+function mediaTypeLang(mediaType: string): string {
+  if (/json/i.test(mediaType)) return 'json';
+  if (/xml/i.test(mediaType)) return 'xml';
+  if (/yaml|yml/i.test(mediaType)) return 'yaml';
+  return 'txt';
+}
+
+/**
+ * Nested request-body editor: a Shiki-highlighted <pre> sits under a
+ * transparent textarea, so the user types over live syntax highlighting —
+ * same trick as the Shiki playground. The pre/textarea share identical
+ * font metrics and padding so the layers stay aligned; `!my-0`/`!p-*`
+ * neutralize the .prose-notes pre styles (margin would otherwise show the
+ * white page background between this surface and the panel above it).
+ */
+function RequestBodyEditor({
+  value,
+  lang,
+  onChange,
+  testId,
+}: {
+  value: string;
+  lang: string;
+  onChange: (text: string) => void;
+  testId: string;
+}) {
+  const [html, setHtml] = useState('');
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const preRef = useRef<HTMLPreElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Plain text when empty keeps the min-height without a lone quote token.
+    import('shiki').then(async ({ codeToHtml }) => {
+      try {
+        const result = await codeToHtml(value || ' ', { lang, theme: 'github-dark' });
+        if (!cancelled) setHtml(result);
+      } catch {
+        const result = await codeToHtml(value || ' ', { lang: 'txt', theme: 'github-dark' });
+        if (!cancelled) setHtml(result);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [value, lang]);
+
+  // Keep the textarea's scrollTop synced with the pre for long bodies.
+  const syncScroll = () => {
+    if (taRef.current && preRef.current) {
+      preRef.current.scrollTop = taRef.current.scrollTop;
+      preRef.current.scrollLeft = taRef.current.scrollLeft;
+    }
+  };
+
+  return (
+    <div className="relative min-h-[76px]" data-testid={`body-editor-${testId.replace('body-input-', '')}`}>
+      <pre
+        ref={preRef}
+        aria-hidden="true"
+        style={{ backgroundColor: '#24292e', fontSize: '12px', lineHeight: '20px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
+        className="!my-0 !p-3 !m-0 whitespace-pre-wrap break-words overflow-x-auto min-h-[76px] [&_code]:!text-xs"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      <textarea
+        ref={taRef}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onScroll={syncScroll}
+        spellCheck={false}
+        placeholder="Request body…"
+        data-testid={testId}
+        style={{
+          color: 'transparent',
+          caretColor: '#e6edf3',
+          backgroundColor: 'transparent',
+          fontSize: '12px',
+          lineHeight: '20px',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        }}
+        className="absolute inset-0 w-full h-full resize-none !p-3 outline-none whitespace-pre-wrap break-words placeholder:text-white/20"
+      />
+    </div>
+  );
 }

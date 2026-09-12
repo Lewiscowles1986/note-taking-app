@@ -24,6 +24,27 @@ notes: Internal API — use with care
           "200": { "description": "A list of pets" },
           "404": { "description": "Not found" }
         }
+      },
+      "post": {
+        "tags": ["pets"],
+        "summary": "Create a pet",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "age": { "type": "integer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Created" }
+        }
       }
     }
   }
@@ -61,7 +82,8 @@ describe('SwaggerBlock rendering', () => {
   it('renders tag groups, method chips, and paths', () => {
     render(<SwaggerBlock code={JSON_SPEC} />);
     expect(screen.getByText('pets')).toBeInTheDocument();
-    expect(screen.getByText('/pets')).toBeInTheDocument();
+    // Two operations share the path; collapsed rows are the only matches
+    expect(screen.getAllByText('/pets').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('List pets')).toBeInTheDocument();
   });
 
@@ -142,6 +164,172 @@ describe('SwaggerBlock rendering', () => {
 });
 
 describe('Try it out', () => {
+  it('renders a nested request-body editor seeded from the schema sample', () => {
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    const input = screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement;
+    expect(input.value).toBe('{\n  "name": "string",\n  "age": 1\n}');
+    // Single media type → plain label, no dropdown
+    expect(screen.getByText('application/json')).toBeInTheDocument();
+    expect(screen.queryByTestId('body-media-post:/pets')).not.toBeInTheDocument();
+  });
+
+  it('edits the body and sends it with a Content-Type header', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('"ok"', { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    const input = screen.getByTestId('body-input-post:/pets');
+    fireEvent.change(input, { target: { value: '{"name":"Rex"}' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('try-post:/pets'));
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('https://override.example.com/pets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"name":"Rex"}',
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('tryit-output-post:/pets')).toHaveTextContent('HTTP 201');
+    });
+  });
+
+  it('omits the body entirely when the editor is blank', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    const input = screen.getByTestId('body-input-post:/pets');
+    fireEvent.change(input, { target: { value: '   ' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('try-post:/pets'));
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('https://override.example.com/pets', {
+      method: 'POST',
+      headers: {},
+      body: undefined,
+    });
+  });
+
+  it('GET requests never send a body even if typed', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    // get /pets has no requestBody → no editor, and no body is passed
+    fireEvent.click(screen.getByTestId('op-get:/pets'));
+    expect(screen.queryByTestId('body-input-get:/pets')).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('try-get:/pets'));
+    });
+    expect(fetchMock).toHaveBeenCalledWith('https://override.example.com/pets?limit=5', {
+      method: 'GET',
+      headers: {},
+      body: undefined,
+    });
+  });
+
+  it('switches media types and reseeds the editor', () => {
+    const multiSpec = JSON_SPEC.replace(
+      '"application/json": {',
+      '"text/plain": { "schema": { "type": "string" } },\n          "application/json": {'
+    );
+    render(<SwaggerBlock code={multiSpec} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    const select = screen.getByTestId('body-media-post:/pets') as HTMLSelectElement;
+    expect(select.options.length).toBe(2);
+    fireEvent.change(select, { target: { value: 'text/plain' } });
+    const input = screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement;
+    expect(input.value).toBe('string');
+  });
+
+  it('renders a nested request-body editor seeded from the schema sample', () => {
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    const input = screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement;
+    expect(input.value).toBe('{\n  "name": "string",\n  "age": 1\n}');
+    // Single media type → plain label, no dropdown
+    expect(screen.getByText('application/json')).toBeInTheDocument();
+    expect(screen.queryByTestId('body-media-post:/pets')).not.toBeInTheDocument();
+  });
+
+  it('edits the body and sends it with a Content-Type header', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('"ok"', { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    const input = screen.getByTestId('body-input-post:/pets');
+    fireEvent.change(input, { target: { value: '{"name":"Rex"}' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('try-post:/pets'));
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('https://override.example.com/pets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"name":"Rex"}',
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('tryit-output-post:/pets')).toHaveTextContent('HTTP 201');
+    });
+  });
+
+  it('omits the body entirely when the editor is blank', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    const input = screen.getByTestId('body-input-post:/pets');
+    fireEvent.change(input, { target: { value: '   ' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('try-post:/pets'));
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('https://override.example.com/pets', {
+      method: 'POST',
+      headers: {},
+      body: undefined,
+    });
+  });
+
+  it('GET requests never send a body even if typed', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    // get /pets has no requestBody → no editor, and no body is passed
+    fireEvent.click(screen.getByTestId('op-get:/pets'));
+    expect(screen.queryByTestId('body-input-get:/pets')).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('try-get:/pets'));
+    });
+    expect(fetchMock).toHaveBeenCalledWith('https://override.example.com/pets?limit=5', {
+      method: 'GET',
+      headers: {},
+      body: undefined,
+    });
+  });
+
+  it('switches media types and reseeds the editor', () => {
+    const multiSpec = JSON_SPEC.replace(
+      '"application/json": {',
+      '"text/plain": { "schema": { "type": "string" } },\n          "application/json": {'
+    );
+    render(<SwaggerBlock code={multiSpec} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    const select = screen.getByTestId('body-media-post:/pets') as HTMLSelectElement;
+    expect(select.options.length).toBe(2);
+    fireEvent.change(select, { target: { value: 'text/plain' } });
+    const input = screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement;
+    expect(input.value).toBe('string');
+  });
+
   it('sends a GET to the selected server with query examples', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify([{ id: 1, name: 'Rex' }]), {
@@ -157,10 +345,11 @@ describe('Try it out', () => {
       fireEvent.click(screen.getByTestId('try-get:/pets'));
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://override.example.com/pets?limit=5',
-      { method: 'GET' }
-    );
+    expect(fetchMock).toHaveBeenCalledWith('https://override.example.com/pets?limit=5', {
+      method: 'GET',
+      headers: {},
+      body: undefined,
+    });
     await waitFor(() => {
       expect(screen.getByTestId('tryit-output-get:/pets')).toHaveTextContent('HTTP 200');
       expect(screen.getByTestId('tryit-output-get:/pets')).toHaveTextContent('Rex');
@@ -178,10 +367,11 @@ describe('Try it out', () => {
       fireEvent.click(screen.getByTestId('try-get:/pets'));
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://backup.example.com/v2/pets?limit=5',
-      { method: 'GET' }
-    );
+    expect(fetchMock).toHaveBeenCalledWith('https://backup.example.com/v2/pets?limit=5', {
+      method: 'GET',
+      headers: {},
+      body: undefined,
+    });
   });
 
   it('reports fetch errors in the red panel', async () => {

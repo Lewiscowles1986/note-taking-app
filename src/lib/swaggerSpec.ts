@@ -43,7 +43,8 @@ export interface SwaggerOperation {
   parameters?: SwaggerParameter[];
   requestBody?: {
     description?: string;
-    content?: Record<string, unknown>;
+    /** Media type → { schema?, example?, examples? } */
+    content?: Record<string, { schema?: unknown; example?: unknown; examples?: unknown }>;
   };
   responses?: Record<string, { description?: string; content?: Record<string, unknown> }>;
 }
@@ -343,4 +344,108 @@ function parseBlockScalar(
   }
   const text = folded ? parts.join(' ') : parts.join('\n');
   return [text, i];
+}
+
+// ─── Request-body authoring helpers (Try it out) ────────────────────
+
+/**
+ * Render a media type for the content-type dropdown: JSON-ish types get a
+ * short label; anything else passes through unchanged.
+ */
+export function mediaTypeLabel(mediaType: string): string {
+  if (/json/i.test(mediaType)) return 'JSON';
+  if (/^text\//i.test(mediaType)) return 'Text';
+  if (/xml/i.test(mediaType)) return 'XML';
+  if (/x-www-form-urlencoded/i.test(mediaType)) return 'Form';
+  return mediaType;
+}
+
+/**
+ * Build an initial request body for a media type: the schema's example if
+ * present, else a sample object generated from the schema shape, else an
+ * empty scaffold. Returned text is what the nested editor starts with.
+ */
+export function defaultRequestBody(
+  mediaType: string,
+  content?: Record<string, { schema?: unknown; example?: unknown }>
+): string {
+  const entry = content?.[mediaType];
+  const example = entry?.example;
+  if (example !== undefined) {
+    return serializeBody(example, mediaType);
+  }
+  if (entry?.schema) {
+    return serializeBody(sampleFromSchema(entry.schema), mediaType);
+  }
+  return scaffoldFor(mediaType);
+}
+
+function serializeBody(value: unknown, mediaType: string): string {
+  if (/json/i.test(mediaType) || typeof value === 'object') {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      /* fall through */
+    }
+  }
+  return String(value);
+}
+
+/**
+ * Generate a minimal sample value from a JSON schema (top few levels only).
+ * Handles primitives, required-first properties, arrays, enums, and $ref.
+ */
+export function sampleFromSchema(schema: unknown, depth = 0): unknown {
+  if (!schema || typeof schema !== 'object' || depth > 4) return null;
+  const s = schema as {
+    example?: unknown;
+    type?: string;
+    format?: string;
+    enum?: unknown[];
+    properties?: Record<string, unknown>;
+    required?: string[];
+    items?: unknown;
+    $ref?: string;
+  };
+  if (s.example !== undefined) return s.example;
+  if (Array.isArray(s.enum) && s.enum.length > 0) return s.enum[0];
+  if (s.$ref) return { [`<${(s.$ref.split('/').pop() || 'ref')}>`]: null };
+
+  switch (s.type) {
+    case 'object': {
+      const obj: Record<string, unknown> = {};
+      const props = s.properties || {};
+      const required = new Set(s.required || []);
+      const keys = [
+        ...Object.keys(props).filter((k) => required.has(k)),
+        ...Object.keys(props).filter((k) => !required.has(k)),
+      ].slice(0, 8);
+      for (const key of keys) {
+        obj[key] = sampleFromSchema(props[key], depth + 1);
+      }
+      return obj;
+    }
+    case 'array':
+      return [sampleFromSchema(s.items, depth + 1)];
+    case 'integer':
+    case 'number':
+      return s.format === 'int64' ? 9007199254740991 : 1;
+    case 'boolean':
+      return true;
+    case 'string':
+      return s.format === 'date-time'
+        ? '2026-01-01T00:00:00Z'
+        : s.format === 'date'
+          ? '2026-01-01'
+          : 'string';
+    default:
+      return null;
+  }
+}
+
+/** Empty scaffold for a media type with no schema/example. */
+export function scaffoldFor(mediaType: string): string {
+  if (/json/i.test(mediaType)) return '{\n  \n}';
+  if (/x-www-form-urlencoded/i.test(mediaType)) return 'key=value';
+  return '';
 }
