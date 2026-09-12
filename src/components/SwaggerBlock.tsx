@@ -4,6 +4,7 @@ import {
   Copy,
   Code2,
   Globe,
+  Info,
   Loader2,
   Network,
   Server,
@@ -122,6 +123,7 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
   const [activeTab, setActiveTab] = useState<'preview' | 'code'>('preview');
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showNotes, setShowNotes] = useState(false);
   const [online, setOnline] = useState<boolean>(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
@@ -233,7 +235,12 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
   };
 
   return (
-    <div className="my-3 overflow-hidden rounded-md border border-border">
+    // Dark panel background on the container itself: .prose-notes pre injects a
+    // my-3 margin around the Spec tab's <pre>, and without a background here
+    // the light page color shows through as a white box between the header and
+    // the code. It also gives the empty state and error banner a dark backdrop
+    // for their light-on-dark text.
+    <div className="my-3 overflow-hidden rounded-md border border-border bg-[#1a1f24]">
       {/* Header bar — same chrome as Bpmn/GeoJson blocks */}
       <div className="flex items-center justify-between px-4 py-1.5 bg-[#24292e]">
         <div className="flex items-center gap-2">
@@ -254,6 +261,16 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
           </span>
         </div>
         <div className="flex items-center gap-1">
+          {meta.notes && (
+            <button
+              onClick={() => setShowNotes(!showNotes)}
+              className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+              data-testid="swagger-notes-toggle"
+            >
+              <Info size={12} />
+              Notes
+            </button>
+          )}
           <button
             onClick={() => setActiveTab('preview')}
             className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors ${
@@ -288,20 +305,27 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
         </div>
       </div>
 
-      {meta.notes && (
-        <div className="px-4 py-2 text-xs bg-primary text-[#24292e] border-b border-[#ccc] whitespace-pre-wrap">
+      {showNotes && meta.notes && (
+        // Same amber treatment as CodeBlock's notes panel: solid bg-primary
+        // band with dark ink text, toggled from the header.
+        <div
+          className="px-4 py-2 text-xs bg-primary text-[#24292e] border-b border-[#ccc] whitespace-pre-wrap"
+          data-testid="swagger-notes-panel"
+        >
           {meta.notes}
         </div>
       )}
 
       {parsed.error ? (
-        <div className="bg-destructive/10 text-destructive p-3 text-sm font-mono">
+        // Matches CodeBlock's run-error panel — readable on the dark container
+        // (text-destructive is tuned for the light prose background).
+        <div className="bg-red-950/50 text-red-300 p-3 text-sm font-mono">
           OpenAPI error: {parsed.error}
         </div>
       ) : activeTab === 'code' ? (
         <pre
           style={{ backgroundColor: '#24292e' }}
-          className="p-4 text-xs text-white/80 font-mono overflow-x-auto max-h-96"
+          className="!my-0 p-4 text-xs text-white/80 font-mono overflow-x-auto max-h-96"
         >
           <code>{specText.trim()}</code>
         </pre>

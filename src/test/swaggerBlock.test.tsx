@@ -83,9 +83,23 @@ describe('SwaggerBlock rendering', () => {
     expect(screen.queryByText('overridden')).not.toBeInTheDocument();
   });
 
-  it('shows the frontmatter notes panel', () => {
+  it('hides notes behind a toggle in the header (collapsed by default)', () => {
     render(<SwaggerBlock code={JSON_SPEC} />);
-    expect(screen.getByText('Internal API — use with care')).toBeInTheDocument();
+    // Collapsed by default — no amber panel
+    expect(screen.queryByTestId('swagger-notes-panel')).not.toBeInTheDocument();
+    // Toggle sits left of the API Preview tab
+    fireEvent.click(screen.getByTestId('swagger-notes-toggle'));
+    expect(screen.getByTestId('swagger-notes-panel')).toHaveTextContent('Internal API — use with care');
+    // Toggle again to collapse
+    fireEvent.click(screen.getByTestId('swagger-notes-toggle'));
+    expect(screen.queryByTestId('swagger-notes-panel')).not.toBeInTheDocument();
+  });
+
+  it('renders no notes toggle when frontmatter has no notes', () => {
+    const code = JSON_SPEC.replace('notes: Internal API — use with care\n', '');
+    render(<SwaggerBlock code={code} />);
+    expect(screen.queryByTestId('swagger-notes-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('swagger-notes-panel')).not.toBeInTheDocument();
   });
 
   it('expands an operation and shows params, responses, and Try it out', async () => {
