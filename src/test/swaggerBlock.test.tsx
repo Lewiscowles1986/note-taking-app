@@ -301,6 +301,73 @@ describe('Try it out', () => {
     });
   });
 
+  it('renders editable value inputs for query parameters, seeded from schema examples', async () => {
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    fireEvent.click(screen.getByTestId('op-get:/pets'));
+    const input = (await screen.findByTestId('param-query-limit')) as HTMLInputElement;
+    expect(input.value).toBe('5'); // from schema example
+    expect(input.type).toBe('number'); // integer schema
+  });
+
+  it('sends the user-typed query value instead of the example', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    fireEvent.click(screen.getByTestId('op-get:/pets'));
+    const input = await screen.findByTestId('param-query-limit');
+    fireEvent.change(input, { target: { value: '42' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('try-get:/pets'));
+    });
+    expect(fetchMock).toHaveBeenCalledWith('https://override.example.com/pets?limit=42', {
+      method: 'GET',
+      headers: {},
+      body: undefined,
+    });
+  });
+
+  it('substitutes path parameters into the URL and blocks missing required ones', async () => {
+    const pathSpec = JSON_SPEC.replace(
+      '"/pets": {',
+      '"/pets/{petId}": { "get": { "tags": ["pets"], "summary": "Get one pet", "parameters": [ { "name": "petId", "in": "path", "required": true, "schema": { "type": "integer" } } ], "responses": { "200": { "description": "ok" } } } },\n    "/pets": {'
+    );
+    const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<SwaggerBlock code={pathSpec} />);
+    fireEvent.click(screen.getByTestId('op-get:/pets/{petId}'));
+    await screen.findByTestId('param-path-petId');
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('try-get:/pets/{petId}'));
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId('tryit-output-get:/pets/{petId}')).toHaveTextContent('Missing required parameter(s): petId');
+
+    fireEvent.change(screen.getByTestId('param-path-petId'), { target: { value: '7' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('try-get:/pets/{petId}'));
+    });
+    expect(fetchMock).toHaveBeenCalledWith('https://override.example.com/pets/7', {
+      method: 'GET',
+      headers: {},
+      body: undefined,
+    });
+  });
+
+  it('explains CORS rejections instead of showing a bare Failed to fetch', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    fireEvent.click(screen.getByTestId('op-get:/pets'));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('try-get:/pets'));
+    });
+    const out = await screen.findByTestId('tryit-output-get:/pets');
+    expect(out).toHaveTextContent(/Request blocked/);
+    expect(out).toHaveTextContent(/CORS/);
+    expect(out).toHaveTextContent('https://override.example.com/pets?limit=5');
+  });
+
   it('switches media types and reseeds the editor', async () => {
     const multiSpec = JSON_SPEC.replace(
       '"application/json": {',
@@ -366,23 +433,6 @@ describe('Try it out', () => {
     });
   });
 
-  it('GET requests never send a body even if typed', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }));
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(<SwaggerBlock code={JSON_SPEC} />);
-    // get /pets has no requestBody → no editor, and no body is passed
-    fireEvent.click(screen.getByTestId('op-get:/pets'));
-    expect(screen.queryByTestId('body-input-get:/pets')).not.toBeInTheDocument();
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('try-get:/pets'));
-    });
-    expect(fetchMock).toHaveBeenCalledWith('https://override.example.com/pets?limit=5', {
-      method: 'GET',
-      headers: {},
-      body: undefined,
-    });
-  });
 
   it('switches media types and reseeds the editor', async () => {
     const multiSpec = JSON_SPEC.replace(

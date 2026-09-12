@@ -148,6 +148,8 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
   const [savedExamples, setSavedExamples] = useState<
     Record<string, { name: string; value: string }[]>
   >({});
+  /** Editable parameter values: `${opKey}::${param.in}::${param.name}` → string. */
+  const [paramValues, setParamValues] = useState<Record<string, string>>({});
 
   const spec = parsed.spec;
   const groups = useMemo(() => (spec ? groupOperations(spec) : new Map<string, OperationRow[]>()), [spec]);
@@ -217,17 +219,42 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
 
     setExecState({ key, status: 'loading', text: '' });
 
+    // Substitute path parameters ({id} → value). Unfilled required path
+    // params keep their {placeholder} so the failure is visible in the URL.
+    let resolvedPath = path;
+    const missingRequired: string[] = [];
+    for (const param of params) {
+      const raw = paramValues[`${key}::${param.in}::${param.name}`];
+      const value = raw !== undefined && raw !== '' ? raw : defaultValueFor(param);
+      if (param.in === 'path') {
+        resolvedPath = resolvedPath.replace(`{${param.name}}`, encodeURIComponent(value));
+      }
+      if (param.required && !value) missingRequired.push(param.name);
+    }
+    if (missingRequired.length > 0) {
+      setExecState({
+        key,
+        status: 'error',
+        text: `Missing required parameter(s): ${missingRequired.join(', ')}`,
+      });
+      return;
+    }
+
     let url: URL;
     try {
-      url = new URL(base + path);
+      url = new URL(base + resolvedPath);
     } catch {
-      setExecState({ key, status: 'error', text: `Invalid URL: ${base}${path}` });
+      setExecState({ key, status: 'error', text: `Invalid URL: ${base}${resolvedPath}` });
       return;
     }
 
     for (const param of params) {
-      if (param.in === 'query' && param.schema && typeof (param.schema as { example?: unknown }).example !== 'undefined') {
-        url.searchParams.set(param.name, String((param.schema as { example?: unknown }).example));
+      if (param.in !== 'query') continue;
+      const typed = paramValues[`${key}::${param.in}::${param.name}`];
+      // Explicit user input wins; otherwise fall back to the schema example.
+      const raw = typed !== undefined && typed !== '' ? typed : defaultValueFor(param);
+      if (raw !== undefined && raw !== '') {
+        url.searchParams.set(param.name, raw);
       }
     }
 
@@ -246,6 +273,11 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
     if (hasBody && body) {
       headers['Content-Type'] = body.mediaType;
     }
+    for (const param of params) {
+      if (param.in !== 'header') continue;
+      const value = paramValues[`${key}::${param.in}::${param.name}`];
+      if (value) headers[param.name] = value;
+    }
 
     try {
       const response = await fetch(url.toString(), {
@@ -262,12 +294,19 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
         // Not JSON — show raw text (truncated).
         pretty = body_.slice(0, 2000);
       }
-      setExecState({ key, status: 'done', text: `${statusLine}\n\n${pretty || '(empty body)'}` });
+      setExecState({ key, status: 'done', text: `${url.toString()}\n${statusLine}\n\n${pretty || '(empty body)'}` });
     } catch (err) {
+      // "Failed to fetch" in a browser is almost always CORS: the server
+      // rejected the preflight (or blocked the response). Name it explicitly
+      // so users don't mistake it for a body/URL problem.
+      const raw = err instanceof Error ? err.message : String(err);
+      const text = /failed to fetch/i.test(raw)
+        ? `Request blocked — the server did not allow this cross-origin call (CORS).\nURL: ${url.toString()}\n\nThe browser never received a response; check that ${new URL(url.toString()).origin} sends Access-Control-Allow-Origin for this origin.`
+        : raw;
       setExecState({
         key,
         status: 'error',
-        text: err instanceof Error ? err.message : String(err),
+        text,
       });
     }
   };
@@ -458,24 +497,40 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
                               <tr style={{ color: 'rgba(255,255,255,0.4)' }}>
                                 <th className="pr-3 py-1 font-normal" style={{ background: 'transparent', border: 'none' }}>Name</th>
                                 <th className="pr-3 py-1 font-normal" style={{ background: 'transparent', border: 'none' }}>In</th>
-                                <th className="pr-3 py-1 font-normal" style={{ background: 'transparent', border: 'none' }}>Type</th>
+                                <th className="pr-3 py-1 font-normal" style={{ background: 'transparent', border: 'none' }}>Value</th>
                                 <th className="py-1 font-normal" style={{ background: 'transparent', border: 'none' }}>Description</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {row.operation.parameters.map((p) => (
-                                <tr key={`${p.in}-${p.name}`} className="border-t border-white/5">
-                                  <td className="pr-3 py-1 text-white/85" style={{ background: 'transparent', border: 'none' }}>
-                                    {p.name}
-                                    {p.required && <span className="text-red-400"> *</span>}
-                                  </td>
-                                  <td className="pr-3 py-1 text-white/50" style={{ background: 'transparent', border: 'none' }}>{p.in}</td>
-                                  <td className="pr-3 py-1 text-sky-300" style={{ background: 'transparent', border: 'none' }}>
-                                    {typeOfParam(p)}
-                                  </td>
-                                  <td className="py-1 text-white/50" style={{ background: 'transparent', border: 'none' }}>{p.description || ''}</td>
-                                </tr>
-                              ))}
+                              {row.operation.parameters.map((p) => {
+                                const paramKey = `${key}::${p.in}::${p.name}`;
+                                const value = paramValues[paramKey] ?? defaultValueFor(p);
+                                return (
+                                  <tr key={`${p.in}-${p.name}`} className="border-t border-white/5">
+                                    <td className="pr-3 py-1 text-white/85" style={{ background: 'transparent', border: 'none' }}>
+                                      {p.name}
+                                      {p.required && <span className="text-red-400"> *</span>}
+                                    </td>
+                                    <td className="pr-3 py-1 text-white/50" style={{ background: 'transparent', border: 'none' }}>{p.in}</td>
+                                    <td className="pr-3 py-1" style={{ background: 'transparent', border: 'none' }}>
+                                      <input
+                                        type={paramInputType(p)}
+                                        value={value}
+                                        onChange={(e) =>
+                                          setParamValues((prev) => ({ ...prev, [paramKey]: e.target.value }))
+                                        }
+                                        placeholder={p.in === 'path' ? `{${p.name}}` : ''}
+                                        data-testid={`param-${p.in}-${p.name}`}
+                                        className="w-28 bg-[#24292e] border border-white/15 rounded px-1.5 py-0.5 text-[11px] font-mono text-white/90 focus:outline-none focus:border-emerald-500/60"
+                                      />
+                                    </td>
+                                    <td className="py-1 text-white/50" style={{ background: 'transparent', border: 'none' }}>
+                                      {typeOfParam(p) !== 'string' && <span className="mr-1 text-sky-300/70">{typeOfParam(p)}</span>}
+                                      {p.description || ''}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         )}
@@ -743,4 +798,23 @@ function LazyBodyForm({
       <Form key={kind} value={value} mediaType={mediaType} lang={mediaTypeLang(mediaType)} testId={testId} onChange={onChange} />
     </Suspense>
   );
+}
+
+/**
+ * Seed value for a parameter input: the schema example when the spec
+ * supplies one, else the empty string (the user types their own).
+ */
+function defaultValueFor(param: SwaggerParameter): string {
+  if (param.schema && typeof param.schema === 'object') {
+    const example = (param.schema as { example?: unknown }).example;
+    if (example !== undefined) return String(example);
+  }
+  if (param.type === 'boolean') return 'true';
+  return '';
+}
+
+/** Input type for a parameter's schema type (bool → checkbox-ish select). */
+function paramInputType(param: SwaggerParameter): 'number' | 'text' {
+  const t = param.type || ((param.schema as { type?: string } | undefined)?.type ?? '');
+  return t === 'integer' || t === 'number' ? 'number' : 'text';
 }
