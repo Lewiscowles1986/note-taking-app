@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense } from 'react';
 import {
   Check,
   Copy,
@@ -14,6 +15,8 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
+import { mediaTypeLang } from './RequestBodyEditor';
+import { bodyFormFor, toWireBody, type BodyFormComponent } from './bodyForms/registry';
 import {
   SpecParseError,
   defaultRequestBody,
@@ -229,9 +232,15 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
     }
 
     // Non-empty trimmed body is sent with its content type; blank bodies are
-    // treated as "no request body".
+    // treated as "no request body". File-form bodies arrive as data URLs and
+    // are decoded to raw bytes here so the wire format matches a real upload.
     const trimmedBody = body?.text.trim() ?? '';
     const hasBody = trimmedBody.length > 0;
+    const wireBody = hasBody ? await toWireBody(trimmedBody, body!.mediaType) : undefined;
+    if (hasBody && wireBody === undefined) {
+      setExecState({ key, status: 'error', text: 'Could not decode request body' });
+      return;
+    }
 
     const headers: Record<string, string> = {};
     if (hasBody && body) {
@@ -242,7 +251,7 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
       const response = await fetch(url.toString(), {
         method: method.toUpperCase(),
         headers,
-        body: hasBody ? trimmedBody : undefined,
+        body: wireBody,
       });
       const body_ = await response.text();
       const statusLine = `HTTP ${response.status} ${response.statusText}`;
@@ -582,9 +591,9 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
                                 </button>
                               </div>
                               <div className="relative rounded border border-white/10 overflow-hidden focus-within:border-emerald-500/60">
-                                <RequestBodyEditor
+                                <LazyBodyForm
+                                  mediaType={draft.mediaType}
                                   value={currentText}
-                                  lang={mediaTypeLang(draft.mediaType)}
                                   onChange={setText}
                                   testId={`body-input-${key}`}
                                 />
@@ -681,103 +690,57 @@ function typeOfParam(p: SwaggerParameter): string {
   return 'string';
 }
 
-/** Shiki grammar for a media type (falls back to txt). */
-function mediaTypeLang(mediaType: string): string {
-  if (/json/i.test(mediaType)) return 'json';
-  if (/xml/i.test(mediaType)) return 'xml';
-  if (/yaml|yml/i.test(mediaType)) return 'yaml';
-  return 'txt';
-}
-
 /**
- * Nested request-body editor: Shiki-highlighted markup sits under a
- * transparent textarea, so the user types over live syntax highlighting —
- * same trick as the Shiki playground.
- *
- * Layer alignment: Shiki's codeToHtml emits its own <pre>; rendering it into
- * a <div> (not another <pre>) avoids a `pre pre` cascade where .prose-notes
- * pre { p-4 my-3 } hits the INNER pre and shifts the highlight layer away
- * from the textarea (the misaligned-cursor + double-padding bug). Instead
- * the wrapper div owns padding/scroll and [&_pre]/[&_code] flatten Shiki's
- * own margins/backgrounds so only ONE padding (p-3) applies to both layers.
+ * Lazy body-form host: resolves the editor component for a media type via
+ * bodyFormFor() and dynamic-imports it (JSON editor, text editor, or file
+ * picker each live in their own chunk). The key forces a clean remount when
+ * the form kind changes so editor state never leaks across forms.
  */
-function RequestBodyEditor({
+/**
+ * Lazy body-form host: resolves the editor component for a media type via
+ * bodyFormFor() and React.lazy-imports it (JSON editor, text editor, or file
+ * picker each live in their own chunk). The lazy component is memoized per
+ * form kind; the key forces a clean remount when the kind changes so editor
+ * state never leaks across forms.
+ */
+const LazyJsonBodyForm = lazy(() => import('./bodyForms/JsonBodyForm'));
+const LazyTextBodyForm = lazy(() => import('./bodyForms/TextBodyForm'));
+const LazyFileBodyForm = lazy(() => import('./bodyForms/FileBodyForm'));
+
+const BODY_FORMS: Record<string, React.LazyExoticComponent<BodyFormComponent>> = {
+  json: LazyJsonBodyForm,
+  file: LazyFileBodyForm,
+  text: LazyTextBodyForm,
+};
+
+function LazyBodyForm({
+  mediaType,
   value,
-  lang,
   onChange,
   testId,
 }: {
+  mediaType: string;
   value: string;
-  lang: string;
-  onChange: (text: string) => void;
+  onChange: (t: string) => void;
   testId: string;
 }) {
-  const [html, setHtml] = useState('');
-  const taRef = useRef<HTMLTextAreaElement>(null);
-  const highlightRef = useRef<HTMLDivElement>(null);
+  const kind = /json/i.test(mediaType)
+    ? 'json'
+    : /octet-stream|image\/|audio\/|video\/|pdf|zip|gzip|protobuf|msgpack/i.test(mediaType)
+      ? 'file'
+      : 'text';
 
-  useEffect(() => {
-    let cancelled = false;
-    // Plain text when empty keeps the min-height without a lone quote token.
-    import('shiki').then(async ({ codeToHtml }) => {
-      try {
-        const result = await codeToHtml(value || ' ', { lang, theme: 'github-dark' });
-        if (!cancelled) setHtml(result);
-      } catch {
-        const result = await codeToHtml(value || ' ', { lang: 'txt', theme: 'github-dark' });
-        if (!cancelled) setHtml(result);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [value, lang]);
-
-  // Keep the highlight layer's scroll synced with the textarea for long bodies.
-  const syncScroll = () => {
-    if (taRef.current && highlightRef.current) {
-      highlightRef.current.scrollTop = taRef.current.scrollTop;
-      highlightRef.current.scrollLeft = taRef.current.scrollLeft;
-    }
-  };
-
+  const Form = BODY_FORMS[kind];
   return (
-    <div className="relative min-h-[76px]" data-testid={`body-editor-${testId.replace('body-input-', '')}`}>
-      {/* Highlight layer — a div: never a <pre>, so prose `pre` rules can't
-          reach the Shiki output and offset the layers. [&_pre]/[&_code] strip
-          Shiki's own pre/code margins+padding so the wrapper's p-3 is the
-          single source of padding for both layers. */}
-      <div
-        ref={highlightRef}
-        aria-hidden="true"
-        data-shiki-layer=""
-        style={{
-          backgroundColor: '#24292e',
-          fontSize: '12px',
-          lineHeight: '20px',
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        }}
-        className="!my-0 p-3 whitespace-pre-wrap break-words overflow-x-auto min-h-[76px] [&_pre]:!my-0 [&_pre]:!p-0 [&_pre]:!bg-transparent [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_code]:!text-xs [&_code]:!bg-transparent [&_code]:!p-0"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-      <textarea
-        ref={taRef}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onScroll={syncScroll}
-        spellCheck={false}
-        placeholder="// Request body — type here; syntax highlighting is live"
-        data-testid={testId}
-        style={{
-          color: 'transparent',
-          caretColor: '#e6edf3',
-          backgroundColor: 'transparent',
-          fontSize: '12px',
-          lineHeight: '20px',
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        }}
-        className="absolute inset-0 w-full h-full resize-none !p-3 !my-0 outline-none whitespace-pre-wrap break-words placeholder:text-white/20 selection:bg-sky-500/30"
-      />
-    </div>
+    <Suspense
+      fallback={
+        <div className="p-3 rounded bg-[#24292e] min-h-[76px] flex items-center gap-2 text-xs text-white/40">
+          <Loader2 size={12} className="animate-spin" />
+          Loading body editor…
+        </div>
+      }
+    >
+      <Form key={kind} value={value} mediaType={mediaType} lang={mediaTypeLang(mediaType)} testId={testId} onChange={onChange} />
+    </Suspense>
   );
 }

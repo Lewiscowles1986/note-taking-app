@@ -72,14 +72,14 @@ afterEach(() => {
 });
 
 describe('SwaggerBlock rendering', () => {
-  it('renders header with version and online badge', () => {
+  it('renders header with version and online badge', async () => {
     render(<SwaggerBlock code={JSON_SPEC} />);
     expect(screen.getByText('openapi')).toBeInTheDocument();
     expect(screen.getByText('v1.0.2')).toBeInTheDocument();
     expect(screen.getByTestId('swagger-online-badge')).toHaveTextContent('Online');
   });
 
-  it('renders tag groups, method chips, and paths', () => {
+  it('renders tag groups, method chips, and paths', async () => {
     render(<SwaggerBlock code={JSON_SPEC} />);
     expect(screen.getByText('pets')).toBeInTheDocument();
     // Two operations share the path; collapsed rows are the only matches
@@ -87,7 +87,7 @@ describe('SwaggerBlock rendering', () => {
     expect(screen.getByText('List pets')).toBeInTheDocument();
   });
 
-  it('frontmatter servers override spec servers in the selector', () => {
+  it('frontmatter servers override spec servers in the selector', async () => {
     render(<SwaggerBlock code={JSON_SPEC} />);
     const select = screen.getByRole('combobox') as HTMLSelectElement;
     const options = Array.from(select.options).map((o) => o.value);
@@ -97,7 +97,7 @@ describe('SwaggerBlock rendering', () => {
     expect(screen.getByText('overridden')).toBeInTheDocument();
   });
 
-  it('falls back to spec servers when frontmatter has none', () => {
+  it('falls back to spec servers when frontmatter has none', async () => {
     const code = JSON_SPEC.replace('---\nservers:\n  - https://override.example.com\n  - https://backup.example.com/v2\nnotes: Internal API — use with care\n---\n', '');
     render(<SwaggerBlock code={code} />);
     const select = screen.getByRole('combobox') as HTMLSelectElement;
@@ -105,7 +105,7 @@ describe('SwaggerBlock rendering', () => {
     expect(screen.queryByText('overridden')).not.toBeInTheDocument();
   });
 
-  it('hides notes behind a toggle in the header (collapsed by default)', () => {
+  it('hides notes behind a toggle in the header (collapsed by default)', async () => {
     render(<SwaggerBlock code={JSON_SPEC} />);
     // Collapsed by default — no amber panel
     expect(screen.queryByTestId('swagger-notes-panel')).not.toBeInTheDocument();
@@ -117,7 +117,7 @@ describe('SwaggerBlock rendering', () => {
     expect(screen.queryByTestId('swagger-notes-panel')).not.toBeInTheDocument();
   });
 
-  it('renders no notes toggle when frontmatter has no notes', () => {
+  it('renders no notes toggle when frontmatter has no notes', async () => {
     const code = JSON_SPEC.replace('notes: Internal API — use with care\n', '');
     render(<SwaggerBlock code={code} />);
     expect(screen.queryByTestId('swagger-notes-toggle')).not.toBeInTheDocument();
@@ -135,19 +135,19 @@ describe('SwaggerBlock rendering', () => {
     expect(screen.getByTestId('try-get:/pets')).toBeInTheDocument();
   });
 
-  it('renders YAML specs too', () => {
+  it('renders YAML specs too', async () => {
     render(<SwaggerBlock code={YAML_SPEC} />);
     expect(screen.getByText('YAML API')).toBeInTheDocument();
     expect(screen.getByText('/dogs')).toBeInTheDocument();
     expect(screen.getByText('canine')).toBeInTheDocument();
   });
 
-  it('shows a parse error for invalid specs', () => {
+  it('shows a parse error for invalid specs', async () => {
     render(<SwaggerBlock code='{ "openapi": "3.0.0" }' />);
     expect(screen.getByText(/Missing required "info"/)).toBeInTheDocument();
   });
 
-  it('shows the Spec tab with copyable spec text (frontmatter stripped)', () => {
+  it('shows the Spec tab with copyable spec text (frontmatter stripped)', async () => {
     render(<SwaggerBlock code={JSON_SPEC} />);
     fireEvent.click(screen.getByText('Spec'));
     const pre = screen.getByText((_, el) => el?.tagName === 'CODE' && el.textContent?.includes('"openapi"') === true);
@@ -156,7 +156,7 @@ describe('SwaggerBlock rendering', () => {
     expect(screen.getByText('Copy')).toBeInTheDocument();
   });
 
-  it('marks Swagger 2.0 specs', () => {
+  it('marks Swagger 2.0 specs', async () => {
     const v2 = 'swagger: "2.0"\ninfo:\n  title: Old\n  version: 1.0\npaths:\n  /x:\n    get:\n      responses:\n        "200": { description: ok }';
     render(<SwaggerBlock code={v2} />);
     expect(screen.getByText(/Swagger 2.0 spec/)).toBeInTheDocument();
@@ -164,25 +164,25 @@ describe('SwaggerBlock rendering', () => {
 });
 
 describe('Try it out', () => {
-  it('renders a nested request-body editor seeded from the schema sample', () => {
+  it('renders a nested request-body editor seeded from the schema sample', async () => {
     render(<SwaggerBlock code={JSON_SPEC} />);
     fireEvent.click(screen.getByTestId('op-post:/pets'));
-    const input = screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement;
+    const input = (await screen.findByTestId('body-input-post:/pets')) as HTMLTextAreaElement;
     expect(input.value).toBe('{\n  "name": "string",\n  "age": 1\n}');
     // Single media type → plain label, no dropdown
     expect(screen.getByText('application/json')).toBeInTheDocument();
     expect(screen.queryByTestId('body-media-post:/pets')).not.toBeInTheDocument();
   });
 
-  it('labels the surface as a body editor with live highlighting', () => {
+  it('labels the surface as a body editor with live highlighting', async () => {
     render(<SwaggerBlock code={JSON_SPEC} />);
     fireEvent.click(screen.getByTestId('op-post:/pets'));
     expect(screen.getByText('Body editor')).toBeInTheDocument();
-    const ta = screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement;
+    const ta = (await screen.findByTestId('body-input-post:/pets')) as HTMLTextAreaElement;
     expect(ta.placeholder).toMatch(/type here/i);
   });
 
-  it('offers spec examples in a Load example dropdown', () => {
+  it('offers spec examples in a Load example dropdown', async () => {
     const spec = JSON_SPEC.replace(
       '"application/json": {',
       '"application/json": {\n        "examples": { "dog": { "summary": "A dog", "value": { "name": "Rex" } }, "cat": { "summary": "A cat", "value": { "name": "Whiskers", "age": 2 } } },'
@@ -193,14 +193,14 @@ describe('Try it out', () => {
     const labels = Array.from(select.options).map((o) => o.textContent);
     expect(labels).toEqual(['Load example…', 'A dog', 'A cat', 'Schema sample', 'Empty']);
     fireEvent.change(select, { target: { value: 'A cat' } });
-    const input = screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement;
+    const input = (await screen.findByTestId('body-input-post:/pets')) as HTMLTextAreaElement;
     expect(JSON.parse(input.value)).toEqual({ name: 'Whiskers', age: 2 });
   });
 
-  it('saves the current body as a reusable example (starred in the dropdown)', () => {
+  it('saves the current body as a reusable example (starred in the dropdown)', async () => {
     render(<SwaggerBlock code={JSON_SPEC} />);
     fireEvent.click(screen.getByTestId('op-post:/pets'));
-    const input = screen.getByTestId('body-input-post:/pets');
+    const input = (await screen.findByTestId('body-input-post:/pets'));
     fireEvent.change(input, { target: { value: '{"name":"Custom"}' } });
     fireEvent.click(screen.getByTestId('body-save-post:/pets'));
     const select = screen.getByTestId('body-example-post:/pets') as HTMLSelectElement;
@@ -210,19 +210,19 @@ describe('Try it out', () => {
     // Overwrite the editor, then load the saved example back
     fireEvent.change(input, { target: { value: '{}' } });
     fireEvent.change(select, { target: { value: '★ Saved 1' } });
-    expect((screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement).value).toBe('{"name":"Custom"}');
+    expect(((await screen.findByTestId('body-input-post:/pets')) as HTMLTextAreaElement).value).toBe('{"name":"Custom"}');
   });
 
-  it('reset restores the seed example', () => {
+  it('reset restores the seed example', async () => {
     render(<SwaggerBlock code={JSON_SPEC} />);
     fireEvent.click(screen.getByTestId('op-post:/pets'));
-    const input = screen.getByTestId('body-input-post:/pets');
+    const input = (await screen.findByTestId('body-input-post:/pets'));
     fireEvent.change(input, { target: { value: 'garbage' } });
     fireEvent.click(screen.getByTestId('body-reset-post:/pets'));
-    expect((screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement).value).toBe('{\n  "name": "string",\n  "age": 1\n}');
+    expect(((await screen.findByTestId('body-input-post:/pets')) as HTMLTextAreaElement).value).toBe('{\n  "name": "string",\n  "age": 1\n}');
   });
 
-  it('keeps per-media-type drafts when switching and reseeds unseen types', () => {
+  it('keeps per-media-type drafts when switching and reseeds unseen types', async () => {
     const multiSpec = JSON_SPEC.replace(
       '"application/json": {',
       '"text/plain": { "schema": { "type": "string" } },\n          "application/json": {'
@@ -232,14 +232,14 @@ describe('Try it out', () => {
     const select = screen.getByTestId('body-media-post:/pets') as HTMLSelectElement;
     expect(select.options.length).toBe(2);
     fireEvent.change(select, { target: { value: 'text/plain' } });
-    const input = screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement;
+    const input = (await screen.findByTestId('body-input-post:/pets')) as HTMLTextAreaElement;
     expect(input.value).toBe('string');
     // Draft for json is retained when switching back
     fireEvent.change(input, { target: { value: 'edited text' } });
     fireEvent.change(select, { target: { value: 'application/json' } });
-    expect((screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement).value).toBe('{\n  "name": "string",\n  "age": 1\n}');
+    expect(((await screen.findByTestId('body-input-post:/pets')) as HTMLTextAreaElement).value).toBe('{\n  "name": "string",\n  "age": 1\n}');
     fireEvent.change(select, { target: { value: 'text/plain' } });
-    expect((screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement).value).toBe('edited text');
+    expect(((await screen.findByTestId('body-input-post:/pets')) as HTMLTextAreaElement).value).toBe('edited text');
   });
 
   it('edits the body and sends it with a Content-Type header', async () => {
@@ -248,7 +248,7 @@ describe('Try it out', () => {
 
     render(<SwaggerBlock code={JSON_SPEC} />);
     fireEvent.click(screen.getByTestId('op-post:/pets'));
-    const input = screen.getByTestId('body-input-post:/pets');
+    const input = (await screen.findByTestId('body-input-post:/pets'));
     fireEvent.change(input, { target: { value: '{"name":"Rex"}' } });
     await act(async () => {
       fireEvent.click(screen.getByTestId('try-post:/pets'));
@@ -270,7 +270,7 @@ describe('Try it out', () => {
 
     render(<SwaggerBlock code={JSON_SPEC} />);
     fireEvent.click(screen.getByTestId('op-post:/pets'));
-    const input = screen.getByTestId('body-input-post:/pets');
+    const input = (await screen.findByTestId('body-input-post:/pets'));
     fireEvent.change(input, { target: { value: '   ' } });
     await act(async () => {
       fireEvent.click(screen.getByTestId('try-post:/pets'));
@@ -301,7 +301,7 @@ describe('Try it out', () => {
     });
   });
 
-  it('switches media types and reseeds the editor', () => {
+  it('switches media types and reseeds the editor', async () => {
     const multiSpec = JSON_SPEC.replace(
       '"application/json": {',
       '"text/plain": { "schema": { "type": "string" } },\n          "application/json": {'
@@ -311,14 +311,14 @@ describe('Try it out', () => {
     const select = screen.getByTestId('body-media-post:/pets') as HTMLSelectElement;
     expect(select.options.length).toBe(2);
     fireEvent.change(select, { target: { value: 'text/plain' } });
-    const input = screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement;
+    const input = (await screen.findByTestId('body-input-post:/pets')) as HTMLTextAreaElement;
     expect(input.value).toBe('string');
   });
 
-  it('renders a nested request-body editor seeded from the schema sample', () => {
+  it('renders a nested request-body editor seeded from the schema sample', async () => {
     render(<SwaggerBlock code={JSON_SPEC} />);
     fireEvent.click(screen.getByTestId('op-post:/pets'));
-    const input = screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement;
+    const input = (await screen.findByTestId('body-input-post:/pets')) as HTMLTextAreaElement;
     expect(input.value).toBe('{\n  "name": "string",\n  "age": 1\n}');
     // Single media type → plain label, no dropdown
     expect(screen.getByText('application/json')).toBeInTheDocument();
@@ -331,7 +331,7 @@ describe('Try it out', () => {
 
     render(<SwaggerBlock code={JSON_SPEC} />);
     fireEvent.click(screen.getByTestId('op-post:/pets'));
-    const input = screen.getByTestId('body-input-post:/pets');
+    const input = (await screen.findByTestId('body-input-post:/pets'));
     fireEvent.change(input, { target: { value: '{"name":"Rex"}' } });
     await act(async () => {
       fireEvent.click(screen.getByTestId('try-post:/pets'));
@@ -353,7 +353,7 @@ describe('Try it out', () => {
 
     render(<SwaggerBlock code={JSON_SPEC} />);
     fireEvent.click(screen.getByTestId('op-post:/pets'));
-    const input = screen.getByTestId('body-input-post:/pets');
+    const input = (await screen.findByTestId('body-input-post:/pets'));
     fireEvent.change(input, { target: { value: '   ' } });
     await act(async () => {
       fireEvent.click(screen.getByTestId('try-post:/pets'));
@@ -384,7 +384,7 @@ describe('Try it out', () => {
     });
   });
 
-  it('switches media types and reseeds the editor', () => {
+  it('switches media types and reseeds the editor', async () => {
     const multiSpec = JSON_SPEC.replace(
       '"application/json": {',
       '"text/plain": { "schema": { "type": "string" } },\n          "application/json": {'
@@ -394,7 +394,7 @@ describe('Try it out', () => {
     const select = screen.getByTestId('body-media-post:/pets') as HTMLSelectElement;
     expect(select.options.length).toBe(2);
     fireEvent.change(select, { target: { value: 'text/plain' } });
-    const input = screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement;
+    const input = (await screen.findByTestId('body-input-post:/pets')) as HTMLTextAreaElement;
     expect(input.value).toBe('string');
   });
 
@@ -476,7 +476,7 @@ describe('Try it out', () => {
     }
   });
 
-  it('reacts to online/offline window events', () => {
+  it('reacts to online/offline window events', async () => {
     // jsdom never flips navigator.onLine on synthetic events, so drive it
     // directly: the component re-reads navigator.onLine in its event handler.
     const original = Object.getOwnPropertyDescriptor(Navigator.prototype, 'onLine');
