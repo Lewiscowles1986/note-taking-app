@@ -174,6 +174,74 @@ describe('Try it out', () => {
     expect(screen.queryByTestId('body-media-post:/pets')).not.toBeInTheDocument();
   });
 
+  it('labels the surface as a body editor with live highlighting', () => {
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    expect(screen.getByText('Body editor')).toBeInTheDocument();
+    const ta = screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement;
+    expect(ta.placeholder).toMatch(/type here/i);
+  });
+
+  it('offers spec examples in a Load example dropdown', () => {
+    const spec = JSON_SPEC.replace(
+      '"application/json": {',
+      '"application/json": {\n        "examples": { "dog": { "summary": "A dog", "value": { "name": "Rex" } }, "cat": { "summary": "A cat", "value": { "name": "Whiskers", "age": 2 } } },'
+    );
+    render(<SwaggerBlock code={spec} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    const select = screen.getByTestId('body-example-post:/pets') as HTMLSelectElement;
+    const labels = Array.from(select.options).map((o) => o.textContent);
+    expect(labels).toEqual(['Load example…', 'A dog', 'A cat', 'Schema sample', 'Empty']);
+    fireEvent.change(select, { target: { value: 'A cat' } });
+    const input = screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement;
+    expect(JSON.parse(input.value)).toEqual({ name: 'Whiskers', age: 2 });
+  });
+
+  it('saves the current body as a reusable example (starred in the dropdown)', () => {
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    const input = screen.getByTestId('body-input-post:/pets');
+    fireEvent.change(input, { target: { value: '{"name":"Custom"}' } });
+    fireEvent.click(screen.getByTestId('body-save-post:/pets'));
+    const select = screen.getByTestId('body-example-post:/pets') as HTMLSelectElement;
+    const savedOption = Array.from(select.options).find((o) => o.textContent === '★ Saved 1');
+    expect(savedOption).toBeDefined();
+    expect(savedOption?.value).toBe('★ Saved 1');
+    // Overwrite the editor, then load the saved example back
+    fireEvent.change(input, { target: { value: '{}' } });
+    fireEvent.change(select, { target: { value: '★ Saved 1' } });
+    expect((screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement).value).toBe('{"name":"Custom"}');
+  });
+
+  it('reset restores the seed example', () => {
+    render(<SwaggerBlock code={JSON_SPEC} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    const input = screen.getByTestId('body-input-post:/pets');
+    fireEvent.change(input, { target: { value: 'garbage' } });
+    fireEvent.click(screen.getByTestId('body-reset-post:/pets'));
+    expect((screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement).value).toBe('{\n  "name": "string",\n  "age": 1\n}');
+  });
+
+  it('keeps per-media-type drafts when switching and reseeds unseen types', () => {
+    const multiSpec = JSON_SPEC.replace(
+      '"application/json": {',
+      '"text/plain": { "schema": { "type": "string" } },\n          "application/json": {'
+    );
+    render(<SwaggerBlock code={multiSpec} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    const select = screen.getByTestId('body-media-post:/pets') as HTMLSelectElement;
+    expect(select.options.length).toBe(2);
+    fireEvent.change(select, { target: { value: 'text/plain' } });
+    const input = screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement;
+    expect(input.value).toBe('string');
+    // Draft for json is retained when switching back
+    fireEvent.change(input, { target: { value: 'edited text' } });
+    fireEvent.change(select, { target: { value: 'application/json' } });
+    expect((screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement).value).toBe('{\n  "name": "string",\n  "age": 1\n}');
+    fireEvent.change(select, { target: { value: 'text/plain' } });
+    expect((screen.getByTestId('body-input-post:/pets') as HTMLTextAreaElement).value).toBe('edited text');
+  });
+
   it('edits the body and sends it with a Content-Type header', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('"ok"', { status: 201 }));
     vi.stubGlobal('fetch', fetchMock);

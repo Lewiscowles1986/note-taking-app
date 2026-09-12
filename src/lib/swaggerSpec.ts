@@ -43,8 +43,8 @@ export interface SwaggerOperation {
   parameters?: SwaggerParameter[];
   requestBody?: {
     description?: string;
-    /** Media type → { schema?, example?, examples? } */
-    content?: Record<string, { schema?: unknown; example?: unknown; examples?: unknown }>;
+    /** Media type → entry; examples is the OpenAPI examples map. */
+    content?: Record<string, { schema?: unknown; example?: unknown; examples?: Record<string, { summary?: string; value?: unknown }> }>;
   };
   responses?: Record<string, { description?: string; content?: Record<string, unknown> }>;
 }
@@ -448,4 +448,50 @@ export function scaffoldFor(mediaType: string): string {
   if (/json/i.test(mediaType)) return '{\n  \n}';
   if (/x-www-form-urlencoded/i.test(mediaType)) return 'key=value';
   return '';
+}
+
+export interface RequestBodyExample {
+  /** Dropdown label: spec example name/summary, or a generated fallback. */
+  name: string;
+  /** Serialized body text, ready for the editor. */
+  value: string;
+}
+
+type RequestBodyContentEntry = {
+  schema?: unknown;
+  example?: unknown;
+  examples?: Record<string, { summary?: string; value?: unknown }>;
+};
+
+/**
+ * Named examples for a media type, for the editor's "Load example" dropdown.
+ * Order: spec `examples` (summary or key as label), spec `example`, then a
+ * sample generated from the schema, then the empty scaffold. Duplicates of an
+ * already-listed value are dropped.
+ */
+export function requestBodyExamples(
+  mediaType: string,
+  content?: Record<string, RequestBodyContentEntry>
+): RequestBodyExample[] {
+  const entry = content?.[mediaType];
+  const out: RequestBodyExample[] = [];
+  const push = (name: string, raw: unknown) => {
+    const value = serializeBody(raw, mediaType);
+    if (!out.some((e) => e.value === value)) out.push({ name, value });
+  };
+
+  if (entry?.examples) {
+    for (const [key, ex] of Object.entries(entry.examples)) {
+      if (ex && typeof ex === 'object' && 'value' in ex) {
+        push(ex.summary || key, (ex as { value: unknown }).value);
+      }
+    }
+  }
+  if (entry?.example !== undefined) push('Example', entry.example);
+  if (entry?.schema) push('Schema sample', sampleFromSchema(entry.schema));
+  // The scaffold is already editor-ready text — push it verbatim, without
+  // serializeBody (which would JSON.stringify it into a quoted string).
+  const empty = scaffoldFor(mediaType);
+  if (!out.some((e) => e.value === empty)) out.push({ name: 'Empty', value: empty });
+  return out;
 }

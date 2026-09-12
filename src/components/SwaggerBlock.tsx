@@ -7,6 +7,9 @@ import {
   Info,
   Loader2,
   Network,
+  PenLine,
+  RotateCcw,
+  Save,
   Server,
   Wifi,
   WifiOff,
@@ -16,6 +19,7 @@ import {
   defaultRequestBody,
   mediaTypeLabel,
   parseSpec,
+  requestBodyExamples,
   type SwaggerOperation,
   type SwaggerParameter,
   type SwaggerSpec,
@@ -133,9 +137,13 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
   const [execState, setExecState] = useState<
     { key: string; status: 'loading' | 'done' | 'error'; text: string } | null
   >(null);
-  /** Per-operation request bodies: opKey → { mediaType, text }. */
+  /** Per-operation request bodies: opKey → { mediaType, texts per media type }. */
   const [bodyDrafts, setBodyDrafts] = useState<
-    Record<string, { mediaType: string; text: string }>
+    Record<string, { mediaType: string; texts: Record<string, string> }>
+  >({});
+  /** User-saved example bodies: `${opKey}::${mediaType}` → list. */
+  const [savedExamples, setSavedExamples] = useState<
+    Record<string, { name: string; value: string }[]>
   >({});
 
   const spec = parsed.spec;
@@ -464,28 +472,49 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
                         )}
 
                         {row.operation.requestBody?.content && (() => {
-                          const mediaTypes = Object.keys(row.operation.requestBody.content);
+                          const content = row.operation.requestBody.content;
+                          const mediaTypes = Object.keys(content);
                           const draft =
                             bodyDrafts[key] ||
-                            { mediaType: mediaTypes[0], text: defaultRequestBody(mediaTypes[0], row.operation.requestBody.content) };
+                            (() => {
+                              const mt = mediaTypes[0];
+                              const examples = requestBodyExamples(mt, content);
+                              return { mediaType: mt, texts: { [mt]: examples[0]?.value ?? '' } };
+                            })();
+                          const currentText = draft.texts[draft.mediaType] ?? '';
+                          const examples = requestBodyExamples(draft.mediaType, content);
+                          const savedKey = `${key}::${draft.mediaType}`;
+                          const saved = savedExamples[savedKey] || [];
 
                           const setDraft = (patch: Partial<typeof draft>) =>
                             setBodyDrafts((prev) => ({ ...prev, [key]: { ...draft, ...patch } }));
+                          const setText = (text: string) =>
+                            setBodyDrafts((prev) => ({
+                              ...prev,
+                              [key]: { ...draft, texts: { ...draft.texts, [draft.mediaType]: text } },
+                            }));
 
                           return (
-                            // Nested editor. !my-0 / !p-0 neutralize .prose-notes
-                            // pre margins + padding so the surface sits flush in
-                            // this dark panel (same treatment as CodeBlock's shiki
-                            // wrapper).
                             <div className="mb-2" data-testid="op-request-body">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-white/40">Request body</span>
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                <span className="flex items-center gap-1 text-white/40">
+                                  <PenLine size={11} />
+                                  Body editor
+                                </span>
                                 {mediaTypes.length > 1 ? (
                                   <select
                                     value={draft.mediaType}
-                                    onChange={(e) =>
-                                      setDraft({ mediaType: e.target.value, text: defaultRequestBody(e.target.value, row.operation.requestBody!.content) })
-                                    }
+                                    onChange={(e) => {
+                                      const mt = e.target.value;
+                                      const nextExamples = requestBodyExamples(mt, content);
+                                      setDraft({
+                                        mediaType: mt,
+                                        texts: {
+                                          ...draft.texts,
+                                          [mt]: draft.texts[mt] ?? nextExamples[0]?.value ?? '',
+                                        },
+                                      });
+                                    }}
                                     className="bg-[#24292e] border border-white/15 rounded px-1.5 py-0.5 text-[10px] font-mono text-white/80"
                                     data-testid={`body-media-${key}`}
                                   >
@@ -498,12 +527,65 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
                                 ) : (
                                   <span className="text-[10px] font-mono text-white/40">{draft.mediaType}</span>
                                 )}
+
+                                {(examples.length > 1 || saved.length > 0) && (
+                                  <select
+                                    value=""
+                                    onChange={(e) => {
+                                      const selected = e.target.value;
+                                      // Saved options carry a "★ " prefix in their value.
+                                      const example = selected.startsWith('★ ')
+                                        ? saved.find((x) => `★ ${x.name}` === selected)
+                                        : examples.find((x) => x.name === selected);
+                                      if (example) setText(example.value);
+                                    }}
+                                    className="bg-[#24292e] border border-white/15 rounded px-1.5 py-0.5 text-[10px] font-mono text-sky-300"
+                                    data-testid={`body-example-${key}`}
+                                  >
+                                    <option value="">Load example…</option>
+                                    {examples.map((ex) => (
+                                      <option key={ex.name} value={ex.name}>
+                                        {ex.name}
+                                      </option>
+                                    ))}
+                                    {saved.map((ex) => (
+                                      <option key={`★ ${ex.name}`} value={`★ ${ex.name}`}>
+                                        ★ {ex.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+
+                                {currentText.trim() && (
+                                  <button
+                                    onClick={() => {
+                                      const name = `Saved ${saved.length + 1}`;
+                                      setSavedExamples((prev) => ({
+                                        ...prev,
+                                        [savedKey]: [...(prev[savedKey] || []), { name, value: currentText }],
+                                      }));
+                                    }}
+                                    className="flex items-center gap-1 text-[10px] font-mono text-white/50 hover:text-white/90 transition-colors"
+                                    data-testid={`body-save-${key}`}
+                                  >
+                                    <Save size={11} />
+                                    Save as example
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => setText(examples[0]?.value ?? '')}
+                                  className="flex items-center gap-1 text-[10px] font-mono text-white/40 hover:text-white/80 transition-colors"
+                                  data-testid={`body-reset-${key}`}
+                                >
+                                  <RotateCcw size={11} />
+                                  Reset
+                                </button>
                               </div>
                               <div className="relative rounded border border-white/10 overflow-hidden focus-within:border-emerald-500/60">
                                 <RequestBodyEditor
-                                  value={draft.text}
+                                  value={currentText}
                                   lang={mediaTypeLang(draft.mediaType)}
-                                  onChange={(text) => setDraft({ text })}
+                                  onChange={setText}
                                   testId={`body-input-${key}`}
                                 />
                               </div>
@@ -539,7 +621,14 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
                               row.method,
                               row.path,
                               row.operation.parameters || [],
-                              row.operation.requestBody?.content ? bodyDrafts[key] || { mediaType: Object.keys(row.operation.requestBody.content)[0], text: defaultRequestBody(Object.keys(row.operation.requestBody.content)[0], row.operation.requestBody.content) } : undefined
+                              row.operation.requestBody?.content
+                                ? bodyDrafts[key] && bodyDrafts[key].texts[bodyDrafts[key].mediaType] !== undefined
+                                  ? { mediaType: bodyDrafts[key].mediaType, text: bodyDrafts[key].texts[bodyDrafts[key].mediaType] }
+                                  : {
+                                      mediaType: Object.keys(row.operation.requestBody.content)[0],
+                                      text: defaultRequestBody(Object.keys(row.operation.requestBody.content)[0], row.operation.requestBody.content),
+                                    }
+                                : undefined
                             )
                           }
                           disabled={execState?.key === key && execState.status === 'loading'}
@@ -601,12 +690,16 @@ function mediaTypeLang(mediaType: string): string {
 }
 
 /**
- * Nested request-body editor: a Shiki-highlighted <pre> sits under a
+ * Nested request-body editor: Shiki-highlighted markup sits under a
  * transparent textarea, so the user types over live syntax highlighting —
- * same trick as the Shiki playground. The pre/textarea share identical
- * font metrics and padding so the layers stay aligned; `!my-0`/`!p-*`
- * neutralize the .prose-notes pre styles (margin would otherwise show the
- * white page background between this surface and the panel above it).
+ * same trick as the Shiki playground.
+ *
+ * Layer alignment: Shiki's codeToHtml emits its own <pre>; rendering it into
+ * a <div> (not another <pre>) avoids a `pre pre` cascade where .prose-notes
+ * pre { p-4 my-3 } hits the INNER pre and shifts the highlight layer away
+ * from the textarea (the misaligned-cursor + double-padding bug). Instead
+ * the wrapper div owns padding/scroll and [&_pre]/[&_code] flatten Shiki's
+ * own margins/backgrounds so only ONE padding (p-3) applies to both layers.
  */
 function RequestBodyEditor({
   value,
@@ -621,7 +714,7 @@ function RequestBodyEditor({
 }) {
   const [html, setHtml] = useState('');
   const taRef = useRef<HTMLTextAreaElement>(null);
-  const preRef = useRef<HTMLPreElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -640,21 +733,31 @@ function RequestBodyEditor({
     };
   }, [value, lang]);
 
-  // Keep the textarea's scrollTop synced with the pre for long bodies.
+  // Keep the highlight layer's scroll synced with the textarea for long bodies.
   const syncScroll = () => {
-    if (taRef.current && preRef.current) {
-      preRef.current.scrollTop = taRef.current.scrollTop;
-      preRef.current.scrollLeft = taRef.current.scrollLeft;
+    if (taRef.current && highlightRef.current) {
+      highlightRef.current.scrollTop = taRef.current.scrollTop;
+      highlightRef.current.scrollLeft = taRef.current.scrollLeft;
     }
   };
 
   return (
     <div className="relative min-h-[76px]" data-testid={`body-editor-${testId.replace('body-input-', '')}`}>
-      <pre
-        ref={preRef}
+      {/* Highlight layer — a div: never a <pre>, so prose `pre` rules can't
+          reach the Shiki output and offset the layers. [&_pre]/[&_code] strip
+          Shiki's own pre/code margins+padding so the wrapper's p-3 is the
+          single source of padding for both layers. */}
+      <div
+        ref={highlightRef}
         aria-hidden="true"
-        style={{ backgroundColor: '#24292e', fontSize: '12px', lineHeight: '20px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
-        className="!my-0 !p-3 !m-0 whitespace-pre-wrap break-words overflow-x-auto min-h-[76px] [&_code]:!text-xs"
+        data-shiki-layer=""
+        style={{
+          backgroundColor: '#24292e',
+          fontSize: '12px',
+          lineHeight: '20px',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        }}
+        className="!my-0 p-3 whitespace-pre-wrap break-words overflow-x-auto min-h-[76px] [&_pre]:!my-0 [&_pre]:!p-0 [&_pre]:!bg-transparent [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_code]:!text-xs [&_code]:!bg-transparent [&_code]:!p-0"
         dangerouslySetInnerHTML={{ __html: html }}
       />
       <textarea
@@ -663,7 +766,7 @@ function RequestBodyEditor({
         onChange={(e) => onChange(e.target.value)}
         onScroll={syncScroll}
         spellCheck={false}
-        placeholder="Request body…"
+        placeholder="// Request body — type here; syntax highlighting is live"
         data-testid={testId}
         style={{
           color: 'transparent',
@@ -673,7 +776,7 @@ function RequestBodyEditor({
           lineHeight: '20px',
           fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         }}
-        className="absolute inset-0 w-full h-full resize-none !p-3 outline-none whitespace-pre-wrap break-words placeholder:text-white/20"
+        className="absolute inset-0 w-full h-full resize-none !p-3 !my-0 outline-none whitespace-pre-wrap break-words placeholder:text-white/20 selection:bg-sky-500/30"
       />
     </div>
   );
