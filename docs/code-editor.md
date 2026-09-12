@@ -387,6 +387,14 @@ the selected server using `fetch()`:
 
 - Query parameters with a schema `example` are appended to the URL
   automatically.
+- **Operations with a request body get a nested body editor**: a
+  syntax-highlighted editing surface (Shiki, `github-dark` — JSON, XML, and
+  YAML grammars depending on the content type). It seeds itself from the
+  schema's `example`, or a sample generated from the schema shape (required
+  properties first), or a bare `{}` scaffold. When a spec declares multiple
+  content types a dropdown switches between them and reseeds the editor.
+- The typed body is sent with a matching `Content-Type` header. An empty
+  editor means "no request body". GET requests never send a body.
 - The response status line plus a pretty-printed JSON body (or raw text) is
   shown below the button. Errors (network failures, refused connections) show
   in a red panel.
