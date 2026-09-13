@@ -56,6 +56,7 @@ export interface SwaggerParameter {
   required?: boolean;
   schema?: unknown;
   type?: string; // Swagger 2.0
+  enum?: unknown[]; // Swagger 2.0 top-level enum
 }
 
 export class SpecParseError extends Error {}

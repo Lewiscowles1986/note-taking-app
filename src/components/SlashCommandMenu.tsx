@@ -61,7 +61,7 @@ const baseCommands: SlashCommand[] = [
     label: 'OpenAPI / Swagger',
     description: 'Render API docs with Try-it-out',
     icon: <Network size={16} />,
-    insert: '```openapi\n---\nservers:\n  - https://petstore.swagger.io/v2\n---\nopenapi: 3.0.3\ninfo:\n  title: Sample API\n  version: 1.0.0\npaths:\n  /pets:\n    get:\n      tags: [pets]\n      summary: List pets\n      parameters:\n        - name: limit\n          in: query\n          schema:\n            type: integer\n            example: 5\n      responses:\n        "200":\n          description: A list of pets\n```',
+    insert: '```openapi\n---\nservers:\n  - https://petstore3.swagger.io/api/v3\n---\nopenapi: 3.0.3\ninfo:\n  title: Pet Store API\n  version: 1.0.0\npaths:\n  /pet/findByStatus:\n    get:\n      tags: [pet]\n      summary: Finds Pets by status\n      description: Multiple status values can be provided with comma separated strings\n      operationId: findPetsByStatus\n      parameters:\n        - name: status\n          in: query\n          required: true\n          description: Status values that need to be considered for filter\n          schema:\n            type: string\n            default: available\n            enum:\n              - available\n              - pending\n              - sold\n      responses:\n        "200":\n          description: successful operation\n        "400":\n          description: Invalid status value\n```',
   },
 ];
 

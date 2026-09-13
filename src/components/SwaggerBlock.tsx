@@ -517,16 +517,33 @@ export default function SwaggerBlock({ code: rawCode }: SwaggerBlockProps) {
                                     </td>
                                     <td className="pr-3 py-1 text-white/50" style={{ background: 'transparent', border: 'none' }}>{p.in}</td>
                                     <td className="pr-3 py-1" style={{ background: 'transparent', border: 'none' }}>
-                                      <input
-                                        type={paramInputType(p)}
-                                        value={value}
-                                        onChange={(e) =>
-                                          setParamValues((prev) => ({ ...prev, [paramKey]: e.target.value }))
-                                        }
-                                        placeholder={p.in === 'path' ? `{${p.name}}` : ''}
-                                        data-testid={`param-${p.in}-${p.name}`}
-                                        className="w-28 bg-[#24292e] border border-white/15 rounded px-1.5 py-0.5 text-[11px] font-mono text-white/90 focus:outline-none focus:border-emerald-500/60"
-                                      />
+                                      {enumValuesFor(p) ? (
+                                        <select
+                                          value={value}
+                                          onChange={(e) =>
+                                            setParamValues((prev) => ({ ...prev, [paramKey]: e.target.value }))
+                                          }
+                                          data-testid={`param-${p.in}-${p.name}`}
+                                          className="w-32 bg-[#24292e] border border-white/15 rounded px-1.5 py-0.5 text-[11px] font-mono text-white/90 focus:outline-none focus:border-emerald-500/60"
+                                        >
+                                          {enumValuesFor(p)!.map((v) => (
+                                            <option key={String(v)} value={String(v)}>
+                                              {String(v)}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      ) : (
+                                        <input
+                                          type={paramInputType(p)}
+                                          value={value}
+                                          onChange={(e) =>
+                                            setParamValues((prev) => ({ ...prev, [paramKey]: e.target.value }))
+                                          }
+                                          placeholder={p.in === 'path' ? `{${p.name}}` : ''}
+                                          data-testid={`param-${p.in}-${p.name}`}
+                                          className="w-28 bg-[#24292e] border border-white/15 rounded px-1.5 py-0.5 text-[11px] font-mono text-white/90 focus:outline-none focus:border-emerald-500/60"
+                                        />
+                                      )}
                                     </td>
                                     <td className="py-1 text-white/50" style={{ background: 'transparent', border: 'none' }}>
                                       {typeOfParam(p) !== 'string' && <span className="mr-1 text-sky-300/70">{typeOfParam(p)}</span>}
@@ -811,12 +828,14 @@ function LazyBodyForm({
 
 /**
  * Seed value for a parameter input: the schema example when the spec
- * supplies one, else the empty string (the user types their own).
+ * supplies one, else the schema's declared default, else the empty string
+ * (the user types their own).
  */
 function defaultValueFor(param: SwaggerParameter): string {
   if (param.schema && typeof param.schema === 'object') {
-    const example = (param.schema as { example?: unknown }).example;
-    if (example !== undefined) return String(example);
+    const s = param.schema as { example?: unknown; default?: unknown };
+    if (s.example !== undefined) return String(s.example);
+    if (s.default !== undefined) return String(s.default);
   }
   if (param.type === 'boolean') return 'true';
   return '';
@@ -826,4 +845,17 @@ function defaultValueFor(param: SwaggerParameter): string {
 function paramInputType(param: SwaggerParameter): 'number' | 'text' {
   const t = param.type || ((param.schema as { type?: string } | undefined)?.type ?? '');
   return t === 'integer' || t === 'number' ? 'number' : 'text';
+}
+
+/**
+ * Enum choices for a parameter, from either the OpenAPI 3 `schema.enum` or
+ * the Swagger 2.0 top-level `enum` (any casing of the values preserved).
+ * Returns null when the parameter has no enum — callers fall back to a
+ * plain text/number input.
+ */
+function enumValuesFor(param: SwaggerParameter): unknown[] | null {
+  const schemaEnum = (param.schema as { enum?: unknown[] } | undefined)?.enum;
+  const list = Array.isArray(schemaEnum) ? schemaEnum : Array.isArray(param.enum) ? param.enum : null;
+  if (!list || list.length === 0) return null;
+  return list;
 }

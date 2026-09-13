@@ -327,6 +327,62 @@ describe('Try it out', () => {
     });
   });
 
+  it('renders enum parameters as a dropdown seeded from schema.enum', async () => {
+    const enumSpec = JSON_SPEC.replace(
+      '{ "name": "limit", "in": "query", "schema": { "type": "integer", "example": 5 } }',
+      '{ "name": "status", "in": "query", "required": true, "schema": { "type": "string", "default": "pending", "enum": ["available", "pending", "sold"] } }'
+    );
+    const fetchMock = vi.fn().mockResolvedValue(new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<SwaggerBlock code={enumSpec} />);
+    fireEvent.click(screen.getByTestId('op-get:/pets'));
+    // A <select> replaces the plain input for enum params
+    const select = (await screen.findByTestId('param-query-status')) as HTMLSelectElement;
+    expect(select.tagName).toBe('SELECT');
+    expect([...select.options].map((o) => o.value)).toEqual(['available', 'pending', 'sold']);
+    expect(select.value).toBe('pending'); // schema default seeds the choice
+
+    // The selected enum value is what gets sent as the query param
+    fireEvent.change(select, { target: { value: 'sold' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('try-get:/pets'));
+    });
+    expect(fetchMock).toHaveBeenCalledWith('https://override.example.com/pets?status=sold', {
+      method: 'GET',
+      headers: {},
+      body: undefined,
+    });
+  });
+
+  it('renders Swagger 2.0 top-level enum parameters as dropdowns too', () => {
+    const swagger2Spec = `swagger: "2.0"
+info:
+  title: V2 API
+  version: 1.0.0
+paths:
+  /pet/findByStatus:
+    get:
+      tags: [pet]
+      summary: Finds Pets by status
+      parameters:
+        - name: status
+          in: query
+          type: string
+          enum:
+            - available
+            - pending
+            - sold
+      responses:
+        "200": { description: ok }
+`;
+    render(<SwaggerBlock code={swagger2Spec} />);
+    fireEvent.click(screen.getByTestId('op-get:/pet/findByStatus'));
+    const select = screen.getByTestId('param-query-status') as HTMLSelectElement;
+    expect(select.tagName).toBe('SELECT');
+    expect([...select.options].map((o) => o.value)).toEqual(['available', 'pending', 'sold']);
+  });
+
   it('substitutes path parameters into the URL and blocks missing required ones', async () => {
     const pathSpec = JSON_SPEC.replace(
       '"/pets": {',
