@@ -14,6 +14,7 @@ import {
   Table,
   Map,
   Box,
+  Network,
 } from 'lucide-react';
 import { calloutRegistry } from '@/lib/callouts';
 
@@ -55,6 +56,12 @@ const baseCommands: SlashCommand[] = [
     description: 'Render interactive STL or OBJ',
     icon: <Box size={16} />,
     insert: '```3dmodel\n---\nviewports:\n  - name: Isometric\n    camera: [20, 20, 20]\n    mode: Solid\n  - name: Top View\n    camera: [0, 30, 0]\n    mode: Wireframe\n    projection: orthographic\n---\nattachment:clip.stl\n```',
+  },
+  {
+    label: 'OpenAPI / Swagger',
+    description: 'Render API docs with Try-it-out',
+    icon: <Network size={16} />,
+    insert: '```openapi\n---\nservers:\n  - https://petstore3.swagger.io/api/v3\n---\nopenapi: 3.0.3\ninfo:\n  title: Pet Store API\n  version: 1.0.0\npaths:\n  /pet/findByStatus:\n    get:\n      tags: [pet]\n      summary: Finds Pets by status\n      description: Multiple status values can be provided with comma separated strings\n      operationId: findPetsByStatus\n      parameters:\n        - name: status\n          in: query\n          required: true\n          description: Status values that need to be considered for filter\n          schema:\n            type: string\n            default: available\n            enum:\n              - available\n              - pending\n              - sold\n      responses:\n        "200":\n          description: successful operation\n        "400":\n          description: Invalid status value\n```',
   },
 ];
 
