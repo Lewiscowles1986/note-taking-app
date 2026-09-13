@@ -383,6 +383,99 @@ paths:
     expect([...select.options].map((o) => o.value)).toEqual(['available', 'pending', 'sold']);
   });
 
+  it('seeds enum dropdowns from schema.default when there is no example, else the first value', () => {
+    // default present → seeds from it; no default → first enum value
+    const bothSpec = JSON_SPEC.replace(
+      '{ "name": "limit", "in": "query", "schema": { "type": "integer", "example": 5 } }',
+      '{ "name": "withDefault", "in": "query", "schema": { "type": "string", "default": "sold", "enum": ["available", "pending", "sold"] } }'
+    );
+    const { unmount } = render(<SwaggerBlock code={bothSpec} />);
+    fireEvent.click(screen.getByTestId('op-get:/pets'));
+    expect((screen.getByTestId('param-query-withDefault') as HTMLSelectElement).value).toBe('sold');
+    unmount();
+
+    const noDefaultSpec = JSON_SPEC.replace(
+      '{ "name": "limit", "in": "query", "schema": { "type": "integer", "example": 5 } }',
+      '{ "name": "noDefault", "in": "query", "schema": { "type": "string", "enum": ["a", "b"] } }'
+    );
+    render(<SwaggerBlock code={noDefaultSpec} />);
+    fireEvent.click(screen.getByTestId('op-get:/pets'));
+    expect((screen.getByTestId('param-query-noDefault') as HTMLSelectElement).value).toBe('a');
+  });
+
+  it('keeps the plain input for params with no enum and honours boolean/number seeding', () => {
+    // schema without enum → input; example beats default; boolean → 'true'
+    const mixedSpec = JSON_SPEC.replace(
+      '{ "name": "limit", "in": "query", "schema": { "type": "integer", "example": 5 } }',
+      '{ "name": "plain", "in": "query", "schema": { "type": "string", "default": "dd" } },\n          { "name": "flag", "in": "query", "type": "boolean" }'
+    );
+    render(<SwaggerBlock code={mixedSpec} />);
+    fireEvent.click(screen.getByTestId('op-get:/pets'));
+    const plain = screen.getByTestId('param-query-plain') as HTMLInputElement;
+    expect(plain.tagName).toBe('INPUT'); // no enum → plain input
+    expect(plain.value).toBe('dd'); // schema.default seeds plain inputs too
+    const flag = screen.getByTestId('param-query-flag') as HTMLInputElement;
+    expect(flag.value).toBe('true'); // boolean type seeds 'true'
+  });
+
+  it('renders $ref schemas, number inputs, and empty enums correctly', () => {
+    const exoticSpec = JSON_SPEC.replace(
+      '{ "name": "limit", "in": "query", "schema": { "type": "integer", "example": 5 } }',
+      '{ "name": "refParam", "in": "query", "schema": { "$ref": "#/components/schemas/Pet" } },\n' +
+      '          { "name": "ratio", "in": "query", "type": "number" },\n' +
+      '          { "name": "kind", "in": "query", "schema": { "type": "string", "enum": [] } },\n' +
+      '          { "name": "dt", "in": "query", "schema": { "type": "string", "format": "date-time" } }'
+    );
+    render(<SwaggerBlock code={exoticSpec} />);
+    fireEvent.click(screen.getByTestId('op-get:/pets'));
+    // $ref shows the schema's final path segment as the type label
+    expect(screen.getByText('Pet')).toBeInTheDocument();
+    // top-level type: number → numeric input (not the schema fallback path)
+    expect((screen.getByTestId('param-query-ratio') as HTMLInputElement).type).toBe('number');
+    // enum: [] → no dropdown, plain input (empty list treated as no enum)
+    expect((screen.getByTestId('param-query-kind') as HTMLInputElement).tagName).toBe('INPUT');
+    // enum: [] → no dropdown, plain input (empty list treated as no enum)
+    expect((screen.getByTestId('param-query-kind') as HTMLInputElement).tagName).toBe('INPUT');
+    // string + format renders as "string (date-time)" type label
+    expect(screen.getByText('string (date-time)')).toBeInTheDocument();
+  });
+
+  it('typeOfParam falls back to "string" for schemas with no type/$ref, and $ref ending in / uses the whole ref', () => {
+    const oddSpec = JSON_SPEC.replace(
+      '{ "name": "limit", "in": "query", "schema": { "type": "integer", "example": 5 } }',
+      '{ "name": "bare", "in": "query", "schema": {} },\n' +
+      '          { "name": "slash", "in": "query", "schema": { "$ref": "#/components/schemas/" } }'
+    );
+    render(<SwaggerBlock code={oddSpec} />);
+    fireEvent.click(screen.getByTestId('op-get:/pets'));
+    // schema {} → typeOfParam's final 'string' fallback (label suppressed
+    // when it equals 'string', so the bare row shows NO type chip)
+    const bareCell = screen.getByTestId('param-query-bare').closest('tr');
+    const bareChips = Array.from(bareCell?.querySelectorAll('span') ?? []).filter(
+      (sp) => sp.className.includes('text-sky-300')
+    );
+    expect(bareChips).toHaveLength(0);
+    // $ref '#/components/schemas/' → pop() is '' → whole ref shown in the chip
+    const slashCell = screen.getByTestId('param-query-slash').closest('tr');
+    expect(slashCell?.textContent).toContain('#/components/schemas/');
+  });
+
+  it('binary media types route the body editor to the file form', async () => {
+    const binarySpec = JSON_SPEC.replace(
+      '"application/json": {',
+      '"application/octet-stream": { "schema": { "type": "string", "format": "binary" } },\n            "application/json": {'
+    );
+    render(<SwaggerBlock code={binarySpec} />);
+    fireEvent.click(screen.getByTestId('op-post:/pets'));
+    await waitFor(() => {
+      expect(screen.getByTestId('body-file-post:/pets')).toBeInTheDocument();
+    });
+    // The file form renders a picker (body-file-*), not a code editor
+    expect(screen.getByTestId('body-choose-post:/pets')).toBeInTheDocument();
+    // no Shiki layer → the code editor surface did NOT mount
+    expect(document.querySelector('[data-shiki-layer]')).toBeNull();
+  });
+
   it('substitutes path parameters into the URL and blocks missing required ones', async () => {
     const pathSpec = JSON_SPEC.replace(
       '"/pets": {',
