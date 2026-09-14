@@ -49,7 +49,20 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: debugMode ? 0 : process.env.CI ? 2 : 1,
-  workers: debugMode ? 1 : process.env.CI ? 1 : 4,
+  // workers: 1 when CI-like conditions apply. The Devcontainer workflow runs
+  // the suite inside the container WITHOUT GitHub's CI env var, so plain
+  // `process.env.CI` said "local" there and 4 workers ran concurrently —
+  // PBKDF2-600k crypto tests then starved the CPU into 30s timeouts, and
+  // parallel download tests overwrote each other's files in the shared
+  // e2e/artifacts/downloads dir. E2E_WORKERS overrides the default for
+  // callers that genuinely want parallelism.
+  workers: debugMode
+    ? 1
+    : process.env.E2E_WORKERS
+      ? Number(process.env.E2E_WORKERS)
+      : process.env.CI || process.env.E2E_CI
+        ? 1
+        : 4,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,
