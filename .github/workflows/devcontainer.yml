@@ -121,6 +121,12 @@ jobs:
           push: never
           env: |
             RUN_E2E=${{ github.event_name == 'schedule' && '1' || '0' }}
+            # CI-like: playwright.config.ts keys workers=1 / retries=2 off
+            # process.env.CI — GitHub's CI var does NOT propagate into the
+            # devcontainer, so without this the in-container run used 4
+            # workers (crypto tests starved into timeouts; parallel download
+            # tests clobbered the shared e2e/artifacts/downloads dir).
+            E2E_CI=1
           runCmd: |
             set -e
             echo "arch $(uname -m) | node $(node --version) | npm $(npm --version) | git $(git --version)"
