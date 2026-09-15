@@ -4,12 +4,16 @@ Note Haven is a local-first app: most complexity lives in pure functions
 (Markdown/feature parsing), browser APIs (IndexedDB, WebCrypto, WebGL, file
 downloads), and rendered UI. The test pyramid mirrors that.
 
-**Current state (after the test-quality campaign):** 32 test files / 447
-tests, all green, ~7.5s wall for `npm test`. Line coverage is **99.77%**
+**Current state (after the test-quality campaign):** 45 test files / 698
+tests, all green. Line coverage is **99.77%**
 (4362/4372 executable lines; 99.59% functions, 96.56% branch) with 100% lines
 on 27 of the 30 measured files — the three exceptions are owner-accepted dead
 code (see [below](#the-three-dead-fragments--the-path-to-literal-100)).
-Mutation score on `src/lib` is **86.87%** against a >50% target.
+Mutation score on `src/lib` is **86.87%** against a >50% target; the two
+swagger parser modules were hardened separately with a scoped Stryker run
+(930 mutants): **86.67% total** — `swaggerSpec.ts` 88.25%,
+`swaggerFrontmatter.ts` 81.90% — after three targeted kill-test waves took
+them from a 70.72% baseline.
 
 ## The three layers (all already wired up)
 
@@ -127,8 +131,8 @@ Per-module scores from that run:
 
 Two config settings are load-bearing:
 
-- `vitest.related: false` — Stryker's related-tests default only ran 349 of
-  the 447 tests and would gut the score.
+- `vitest.related: false` — Stryker's related-tests default only ran a
+  subset of the suite and would gut the score.
 - `ignorePatterns` (`.seed-profile`, `.npm-cache`, `coverage`, `dist`, …) —
   keeps seed symlinks, caches and build output out of Stryker's sandbox copy.
 

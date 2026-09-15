@@ -69,7 +69,8 @@ mode) and `E2E_NO_SCREENSHOTS` (no-screenshot mode). They combine freely.
 
 | Mode | Command | Behavior |
 | --- | --- | --- |
-| **Default** | `npm run test:e2e` | Playwright starts `vite` on **5173** (`--strictPort`) and runs headless, parallel. |
+| **Default** | `npm run test:e2e` | Playwright starts `vite` on **5173** (`--strictPort`) and runs headless with 4 workers locally. |
+| **CI-like** | `E2E_CI=1 npm run test:e2e` | `workers: 1`, `retries: 2` — the mode the devcontainer job and any CI-like runner uses. Crypto-heavy tests (PBKDF2-600k) and download-based tests (shared `e2e/artifacts/downloads` dir) are not safe to run in parallel; keep CI-like runs serial. Set `E2E_WORKERS=n` to override the worker count explicitly. |
 | **Attach** | `E2E_BASE_URL=http://host:port npm run test:e2e` | **No server is started** — tests attach to the already-running server at that URL. Use against a preview/CI build or a dev server on a non-default port. |
 | **Debug** | `npm run test:e2e:debug` (or `E2E_DEBUG=1 npx playwright test -g "encrypts a note"`) | **Headed**, serial (`workers: 1`), no retries. Every test pauses at its labeled `debugBreak` drop-in before the assertion cluster. |
 | **No screenshots** | `E2E_NO_SCREENSHOTS=1 npm run test:e2e` | Failure screenshots off, retry traces off (trace archives embed screenshots), `step()` is a no-op. **No image artifacts at all.** |
@@ -192,15 +193,21 @@ extension (`zip`/`json`/`html`/`pem`/`stl` magic bytes).
 | `notes.spec.ts` | 7 | Pin/unpin, delete, tag add/remove, category change + filter, sidebar collapse/expand, switching notes, tag/category facets |
 | `editor.spec.ts` | 7 | Slash-command menu, markdown list auto-continuation, callouts, JS code-block execution, mermaid rendering, autosave + reload persistence, GFM tables/task lists |
 | `calendar.spec.ts` | 3 | Notes on their edit dates, selecting a note returns to notes mode, reload-safe seeding (no duplicates) |
-| `security.spec.ts` | 5 | Password encrypt/lock, wrong-password rejection, correct-password unlock, RSA key-pair encrypt/decrypt, key-pair JWK export |
-| `export-import.spec.ts` | 4 | Single-note HTML export, full DB backup (JSON), export-all-as-ZIP, import from file |
+| `security.spec.ts` | 15 | Password encrypt/lock, wrong-password rejection, correct-password unlock, RSA key-pair encrypt/decrypt, key-pair JWK export, re-encryption, wrong-password recovery, sidebar plaintext hiding |
+| `export-import.spec.ts` | 7 | Single-note HTML export, full DB backup (JSON), export-all-as-ZIP, ZIP markdown/HTML separation, import from file |
+| `tags.spec.ts` | 10 | Adding/removing/multiple tags, tag chips, tag filtering, category facets |
+| `features.spec.ts` | 10 | Feature-tour docs panel and per-feature walkthroughs |
+| `model3d.spec.ts` | 10 | STL/OBJ rendering, camera modes, wireframe/orthographic, error states |
+| `migration.spec.ts` | 8 | Data migration flows |
+| `docs-tour.spec.ts` | 19 | In-app docs tour navigation and content |
 | `mobile.spec.ts` | 1 | Mobile top-sheet note list, select → full-screen edit → back |
 | `offline.mobile.spec.ts` | 1 | PWA/service-worker offline shell (skipped unless `E2E_PWA=1`, see PWA section) |
 
-**Total: 32 unique specs.** `chromium` (desktop) runs all 32; `chromium-mobile`
-(real phone) runs only the two `*mobile*.spec.ts` entries at phone viewport. A
-default `npm run test:e2e` therefore runs 34 checks (32 desktop + 2 mobile); the
-two offline/PWA runs additionally require `E2E_PWA=1` against `vite preview`.
+**Total: 102 unique specs across 13 files.** `chromium` (desktop) runs all
+102; `chromium-mobile` (real phone) runs only the two `*mobile*.spec.ts`
+entries at phone viewport. A default `npm run test:e2e` therefore runs 104
+checks (102 desktop + 2 mobile); the two offline/PWA runs additionally
+require `E2E_PWA=1` against `vite preview`.
 
 ## Known APP BUGs (flagged in specs with `// APP BUG:`)
 

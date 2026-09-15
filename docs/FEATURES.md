@@ -49,6 +49,17 @@ response codes, a servers dropdown, and a Try-it-out button that sends real
 requests when you're online. Frontmatter can override the spec's servers, so
 the same spec can be repointed at staging or localhost without editing it.
 
+Parameters with an `enum` in their schema (OpenAPI 3 `schema.enum` or Swagger
+2.0 top-level `enum`) render as dropdowns instead of free-text inputs — e.g.
+`/pet/findByStatus?status=` offers `available` / `pending` / `sold` straight
+from the spec — and parameter inputs seed from the schema's `default` when
+there's no `example`. Request bodies get a nested syntax-highlighted editor
+with the spec's declared examples pre-loaded and saveable.
+
+The OpenAPI slash-command template points at the live
+`petstore3.swagger.io/api/v3` spec with a real enum-parameterized operation,
+so Try-it-out works the moment it's inserted.
+
 ## Run Code in Your Notes
 
 ![Run Code in Your Notes](images/code-runner.png)

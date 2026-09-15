@@ -385,7 +385,13 @@ Server URLs must include a scheme (`https://…`). Swagger 2.0 specs
 Each operation has a **Try it out** button that sends a real request against
 the selected server using `fetch()`:
 
-- Query parameters with a schema `example` are appended to the URL
+- Parameters whose schema declares an `enum` (OpenAPI 3 `schema.enum` or
+  Swagger 2.0 top-level `enum`) render as a **dropdown** of the allowed
+  values instead of a free-text input — no more guessing valid strings.
+- Parameter inputs seed from the schema `example`, falling back to the
+  schema `default`, so a spec that declares either sends a sensible value
+  the moment you press Try it out. Typed user input always wins.
+- Query parameters with a seed value are appended to the URL
   automatically.
 - **Operations with a request body get a nested body editor**: a
   syntax-highlighted editing surface (Shiki, `github-dark` — JSON, XML, and
