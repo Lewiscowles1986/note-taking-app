@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import SlashCommandMenu from '../components/SlashCommandMenu';
 
-// The command registry merges 14 hard-coded base commands with the 5 callout
-// types auto-generated from src/lib/callouts.ts — 19 entries in total.
-const TOTAL_COMMANDS = 19;
+// The command registry merges 15 hard-coded base commands with the 5 callout
+// types auto-generated from src/lib/callouts.ts — 20 entries in total.
+const TOTAL_COMMANDS = 20;
 
 /**
  * Render the menu with controlled props. The menu is driven entirely through

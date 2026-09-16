@@ -40,6 +40,15 @@ Switch to View mode to see your Markdown rendered with headings, bold and italic
 
 Obsidian-style callouts like `> [!NOTE]` and `> [!WARNING]` add styled highlights that draw attention to important information.
 
+## Swagger / OpenAPI Docs in Your Notes
+
+Paste a JSON or YAML OpenAPI (or Swagger 2.0) spec into an ` ```openapi ` block
+and Note Haven renders it as an interactive API reference: tag-grouped
+endpoints with colored method chips, expandable operations with parameters and
+response codes, a servers dropdown, and a Try-it-out button that sends real
+requests when you're online. Frontmatter can override the spec's servers, so
+the same spec can be repointed at staging or localhost without editing it.
+
 ## Run Code in Your Notes
 
 ![Run Code in Your Notes](images/code-runner.png)
