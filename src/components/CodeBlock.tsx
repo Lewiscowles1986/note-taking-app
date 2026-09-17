@@ -1,7 +1,21 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Check, Copy, Play, Loader2, Info } from 'lucide-react';
-import { getRunner, hasRunner } from '@/lib/codeRunners';
+import { toast } from 'sonner';
+import { getRunner, hasRunner, getRunnerVersions, getDefaultVersion } from '@/lib/codeRunners';
 import { parseCodeFrontmatter } from '@/lib/codeBlockFrontmatter';
+import { registerJSRunner } from '@/lib/jsRunner';
+import { registerPhpRunner } from '@/lib/phpRunner';
+import { getAvailablePhpVersions, REQUIRED_PHP_VERSIONS } from '@/lib/phpRunner';
+import { looksLikeHtml } from '@/lib/htmlOutput';
+
+// Register the language runners when this code viewer chunk is loaded, so the
+// runner modules (and their wasm/execution payloads) are only pulled in when a
+// code block is actually rendered — not at app boot.
+registerJSRunner();
+registerPhpRunner();
+
+// Dedupe the "required PHP version missing" alert across code blocks on a page.
+const alertedMissing: string[] = [];
 
 interface CodeBlockProps {
   code: string;
@@ -17,6 +31,48 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
   const [running, setRunning] = useState(false);
   const [output, setOutput] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [showNotes, setShowNotes] = useState(false);
+  const [availableVersions, setAvailableVersions] = useState<string[] | null>(null);
+
+  const [version, setVersion] = useState<string | undefined>(() =>
+    meta.version ?? getDefaultVersion(language),
+  );
+
+  // For PHP, 404-check each build and only offer the ones that are actually
+  // present. Alert once if any of the required versions (5.6, 7.4, 8.4) are
+  // missing; optional versions that 404 are just skipped.
+  useEffect(() => {
+    let cancelled = false;
+    if (language === 'php') {
+      getAvailablePhpVersions().then((avail) => {
+        if (cancelled) return;
+        setAvailableVersions(avail);
+        const missing = REQUIRED_PHP_VERSIONS.filter((v) => !avail.includes(v));
+        if (missing.length > 0 && !alertedMissing.includes(missing.join(','))) {
+          alertedMissing.push(missing.join(','));
+          toast.warning(`PHP ${missing.join(', ')} not available`);
+        }
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [language]);
+
+  // If the selected version isn't available (e.g. the default 8.4.25 404s),
+  // fall back to the first available one.
+  useEffect(() => {
+    if (availableVersions && version && !availableVersions.includes(version)) {
+      setVersion(availableVersions[0]);
+    }
+  }, [availableVersions, version]);
+
+  const versions = useMemo(() => {
+    const all = getRunnerVersions(language);
+    if (language === 'php' && availableVersions) {
+      return all?.filter((v) => availableVersions.includes(v));
+    }
+    return all;
+  }, [language, availableVersions]);
 
   const hasMeta = !!(meta.compatible?.length || meta.incompatible?.length || meta.notes);
   const canRun = hasRunner(language);
@@ -63,7 +119,7 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
     setOutput(null);
 
     try {
-      const result = await runner(code);
+      const result = await runner(code, { version });
       setOutput({ type: 'success', text: result || '(no output)' });
     } catch (err) {
       setOutput({ type: 'error', text: err instanceof Error ? err.message : String(err) });
@@ -97,6 +153,20 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
               <Info size={12} />
               Notes
             </button>
+          )}
+          {versions && versions.length > 0 && (
+            <select
+              value={version ?? ''}
+              onChange={(e) => setVersion(e.target.value)}
+              className="text-xs font-mono bg-[#1a1f24] text-white/70 border border-white/10 rounded px-1.5 py-0.5 outline-none focus:border-emerald-500/50"
+              aria-label={`${language} version`}
+            >
+              {versions.map((v) => (
+                <option key={v} value={v}>
+                  PHP {v}
+                </option>
+              ))}
+            </select>
           )}
           {canRun && (
             <button
@@ -141,17 +211,30 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
           dangerouslySetInnerHTML={{ __html: html }}
         />
       )}
-      {output && (
-        <div
-          className={`px-4 py-3 text-xs font-mono whitespace-pre-wrap border-t border-white/10 ${
-            output.type === 'error'
-              ? 'bg-red-950/50 text-red-300'
-              : 'bg-[#1a1f24] text-green-300'
-          }`}
-        >
-          <span className="text-white/30 select-none">{output.type === 'error' ? '✗ ' : '▸ '}</span>
-          {output.text}
-        </div>
+      {output && output.type === 'success' && looksLikeHtml(output.text) ? (
+        // HTML output (e.g. PHP echo "<h1>…</h1>") renders in a sandboxed
+        // iframe via srcdoc. allow-scripts lets embedded JS run, but the frame
+        // is a unique origin so it can't touch the parent page.
+        <iframe
+          title="HTML output"
+          sandbox="allow-scripts"
+          srcDoc={output.text}
+          className="w-full border-t border-white/10 bg-white"
+          style={{ minHeight: '50svh' }}
+        />
+      ) : (
+        output && (
+          <div
+            className={`px-4 py-3 text-xs font-mono whitespace-pre-wrap border-t border-white/10 ${
+              output.type === 'error'
+                ? 'bg-red-950/50 text-red-300'
+                : 'bg-[#1a1f24] text-green-300'
+            }`}
+          >
+            <span className="text-white/30 select-none">{output.type === 'error' ? '✗ ' : '▸ '}</span>
+            {output.text}
+          </div>
+        )
       )}
     </div>
   );

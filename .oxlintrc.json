@@ -17,5 +17,5 @@
     "react/purity": "warn",
     "react/immutability": "warn"
   },
-  "ignorePatterns": ["dist", "coverage", "playwright-report", "test-results", "node_modules"]
+  "ignorePatterns": ["dist", "coverage", "playwright-report", "test-results", "node_modules", "public/php-wasm"]
 }

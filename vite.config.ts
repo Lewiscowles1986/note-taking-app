@@ -48,6 +48,12 @@ export default defineConfig(() => ({
         navigateFallbackDenylist: previewBuild
           ? [/[^/]+\.[^/]+$/]
           : [/preview-builds\//, /[^/]+\.[^/]+$/],
+        // PHP wasm builds are multi-MB binaries loaded on-demand by the code
+        // runner. Pre-cache them so the app works fully offline; the largest
+        // build is ~9 MB, so raise workbox's default 2 MiB per-file cap. The
+        // .mjs glue is dynamically imported, so include it in the glob too.
+        maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
+        globPatterns: ["**/*.{js,css,html,mjs,wasm}"],
       },
       includeAssets: [
         "favicon.svg",

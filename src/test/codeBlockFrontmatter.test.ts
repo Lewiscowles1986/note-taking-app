@@ -61,6 +61,13 @@ describe('parseCodeFrontmatter', () => {
     expect(code).toBe('code');
   });
 
+  it('parses a version key', () => {
+    const raw = `version: 8.2.29\n---\necho "hi";`;
+    const { meta, code } = parseCodeFrontmatter(raw);
+    expect(meta.version).toBe('8.2.29');
+    expect(code).toBe('echo "hi";');
+  });
+
   it('stops notes continuation at an unknown key', () => {
     const raw = `notes: start\ntitle: My snippet\n  this is not notes\n---\ncode`;
     const { meta, code } = parseCodeFrontmatter(raw);

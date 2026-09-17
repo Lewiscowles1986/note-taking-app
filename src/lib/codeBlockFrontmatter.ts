@@ -6,12 +6,14 @@
  *   compatible:   list of version strings
  *   incompatible: list of version strings
  *   notes:        multi-line string (no "---" allowed inside)
+ *   version:      runtime version to select (e.g. PHP wasm build)
  */
 
 export interface CodeFrontmatter {
   compatible?: string[];
   incompatible?: string[];
   notes?: string;
+  version?: string;
 }
 
 export interface ParsedCodeBlock {
@@ -50,6 +52,11 @@ export function parseCodeFrontmatter(raw: string): ParsedCodeBlock {
         currentKey = 'notes';
         if (inlineVal) {
           notesLines.push(inlineVal);
+        }
+      } else if (key === 'version') {
+        currentKey = null;
+        if (inlineVal) {
+          meta.version = inlineVal;
         }
       } else {
         currentKey = null;

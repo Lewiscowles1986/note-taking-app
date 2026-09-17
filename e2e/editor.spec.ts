@@ -140,6 +140,124 @@ test('runs a JavaScript code block and shows output', async ({ page }) => {
   await step(page, 'code-output');
 });
 
+test('runs a PHP code block via wasm and lets you switch PHP versions', async ({ page }) => {
+  await seedNotes(page, [
+    makeNote({
+      title: 'PHP',
+      content: '# PHP\n\n```php\necho "Hello from PHP wasm!";\n```',
+      hasCodeBlocks: true,
+      hasMermaid: false,
+    }),
+  ]);
+  await page.goto(APP_PATH);
+  await page.locator('div.group', { hasText: 'PHP' }).click();
+  await expect(editor(page)).toHaveValue(/# PHP/);
+  await step(page, 'php-block');
+
+  await page.getByRole('button', { name: 'View', exact: true }).click();
+  // PHP is a versioned runner, so a version selector appears next to Run.
+  const versionSelect = page.getByRole('combobox', { name: 'php version' });
+  await expect(versionSelect).toBeVisible({ timeout: 10000 });
+  await expect(versionSelect).toHaveValue('8.4.25');
+
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.getByText('Hello from PHP wasm!')).toBeVisible({ timeout: 30000 });
+  await step(page, 'php-output');
+
+  // Switching the version reloads the matching wasm build and still runs.
+  await versionSelect.selectOption('7.4.33');
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.getByText('Hello from PHP wasm!')).toBeVisible({ timeout: 30000 });
+  await step(page, 'php-output-switched');
+});
+
+test('runs PHP code that uses explicit <?php tags', async ({ page }) => {
+  await seedNotes(page, [
+    makeNote({
+      title: 'PHP Tags',
+      content: '# PHP Tags\n\n```php\n<?php echo "Tagged output"; ?>\n```',
+      hasCodeBlocks: true,
+      hasMermaid: false,
+    }),
+  ]);
+  await page.goto(APP_PATH);
+  await page.locator('div.group', { hasText: 'PHP Tags' }).click();
+  await page.getByRole('button', { name: 'View', exact: true }).click();
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  // Scope to the code block's success-output area so the sidebar note preview
+  // (which also contains the raw code text) is not matched.
+  await expect(page.locator('.text-green-300')).toContainText('Tagged output', {
+    timeout: 30000,
+  });
+  await step(page, 'php-tags-output');
+});
+
+test('pins the PHP version via frontmatter', async ({ page }) => {
+  await seedNotes(page, [
+    makeNote({
+      title: 'PHP Pinned',
+      content: '# PHP Pinned\n\n```php\nversion: 7.4.33\n---\necho "v=" . PHP_VERSION;\n```',
+      hasCodeBlocks: true,
+      hasMermaid: false,
+    }),
+  ]);
+  await page.goto(APP_PATH);
+  await page.locator('div.group', { hasText: 'PHP Pinned' }).click();
+  await page.getByRole('button', { name: 'View', exact: true }).click();
+  const versionSelect = page.getByRole('combobox', { name: 'php version' });
+  await expect(versionSelect).toBeVisible({ timeout: 10000 });
+  // The frontmatter `version:` line drives the initial selector value.
+  await expect(versionSelect).toHaveValue('7.4.33');
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.getByText('v=7.4.33')).toBeVisible({ timeout: 30000 });
+  await step(page, 'php-pinned-output');
+});
+
+test('lists every bundled PHP version in the selector', async ({ page }) => {
+  await seedNotes(page, [
+    makeNote({
+      title: 'PHP Versions',
+      content: '# PHP Versions\n\n```php\necho "hi";\n```',
+      hasCodeBlocks: true,
+      hasMermaid: false,
+    }),
+  ]);
+  await page.goto(APP_PATH);
+  await page.locator('div.group', { hasText: 'PHP Versions' }).click();
+  await page.getByRole('button', { name: 'View', exact: true }).click();
+  const versionSelect = page.getByRole('combobox', { name: 'php version' });
+  await expect(versionSelect).toBeVisible({ timeout: 10000 });
+  // Native <select> options are not exposed as visible role=option nodes, so
+  // assert on the <option> elements directly.
+  const allVersions = [
+    '5.4.45', '7.4.33', '8.0.30', '8.1.34', '8.2.33', '8.3.33', '8.4.25', '8.5.10',
+  ];
+  await expect(versionSelect.locator('option')).toHaveCount(allVersions.length);
+  for (const v of allVersions) {
+    await expect(versionSelect.locator(`option[value="${v}"]`)).toHaveText(`PHP ${v}`);
+  }
+  await step(page, 'php-versions-list');
+});
+
+test('renders a PHP fatal error as error output', async ({ page }) => {
+  await seedNotes(page, [
+    makeNote({
+      title: 'PHP Error',
+      content: '# PHP Error\n\n```php\nundefined_function();\n```',
+      hasCodeBlocks: true,
+      hasMermaid: false,
+    }),
+  ]);
+  await page.goto(APP_PATH);
+  await page.locator('div.group', { hasText: 'PHP Error' }).click();
+  await page.getByRole('button', { name: 'View', exact: true }).click();
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.getByText(/Call to undefined function/)).toBeVisible({ timeout: 30000 });
+  // Fatal errors surface as error output (✗ prefix, red styling).
+  await expect(page.getByText('✗')).toBeVisible();
+  await step(page, 'php-error-output');
+});
+
 test('renders a mermaid diagram', async ({ page }) => {
   await seedNotes(page, [
     makeNote({

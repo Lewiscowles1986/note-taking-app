@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import CodeBlock from '../components/CodeBlock';
-import { listRunners, registerRunner, unregisterRunner } from '@/lib/codeRunners';
+import { listRunners, registerRunner, registerVersionedRunner, unregisterRunner } from '@/lib/codeRunners';
 import { registerJSRunner } from '@/lib/jsRunner';
 
 // CodeBlock pulls shiki in with a dynamic import(); replace it with a
@@ -10,6 +10,16 @@ import { registerJSRunner } from '@/lib/jsRunner';
 // must be fed from vi.hoisted.
 const { codeToHtmlMock } = vi.hoisted(() => ({ codeToHtmlMock: vi.fn() }));
 vi.mock('shiki', () => ({ codeToHtml: codeToHtmlMock }));
+
+// CodeBlock 404-checks PHP builds via getAvailablePhpVersions(); stub it to
+// report every version as available so the version selector renders in tests.
+const { getAvailablePhpVersionsMock } = vi.hoisted(() => ({
+  getAvailablePhpVersionsMock: vi.fn(),
+}));
+vi.mock('@/lib/phpRunner', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/phpRunner')>();
+  return { ...actual, getAvailablePhpVersions: getAvailablePhpVersionsMock };
+});
 
 const HIGHLIGHTED = '<span data-testid="shiki-output">highlighted</span>';
 const REHIGHLIGHTED = '<span data-testid="shiki-output">rehighlighted</span>';
@@ -21,6 +31,10 @@ describe('CodeBlock component', () => {
   beforeEach(() => {
     codeToHtmlMock.mockReset();
     codeToHtmlMock.mockResolvedValue(HIGHLIGHTED);
+    getAvailablePhpVersionsMock.mockReset();
+    getAvailablePhpVersionsMock.mockResolvedValue([
+      '5.4.45', '7.4.33', '8.0.30', '8.1.34', '8.2.33', '8.3.33', '8.4.25', '8.5.10',
+    ]);
   });
 
   afterEach(() => {
@@ -161,6 +175,25 @@ describe('CodeBlock component', () => {
     expect(screen.getByRole('button', { name: 'Run' })).toBeEnabled();
   });
 
+  it('renders HTML output in a sandboxed iframe via srcdoc', async () => {
+    registerRunner('php', async () => '<h1>Hello</h1>');
+    render(<CodeBlock code={'echo "<h1>Hello</h1>";'} language="php" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+    const iframe = await screen.findByTitle('HTML output');
+    expect(iframe).toHaveAttribute('srcdoc', '<h1>Hello</h1>');
+    expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
+  });
+
+  it('renders non-HTML output as plain text, not an iframe', async () => {
+    registerRunner('php', async () => 'Hello world');
+    render(<CodeBlock code={'echo "Hello world";'} language="php" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+    expect(await screen.findByText('Hello world')).toBeInTheDocument();
+    expect(screen.queryByTitle('HTML output')).not.toBeInTheDocument();
+  });
+
   it('keeps the Run button pending until a slow runner settles', async () => {
     let resolveRun!: (value: string) => void;
     registerRunner(
@@ -282,6 +315,42 @@ describe('CodeBlock component', () => {
     await waitFor(() => {
       expect(second.container.querySelector('.shiki-wrapper')).not.toBeNull();
     });
+  });
+
+  it('shows a version selector for versioned runners and passes the selection', async () => {
+    const run = vi.fn(async (_code: string, options?: { version?: string }) => {
+      return `ran with ${options?.version}`;
+    });
+    registerVersionedRunner('php', run, ['8.4.25', '8.2.33', '7.4.33'], '8.2.33');
+    render(<CodeBlock code={'echo "hi";'} language="php" />);
+
+    const select = screen.getByRole('combobox', { name: 'php version' });
+    expect(select).toBeInTheDocument();
+    // Defaults to the runner's declared default version.
+    expect(select).toHaveValue('8.2.33');
+    expect(screen.getByRole('option', { name: 'PHP 8.4.25' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'PHP 7.4.33' })).toBeInTheDocument();
+
+    fireEvent.change(select, { target: { value: '8.4.25' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+
+    expect(await screen.findByText('ran with 8.4.25')).toBeInTheDocument();
+    expect(run).toHaveBeenCalledWith('echo "hi";', { version: '8.4.25' });
+  });
+
+  it('uses a frontmatter version as the initial selection', async () => {
+    const run = vi.fn(async () => 'ok');
+    registerVersionedRunner('php', run, ['8.4.25', '8.2.33'], '8.4.25');
+    render(<CodeBlock code={'version: 8.2.33\n---\necho "hi";'} language="php" />);
+
+    const select = screen.getByRole('combobox', { name: 'php version' });
+    expect(select).toHaveValue('8.2.33');
+  });
+
+  it('does not show a version selector for unversioned runners', async () => {
+    registerRunner('js', async () => '');
+    render(<CodeBlock code={'console.log(1)'} language="js" />);
+    expect(screen.queryByRole('combobox', { name: 'js version' })).not.toBeInTheDocument();
   });
 
   it('highlights empty code without crashing', async () => {
