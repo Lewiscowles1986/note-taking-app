@@ -4,6 +4,13 @@ The app's Settings page (gear icon in the header) connects to a sync server to
 keep notes replicated across devices. This document specifies the wire protocol
 so anyone can implement a compatible server in an afternoon.
 
+> **Reference server:** this repository ships a multi-user reference
+> implementation with a built-in OIDC provider in [`server/`](../server/) — see
+> [`server/README.md`](../server/README.md). The client signs in against it
+> with the public PKCE-only client **`note-haven-pkce`**
+> (redirect `http://localhost:4173/auth/callback`), and the same server
+> implements the notes API below.
+
 ## Design goals
 
 - **Local-first.** IndexedDB is always the source of truth for the UI. Sync is
@@ -58,6 +65,8 @@ implement CORS:
 
 ## Authentication
 
+### Manual bearer token (any server)
+
 Optional. If configured, the client sends every request:
 
 ```
@@ -66,6 +75,63 @@ Authorization: Bearer <token>
 
 Servers SHOULD return `401`/`403` on missing/invalid tokens. Requests are
 otherwise unauthenticated; TLS termination is the deployment's responsibility.
+
+### OIDC sign-in (reference server)
+
+The client can sign in through the reference server's built-in OpenID
+Connect provider (Authorization Code + PKCE) — see
+[`server/README.md`](../server/README.md). The client uses the **public,
+PKCE-only client `note-haven-pkce`** registered there; no client secret lives
+in the browser.
+
+```
+┌────────┐      1. GET /.well-known/openid-configuration        ┌────────┐
+│  SPA   │ ────────────────────────────────────────────────────▶│ server │
+│        │      2. redirect → GET /authorize                    │        │
+│        │        (client_id, redirect_uri, response_type=code, │        │
+│        │         scope, state, nonce, code_challenge S256)    │        │
+│        │◀───── 3. HTML login page ────────────────────────────│        │
+│        │───── 4. POST /authorize/submit (credentials) ───────▶│        │
+│        │◀───── 5. 302 redirect_uri?code=…&state=… ────────────│        │
+│        │      6. GET /auth/callback (SPA route)               │        │
+│        │      7. state check → POST /token (code + verifier)  │        │
+│        │◀─────    tokens { access, refresh, id_token } ───────│        │
+│        │      8. id_token: RS256 sig vs /jwks.json (kid),     │        │
+│        │         iss/aud/exp/nonce checks → store session     │        │
+└────────┘                                                      └────────┘
+```
+
+- Pending login (PKCE verifier, state, nonce, discovered endpoints, `returnTo`)
+  lives in **sessionStorage** under `notehaven.oidc.pending` — per-tab, dies
+  with the tab, survives the redirect. Expired entries (> 10 min) are rejected.
+- Tokens (access/refresh/id_token + expiry + display claims + endpoints) live
+  in **localStorage** under `notehaven.sync.oidc`. **Tradeoff:** localStorage is
+  readable by any XSS on the origin. This reference client accepts that in
+  exchange for a zero-backend client; the refresh token rotates on every use,
+  and reuse detection revokes the whole family server-side, which bounds the
+  value of a stolen token. A hardened deployment would move sessions server-
+  side (BFF) — out of scope here.
+- **Refresh:** every outgoing request goes through the token resolver
+  (`src/lib/authToken.ts`). When the access token is within 60 s of expiry the
+  resolver refreshes it in the background (works from the auto-sync scheduler's
+  background ticks too) and persists the **rotated** refresh token. A reused
+  rotated token gets `invalid_grant` → the client clears the session and asks
+  for a fresh sign-in.
+- **Logout** revokes the access and refresh tokens at the issuer's
+  `revocation_endpoint` (RFC 7009, always 200) and clears local state.
+- `userinfo` is fetched on demand; the signed-in display name comes from the
+  validated id_token claims (`preferred_username` / `name` / `email`).
+- The reference server's id_token carries a `notes.categories` claim (always
+  `["*"]` today); category narrowing is client-side (see next section).
+
+### Token resolution order (sync engine)
+
+`runSync` (and the settings page's Test connection) obtain their bearer token
+through one seam — `resolveAuthToken()` in `src/lib/authToken.ts`:
+
+1. An OIDC session exists → its access token, refreshed if near expiry.
+2. Otherwise → the manual bearer token (Settings → Advanced).
+3. Otherwise → unauthenticated requests.
 
 ## Note payload (the wire shape of one note)
 
@@ -98,15 +164,92 @@ require unknown fields to survive — newer clients may add fields.
    - local newer → `PUT` the local note (push);
    - remote newer → `GET` and overwrite local (pull);
    - equal → nothing.
-3. Deletions:
-   - local note deleted since the last sync → client `DELETE`s the remote note;
-   - remote manifest `deleted: true` → client deletes its local copy, UNLESS
-     the local copy was edited after the remote deletion (then it pushes and
-     resurrects).
+3. Deletions — see the **never-delete policy** below for the client's exact
+   behaviour:
+   - local note deleted since the last sync → client `DELETE`s the remote note
+     (local user deletions always propagate — this direction is unchanged);
+   - remote manifest `deleted: true` → the reference client does NOT delete
+     its local copy; it queues a keep-or-delete prompt instead. A local copy
+     edited after the deletion still pushes and resurrects.
    - a tombstoned uid whose note was edited on the server after the deletion is
      pulled back (the edit wins).
 4. `PUT`/`DELETE` failures are collected and retried next sync; one failing
    note never blocks the others.
+
+## Category scope (what to sync)
+
+Settings offers two scopes, stored in the settings blob
+(`syncScope`, `syncedCategories` in `notehaven.sync.settings`):
+
+- **All notes** (`syncScope: "all"`) — every note syncs in both directions.
+- **Selected categories** (`syncScope: "categories"`) — only notes whose
+  `category` is in `syncedCategories` participate.
+
+Semantics under a category scope:
+
+- **Push:** out-of-scope local notes are not uploaded. They KEEP their uid
+  mapping, so moving them back into scope syncs them normally on a later run.
+- **Pull:** a remote entry whose category is known (from the previous payload
+  or the pull that just revealed it) and out of scope is skipped entirely —
+  not fetched again, not stored, never planned as a delete-local. The uid →
+  category cache lives in localStorage under `notehaven.sync.remoteCategories`.
+  The authoritative check happens on the payload itself (the manifest carries
+  no category), so a note that another device moved out of scope is never
+  pulled in.
+- **Remote deletions of out-of-scope notes are ignored silently** — the user
+  chose not to sync that category, so no keep-or-delete prompt is raised.
+- "Test connection" and the manifest shape are unaffected by scope.
+
+## Never-delete policy + notification queue
+
+The client **never removes a local note because the server says so**. This is
+an orchestrator policy, not a planner property: `planSync` stays pure and
+backward-compatible (it still emits `delete-local`-shaped intents), and
+`runSync` converts them into queue entries instead of executing them. There is
+no code path in which a remote tombstone deletes local data.
+
+When `runSync` detects a genuine server-side deletion of an in-scope live
+local note (remote tombstone newer than the local copy, no local user
+tombstone involved), it enqueues a `remote-delete` notification under
+`notehaven.sync.notifications` instead of deleting. A bell in the app header
+(the `SyncNotifications` component) shows the pending count; each item offers:
+
+- **Keep on this device** → the uid joins the **permanent exception set**
+  (`notehaven.sync.keepExceptions`): never re-prompted and never delete-local'd
+  **on this client** (exceptions live in localStorage, so they are per browser
+  profile / per device — each device chooses independently; the server remains
+  the source of truth about deletions). The local note is untouched, and the
+  tombstone's Keep also means "do not re-prompt even though the tombstone
+  persists in the manifest".
+- **Delete from this device** → the local note (and its revision history) is
+  removed at the user's explicit command, the uid mapping is forgotten, and no
+  new tombstone is recorded (the remote side is already tombstoned — there is
+  nothing left to propagate). This is the ONLY way a remote deletion removes
+  local data.
+
+Guarantees:
+
+- A uid with a pending prompt or a permanent exception is never re-enqueued
+  (dedup is enforced inside `enqueueRemoteDeletion`).
+- If the local user deleted the note first (local tombstone older than the
+  remote one), the existing delete-remote/tombstone consumption happens as
+  before — no prompt is raised.
+- An exception suppresses deletion prompts only, **not pulls**: if the server
+  resurrects a kept note (PUT again, `deleted` cleared), the next sync pulls
+  it normally.
+
+Queue storage layout (all localStorage; the Dexie schema is never touched):
+
+| Key | Contents |
+|---|---|
+| `notehaven.sync.settings` | server URL, token, auto-sync cadence, sync scope |
+| `notehaven.sync.tombstones` | local deletion tombstones (90-day TTL, cap 500) |
+| `notehaven.sync.uidMap` | noteId → uid mapping |
+| `notehaven.sync.remoteCategories` | uid → last-known category (scope filter) |
+| `notehaven.sync.notifications` | queued keep-or-delete prompts |
+| `notehaven.sync.keepExceptions` | uid → ISO date the user chose Keep (per client) |
+| `notehaven.sync.oidc` | OIDC client config + session tokens |
+| `notehaven.oidc.pending` (sessionStorage) | in-flight login (PKCE/state/nonce) |
 
 ## Reference server (minimal Express sketch)
 
@@ -149,8 +292,16 @@ app.listen(8787);
 
 ## Where it's implemented
 
-- `src/lib/syncSettings.ts` — settings + tombstone persistence
-- `src/lib/sync.ts` — planner (`planSync`) + orchestrator (`runSync`)
-- `src/pages/SettingsPage.tsx` — settings UI
-- `src/test/sync.test.ts`, `src/test/syncSettings.test.ts` — unit tests
-- `e2e/sync.spec.ts` — end-to-end against a mocked server
+- `src/lib/syncSettings.ts` — settings (+ sync scope) + tombstone persistence
+- `src/lib/sync.ts` — planner (`planSync`) + orchestrator (`runSync`) with the
+  scope filter and never-delete policy
+- `src/lib/authToken.ts` — the token resolver seam (OIDC session → manual token)
+- `src/lib/oidcAuth.ts` / `src/lib/oidcStorage.ts` — OIDC flows + session storage
+- `src/lib/syncNotifications.ts` — deletion prompt queue + Keep exceptions
+- `src/components/SyncNotifications.tsx` — header bell + keep/delete UI
+- `src/pages/SettingsPage.tsx` — sign-in, scope picker, connection UI
+- `src/pages/AuthCallbackPage.tsx` — `/auth/callback` landing (lazy-loaded)
+- `src/test/sync.test.ts`, `src/test/syncSettings.test.ts`,
+  `src/test/oidcAuth.test.ts`, `src/test/syncScopeNotifications.test.ts` — unit tests
+- `e2e/sync.spec.ts` — end-to-end against a mocked server;
+  `e2e/oidc-sync.spec.ts` — end-to-end against the reference server

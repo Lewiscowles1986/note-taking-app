@@ -260,8 +260,12 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
       scope: oidcConfig.scope,
     });
     // The sync server doubles as the OIDC issuer for the reference setup.
+    // Persist the auto-fill immediately: login() navigates away before any
+    // other save could run, and the post-callback remount reads storage.
     if (!serverUrl.trim()) {
-      setServerUrl(oidcIssuerInput.trim().replace(/\/+$/, ''));
+      const issuer = oidcIssuerInput.trim().replace(/\/+$/, '');
+      setServerUrl(issuer);
+      saveSyncSettings({ ...currentConfig, serverUrl: issuer });
     }
     setSigningIn(true);
     try {
