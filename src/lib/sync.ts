@@ -28,15 +28,23 @@ import { db, detectContentFeatures, type Note } from './db';
 import {
   loadSyncSettings,
   loadTombstones,
+  isCategoryInScope,
   recordSyncResult,
   recordTombstone,
   retainTombstones,
   type Tombstone,
 } from './syncSettings';
+import { resolveAuthToken } from './authToken';
+import {
+  enqueueRemoteDeletion,
+  hasKeepException,
+  wouldPromptBeSuppressed,
+} from './syncNotifications';
 
 // ─── uid mapping (localStorage-backed; keeps the Dexie schema unchanged) ─────
 
 const UID_MAP_KEY = 'notehaven.sync.uidMap';
+const REMOTE_CATEGORIES_KEY = 'notehaven.sync.remoteCategories';
 
 type UidMap = Record<string, string>; // noteId (as string) -> uid
 
@@ -58,6 +66,35 @@ function loadUidMap(): UidMap {
 
 function saveUidMap(map: UidMap): void {
   localStorage.setItem(UID_MAP_KEY, JSON.stringify(map));
+}
+
+/**
+ * uid → category of the last payload seen for that uid (localStorage). Lets
+ * category-scoped syncs exclude manifest entries WITHOUT fetching their
+ * payloads: once a uid is known out-of-scope it is invisible until its
+ * category changes (which can only be observed by a pull that is in scope).
+ */
+function loadRemoteCategories(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(REMOTE_CATEGORIES_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, string> = {};
+    for (const [uid, category] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof category === 'string' && category) out[uid] = category;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function rememberRemoteCategory(uid: string, category: string): void {
+  const map = loadRemoteCategories();
+  if (map[uid] === category) return;
+  map[uid] = category;
+  localStorage.setItem(REMOTE_CATEGORIES_KEY, JSON.stringify(map));
 }
 
 /** Existing sync uid for a note, if any. */
@@ -87,6 +124,26 @@ function forgetUid(noteId: number): void {
   const map = loadUidMap();
   delete map[String(noteId)];
   saveUidMap(map);
+}
+
+/**
+ * Execute the user's DELETE decision on a queued remote-deletion prompt:
+ * remove the local copy (revisions included) and forget the uid mapping.
+ * No new tombstone is recorded — the remote side is already tombstoned, so
+ * there is nothing left to propagate; any stale local tombstone for the uid
+ * is dropped to keep storage tidy. The caller (SyncNotifications) removes the
+ * queue entry after this resolves. Imported dynamically by the notification
+ * UI so the engine stays out of the eager chunk.
+ */
+export async function deleteNoteForUid(uid: string): Promise<boolean> {
+  const map = loadUidMap();
+  const key = Object.keys(map).find((k) => map[k] === uid);
+  if (!key) return false;
+  const noteId = Number(key);
+  await db.revisions.where('noteId').equals(noteId).delete();
+  await db.notes.delete(noteId);
+  forgetUid(noteId);
+  return true;
 }
 
 /** Prune mappings pointing at notes that no longer exist (e.g. after a restore). */
@@ -137,6 +194,8 @@ export interface LocalNoteMeta {
   uid: string;
   title: string;
   updatedAt: string;
+  /** Category — lets the orchestrator pre-filter by sync scope. */
+  category?: string;
 }
 
 export function buildSyncPayload(note: Note, uid: string): SyncPayload {
@@ -322,6 +381,20 @@ function authHeaders(token: string, hasBody = false): Record<string, string> {
   return headers;
 }
 
+/**
+ * Build the Authorization header for an outgoing request. The token comes
+ * from resolveAuthToken (OIDC session when signed in, else the manual bearer
+ * token) — the engine itself stays OIDC-agnostic.
+ */
+async function bearerHeaders(
+  manualToken: string,
+  fetchImpl: FetchLike,
+  hasBody = false,
+): Promise<Record<string, string>> {
+  const token = await resolveAuthToken(manualToken, fetchImpl as unknown as typeof fetch);
+  return authHeaders(token, hasBody);
+}
+
 async function requestJson<T>(
   fetchImpl: FetchLike,
   url: string,
@@ -364,12 +437,13 @@ export function parseManifest(data: unknown): RemoteNoteMeta[] {
     .map((m) => ({ uid: m.uid, updatedAt: m.updatedAt, deleted: m.deleted === true }));
 }
 
-function describe(result: Omit<SyncResult, 'summary' | 'ok'>): string {
+function describe(result: Omit<SyncResult, 'summary' | 'ok'>, queuedDeletions = 0): string {
   const parts: string[] = [];
   if (result.pushed) parts.push(`${result.pushed} pushed`);
   if (result.pulled) parts.push(`${result.pulled} pulled`);
   if (result.deletedLocal) parts.push(`${result.deletedLocal} removed locally`);
   if (result.deletedRemote) parts.push(`${result.deletedRemote} deleted on server`);
+  if (queuedDeletions) parts.push(`${queuedDeletions} deletion${queuedDeletions !== 1 ? 's' : ''} awaiting your choice`);
   if (result.errors.length) parts.push(`${result.errors.length} error${result.errors.length !== 1 ? 's' : ''}`);
   return parts.length ? parts.join(', ') : 'already up to date';
 }
@@ -378,6 +452,14 @@ function describe(result: Omit<SyncResult, 'summary' | 'ok'>): string {
  * Run one full sync round. Throws SyncError for fatal problems (no config,
  * unreachable server, bad manifest); per-op failures are collected into
  * `errors` and do not abort the remaining operations.
+ *
+ * Policy baked in here (docs/sync.md):
+ *  - Never-delete-local: remote deletions never remove local notes. The
+ *    planner may emit `delete-local` intents; runSync converts them into
+ *    notification-queue entries (keep-or-delete prompts) instead of deleting.
+ *  - Category scope: when the stored scope is 'categories', only notes in the
+ *    chosen categories are pushed or pulled; out-of-scope remote entries —
+ *    including their deletions — are ignored entirely.
  */
 export async function runSync(options: {
   signal?: AbortSignal;
@@ -398,24 +480,49 @@ export async function runSync(options: {
   const notes = await db.notes.toArray();
   const liveIds = notes.map((n) => n.id!);
   pruneUidMap(liveIds);
-  const localMetas: LocalNoteMeta[] = notes.map((n) => ({
-    noteId: n.id!,
-    uid: assignUidForNoteId(n.id!),
-    title: n.title,
-    updatedAt: new Date(n.updatedAt).toISOString(),
-  }));
+  const inScope = (category: string): boolean =>
+    isCategoryInScope(category, settings.syncScope, settings.syncedCategories);
+  // Out-of-scope notes keep their uid mapping (a later move back into scope
+  // syncs normally) but are invisible to this sync round.
+  const localMetas: LocalNoteMeta[] = notes
+    .filter((n) => inScope(n.category))
+    .map((n) => ({
+      noteId: n.id!,
+      uid: assignUidForNoteId(n.id!),
+      title: n.title,
+      updatedAt: new Date(n.updatedAt).toISOString(),
+      category: n.category,
+    }));
   const tombstones = loadTombstones();
+
+  // Authorization: OIDC access token when a session exists (refreshing via
+  // the resolver seam), else the manual bearer token.
+  const manifestHeaders = await bearerHeaders(settings.authToken, fetchImpl);
 
   // Remote manifest.
   const manifestData = await requestJson<unknown>(
     fetchImpl,
     `${base}/api/notes`,
-    { method: 'GET', headers: authHeaders(settings.authToken), signal: options.signal },
+    { method: 'GET', headers: manifestHeaders, signal: options.signal },
     'Fetching remote changes',
   );
   const remote = parseManifest(manifestData);
 
-  const plan = planSync(localMetas, remote, tombstones);
+  // Category-scoped syncs drop manifest entries whose uid is KNOWN to live in
+  // an out-of-scope category (from the uid→category cache). Unknown uids are
+  // fetched once; if their payload turns out to be out of scope they land in
+  // the cache and are skipped from the next run on.
+  const remoteCategories = loadRemoteCategories();
+  const remoteInScope = remote.filter((r) => {
+    const known = remoteCategories[r.uid];
+    return known === undefined || inScope(known);
+  });
+
+  // Local notes by uid for titles/categories in notifications.
+  const noteByUid = new Map(localMetas.map((m) => [m.uid, m]));
+  const noteIdByUid = new Map(notes.map((n) => [assignUidForNoteId(n.id!), n]));
+
+  const plan = planSync(localMetas, remoteInScope, tombstones);
 
   const result: Omit<SyncResult, 'summary' | 'ok'> = {
     pushed: 0,
@@ -424,6 +531,8 @@ export async function runSync(options: {
     deletedRemote: 0,
     errors: [],
   };
+  /** Remote deletions turned into keep-or-delete prompts this run. */
+  let notifiedDeletions = 0;
 
   /** Uids whose delete-remote completed on the server (tombstone consumed). */
   const acknowledgedDeletions = new Set<string>();
@@ -440,7 +549,7 @@ export async function runSync(options: {
           `${base}/api/notes/${encodeURIComponent(op.uid)}`,
           {
             method: 'PUT',
-            headers: authHeaders(settings.authToken, true),
+            headers: await bearerHeaders(settings.authToken, fetchImpl, true),
             body: JSON.stringify(payload),
             signal: options.signal,
           },
@@ -451,12 +560,20 @@ export async function runSync(options: {
         const payload = await requestJson<SyncPayload>(
           fetchImpl,
           `${base}/api/notes/${encodeURIComponent(op.uid)}`,
-          { method: 'GET', headers: authHeaders(settings.authToken), signal: options.signal },
+          { method: 'GET', headers: await bearerHeaders(settings.authToken, fetchImpl), signal: options.signal },
           'Pulling note',
         );
+        // Scope re-check on the payload: the manifest entry was in scope, but
+        // the stored payload's category is authoritative — a note that moved
+        // out of scope on another device must not be pulled in.
+        if (!inScope(payload.category)) {
+          rememberRemoteCategory(op.uid, payload.category);
+          continue;
+        }
+        rememberRemoteCategory(op.uid, payload.category);
         const note = payloadToNote(payload);
         if (op.noteId != null) {
-          await db.notes.update(op.noteId, note);
+          await db.notes.update(op.noteId, { ...note });
         } else {
           const newId = await db.notes.add(note);
           const map = loadUidMap();
@@ -465,15 +582,24 @@ export async function runSync(options: {
         }
         result.pulled++;
       } else if (op.kind === 'delete-local') {
-        await db.revisions.where('noteId').equals(op.noteId).delete();
-        await db.notes.delete(op.noteId);
-        forgetUid(op.noteId);
-        result.deletedLocal++;
+        // NEVER-DELETE POLICY: a remote deletion must not remove the local
+        // note. Queue a keep-or-delete prompt instead (unless this client
+        // already has a permanent exception or a pending prompt for the uid).
+        const meta = noteByUid.get(op.uid);
+        if (!wouldPromptBeSuppressed(op.uid)) {
+          enqueueRemoteDeletion({
+            uid: op.uid,
+            title: meta?.title ?? noteIdByUid.get(op.uid)?.title ?? 'Untitled',
+            category: meta?.category ?? noteIdByUid.get(op.uid)?.category ?? 'General',
+            deletedAt: remote.find((r) => r.uid === op.uid)?.updatedAt ?? new Date().toISOString(),
+          });
+          notifiedDeletions++;
+        }
       } else if (op.kind === 'delete-remote') {
         await requestJson(
           fetchImpl,
           `${base}/api/notes/${encodeURIComponent(op.uid)}`,
-          { method: 'DELETE', headers: authHeaders(settings.authToken), signal: options.signal },
+          { method: 'DELETE', headers: await bearerHeaders(settings.authToken, fetchImpl), signal: options.signal },
           'Deleting remote note',
         );
         acknowledgedDeletions.add(op.uid);
@@ -496,7 +622,7 @@ export async function runSync(options: {
     retainTombstones(keep);
   }
 
-  const summary = describe(result);
+  const summary = describe(result, notifiedDeletions);
   recordSyncResult({ at: (options.now ?? new Date()).toISOString(), ok: result.errors.length === 0, summary });
 
   return {

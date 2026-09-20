@@ -22,6 +22,8 @@ const TOMBSTONE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 /** Tombstone cap — oldest entries are dropped first. */
 export const MAX_TOMBSTONES = 500;
 
+export type SyncScope = 'all' | 'categories';
+
 export interface SyncSettings {
   /** Base URL of the sync server, e.g. "https://sync.example.com" (no trailing slash). */
   serverUrl: string;
@@ -30,6 +32,10 @@ export interface SyncSettings {
   /** Run a background sync every `intervalMinutes` while the app is open. */
   autoSync: boolean;
   intervalMinutes: number;
+  /** What to sync: every note, or only the categories in `syncedCategories`. */
+  syncScope: SyncScope;
+  /** Chosen categories — used (and only used) when syncScope === 'categories'. */
+  syncedCategories: string[];
 }
 
 export interface LastSyncInfo {
@@ -57,8 +63,20 @@ const DEFAULT_SETTINGS: StoredSyncSettings = {
   authToken: '',
   autoSync: false,
   intervalMinutes: 15,
+  syncScope: 'all',
+  syncedCategories: [],
   lastSync: null,
 };
+
+/** Validate a category list: strings only, deduped. */
+function toCategoryList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.filter((v): v is string => typeof v === 'string' && v.length > 0)));
+}
+
+function toScope(value: unknown): SyncScope {
+  return value === 'categories' ? 'categories' : 'all';
+}
 
 /** Strip trailing slashes so URL joins never produce "//api/...". */
 export function normalizeServerUrl(raw: string): string {
@@ -95,6 +113,8 @@ export function loadSyncSettings(): StoredSyncSettings {
       intervalMinutes: isFinitePositive(obj.intervalMinutes)
         ? Math.max(1, Math.round(obj.intervalMinutes))
         : DEFAULT_SETTINGS.intervalMinutes,
+      syncScope: toScope(obj.syncScope),
+      syncedCategories: toCategoryList(obj.syncedCategories),
       lastSync,
     };
   } catch {
@@ -103,7 +123,13 @@ export function loadSyncSettings(): StoredSyncSettings {
 }
 
 /** Persist the editable fields + lastSync. Normalizes the server URL. */
-export function saveSyncSettings(settings: SyncSettings & { lastSync?: LastSyncInfo | null }): void {
+export function saveSyncSettings(
+  settings: Omit<SyncSettings, 'syncScope' | 'syncedCategories'> & {
+    lastSync?: LastSyncInfo | null;
+    syncScope?: SyncScope;
+    syncedCategories?: string[];
+  },
+): void {
   const stored: StoredSyncSettings = {
     serverUrl: normalizeServerUrl(settings.serverUrl),
     authToken: settings.authToken,
@@ -111,6 +137,8 @@ export function saveSyncSettings(settings: SyncSettings & { lastSync?: LastSyncI
     intervalMinutes: isFinitePositive(settings.intervalMinutes)
       ? Math.max(1, Math.round(settings.intervalMinutes))
       : DEFAULT_SETTINGS.intervalMinutes,
+    syncScope: toScope(settings.syncScope),
+    syncedCategories: toCategoryList(settings.syncedCategories),
     lastSync: settings.lastSync ?? null,
   };
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(stored));
@@ -130,6 +158,20 @@ export function clearSyncSettings(): void {
 export function recordSyncResult(info: LastSyncInfo): void {
   const current = loadSyncSettings();
   saveSyncSettings({ ...current, lastSync: info });
+}
+
+/**
+ * True when a note's category qualifies for syncing under the stored scope:
+ * scope 'all' syncs everything; scope 'categories' requires membership in
+ * `syncedCategories` (an empty selection syncs nothing).
+ */
+export function isCategoryInScope(
+  category: string,
+  scope: SyncScope,
+  syncedCategories: string[],
+): boolean {
+  if (scope !== 'categories') return true;
+  return syncedCategories.includes(category);
 }
 
 // ─── tombstones ──────────────────────────────────────────────────────────────

@@ -29,6 +29,8 @@ describe('loadSyncSettings', () => {
       authToken: '',
       autoSync: false,
       intervalMinutes: 15,
+      syncScope: 'all',
+      syncedCategories: [],
       lastSync: null,
     });
   });
@@ -39,6 +41,8 @@ describe('loadSyncSettings', () => {
       authToken: 'tok',
       autoSync: true,
       intervalMinutes: 30,
+      syncScope: 'categories',
+      syncedCategories: ['Work'],
       lastSync: { at: '2026-01-01T00:00:00.000Z', ok: true, summary: '2 pushed' },
     });
     expect(loadSyncSettings()).toEqual({
@@ -46,6 +50,8 @@ describe('loadSyncSettings', () => {
       authToken: 'tok',
       autoSync: true,
       intervalMinutes: 30,
+      syncScope: 'categories',
+      syncedCategories: ['Work'],
       lastSync: { at: '2026-01-01T00:00:00.000Z', ok: true, summary: '2 pushed' },
     });
   });

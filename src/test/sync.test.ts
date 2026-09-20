@@ -30,6 +30,7 @@ import {
   recordTombstone,
   type Tombstone,
 } from '@/lib/syncSettings';
+import { getPendingNotifications } from '@/lib/syncNotifications';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -451,7 +452,7 @@ describe('runSync', () => {
     expect(requests.find((r) => r.method === 'PUT')!.body.title).toBe('Newer local');
   });
 
-  it('deletes the local note for a remote tombstone', async () => {
+  it('NEVER deletes the local note for a remote tombstone — queues a prompt instead', async () => {
     configureServer();
     const id = await seedNote({ title: 'Doomed', updatedAt: new Date(T0) });
     const uid = assignUidForNoteId(id);
@@ -460,8 +461,20 @@ describe('runSync', () => {
     ]);
 
     const result = await runSync({ fetchImpl: impl });
-    expect(result.deletedLocal).toBe(1);
-    expect(await db.notes.get(id)).toBeUndefined();
+    // Nothing was removed locally…
+    expect(result.deletedLocal).toBe(0);
+    const stillThere = await db.notes.get(id);
+    expect(stillThere).toBeDefined();
+    expect(stillThere!.title).toBe('Doomed');
+    // …and the deletion is queued for the user's keep-or-delete choice.
+    expect(getPendingNotifications()).toHaveLength(1);
+    expect(getPendingNotifications()[0]).toMatchObject({
+      uid,
+      title: 'Doomed',
+      kind: 'remote-delete',
+    });
+    // The user's own deletions still propagate: no local tombstone was recorded.
+    expect(loadTombstones()).toHaveLength(0);
   });
 
   it('propagates a local deletion to the server and clears the tombstone', async () => {
