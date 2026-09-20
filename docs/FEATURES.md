@@ -40,15 +40,6 @@ Switch to View mode to see your Markdown rendered with headings, bold and italic
 
 Obsidian-style callouts like `> [!NOTE]` and `> [!WARNING]` add styled highlights that draw attention to important information.
 
-## Swagger / OpenAPI Docs in Your Notes
-
-Paste a JSON or YAML OpenAPI (or Swagger 2.0) spec into an ` ```openapi ` block
-and Note Haven renders it as an interactive API reference: tag-grouped
-endpoints with colored method chips, expandable operations with parameters and
-response codes, a servers dropdown, and a Try-it-out button that sends real
-requests when you're online. Frontmatter can override the spec's servers, so
-the same spec can be repointed at staging or localhost without editing it.
-
 ## Run Code in Your Notes
 
 ![Run Code in Your Notes](images/code-runner.png)
@@ -64,6 +55,12 @@ version: 7.4.33
 echo "Hello from PHP " . PHP_VERSION;
 ```
 ````
+
+## Swagger / OpenAPI Docs in Your Notes
+
+![Swagger / OpenAPI Docs in Your Notes](images/swagger-openapi.png)
+
+Paste a JSON or YAML OpenAPI (or Swagger 2.0) spec into a ```openapi block and Note Haven renders it as an interactive API reference: tag-grouped endpoints with colored method chips, expandable operations with parameters and response codes, a servers dropdown, and a Try-it-out button that sends real requests when you're online. Frontmatter can override the spec's servers, so the same spec can be repointed at staging or localhost without editing it.
 
 ## Live Diagrams with Mermaid
 
@@ -130,6 +127,12 @@ A viewport can be frozen so the model is shown at a fixed angle with no controls
 ![A Calendar of Your Notes](images/calendar-view.png)
 
 The calendar view shows which notes you edited on each day, so you can retrace your writing history and find notes by date.
+
+## Sync Across Devices
+
+![Sync Across Devices](images/sync-settings.png)
+
+Open Settings from the header and connect a sync server. Notes merge per note with last-writer-wins semantics — the newest edit wins, deletions propagate both ways, and encrypted notes stay encrypted on the wire. The wire protocol is a small REST JSON contract, so any backend that speaks it can be your note server.
 
 ## Keep Notes Private
 
