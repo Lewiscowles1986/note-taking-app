@@ -103,6 +103,78 @@ async function openNoteInView(page: Page, title: string): Promise<void> {
   await page.getByRole('button', { name: 'View', exact: true }).click();
 }
 
+// ─── sync-settings ───────────────────────────────────────────────────────────
+// Captured against a MOCKED sync server (page.route) so the tour stays
+// hermetic — no real backend. The state shown is the real post-sync UI: the
+// manifest count comes from the mock, the status line from a real sync run.
+test('captures sync settings', async ({ page }) => {
+  test.skip(
+    !process.env.E2E_DOCS || test.info().project.name !== 'chromium',
+    'docs tour runs only with E2E_DOCS=1 on the chromium project'
+  );
+
+  // Mock sync server (protocol: docs/sync.md) with one note already on it.
+  const remoteUpdatedAt = new Date().toISOString();
+  await page.route('**://sync.example.test/api/notes**', async (route) => {
+    const req = route.request();
+    const parts = new URL(req.url()).pathname.split('/').filter(Boolean);
+    const cors = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    };
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    if (parts.length === 2) {
+      return route.fulfill({
+        json: { notes: [{ uid: 'from-laptop', updatedAt: remoteUpdatedAt }] },
+        headers: cors,
+      });
+    }
+    const uid = decodeURIComponent(parts[2] ?? '');
+    if (req.method() === 'GET') {
+      return route.fulfill({
+        json: {
+          uid,
+          title: 'Packing list',
+          content: '# Packing list\n\n- [ ] charger\n- [ ] passport\n- [ ] hiking boots',
+          tags: ['travel'],
+          category: 'General',
+          attachments: [],
+          createdAt: remoteUpdatedAt,
+          updatedAt: remoteUpdatedAt,
+          editDates: [],
+          pinned: false,
+          encrypted: null,
+        },
+        headers: cors,
+      });
+    }
+    return route.fulfill({ status: 204, headers: cors });
+  });
+
+  await seedNotes(page, [
+    makeNote({ title: 'Trip planning', content: '# Trip planning\n\nBook flights and reserve the cabin.' }),
+  ]);
+  await page.goto(APP_PATH);
+  await expect(page.getByText('Trip planning', { exact: true })).toBeVisible();
+
+  // Configure the (mocked) server through the UI and run one sync. The run
+  // pushes Trip planning and pulls Packing list — real engine, real UI state.
+  await page.getByTitle('Settings').evaluate((el) => el.click());
+  await expect(page.getByText('Sync server')).toBeVisible();
+  await page.getByLabel('Server URL').fill('https://sync.example.test');
+  await page.getByLabel('Access token (optional)').fill('demo-token');
+  await page.getByRole('button', { name: 'Test connection' }).evaluate((el) => el.click());
+  await expect(page.getByText(/Connection OK/)).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).evaluate((el) => el.click());
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Sync now' }).evaluate((el) => el.click());
+  await expect(page.getByText(/Sync complete/)).toBeVisible({ timeout: 15_000 });
+  // Let the success toast settle so the screenshot is deterministic.
+  await page.waitForTimeout(300);
+  await shot(page, 'sync-settings');
+});
+
 // ─── app-overview ──────────────────────────────────────────────────────────
 test('captures app overview', async ({ page }) => {
   test.skip(
@@ -247,6 +319,51 @@ test('captures code runner', async ({ page }) => {
   // syntax-highlighted state instead of the loading fallback.
   await expect(page.locator('.prose-notes pre.shiki').first()).toBeVisible({ timeout: 15000 });
   await shot(page, 'code-runner');
+});
+
+// ─── swagger-openapi ────────────────────────────────────────────────────────
+test('captures swagger openapi block', async ({ page }) => {
+  test.skip(
+    !process.env.E2E_DOCS || test.info().project.name !== 'chromium',
+    'docs tour runs only with E2E_DOCS=1 on the chromium project'
+  );
+  // Minimal valid OpenAPI 3 spec (petstore-style, single GET endpoint).
+  const spec = {
+    openapi: '3.0.0',
+    info: { title: 'Pet Store', version: '1.0.0' },
+    servers: [{ url: 'https://petstore3.swagger.io/api/v3' }],
+    paths: {
+      '/pet/findByStatus': {
+        get: {
+          tags: ['pet'],
+          summary: 'Finds Pets by status',
+          parameters: [
+            {
+              name: 'status',
+              in: 'query',
+              required: false,
+              schema: { type: 'string', enum: ['available', 'pending', 'sold'] },
+            },
+          ],
+          responses: { '200': { description: 'ok' } },
+        },
+      },
+    },
+  };
+  await seedNotes(page, [
+    makeNote({
+      title: 'API Reference',
+      content: `# API Reference\n\n\`\`\`openapi\n${JSON.stringify(spec, null, 2)}\n\`\`\``,
+      hasCodeBlocks: false,
+      hasSwagger: true,
+    }),
+  ]);
+  await page.goto(APP_PATH);
+  await openNoteInView(page, 'API Reference');
+  // The SwaggerBlock renders tag groups + expandable operations lazily.
+  await expect(page.getByText('Pet Store', { exact: true }).first()).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('.prose-notes').getByText('/pet/findByStatus').first()).toBeVisible({ timeout: 15000 });
+  await shot(page, 'swagger-openapi');
 });
 
 // ─── mermaid-diagram ────────────────────────────────────────────────────────
@@ -748,7 +865,13 @@ const GALLERY: GallerySection[] = [
     file: 'code-runner',
     title: 'Run Code in Your Notes',
     caption:
-      'JavaScript code blocks can be executed right inside a note. Press Run to see the output — including `console.log` — without leaving the page.',
+      'JavaScript code blocks can be executed right inside a note. Press Run to see the output — including `console.log` — without leaving the page.\n\nPHP code blocks run in the browser too, via WebAssembly. A version selector next to Run lets you pick which PHP build to execute (e.g. `8.4.25`, `8.2.33`, `7.4.33`, `5.4.45`), and you can pin a default per block with a `version:` frontmatter line:\n\n````markdown\n```php\nversion: 7.4.33\n---\necho "Hello from PHP " . PHP_VERSION;\n```\n````',
+  },
+  {
+    file: 'swagger-openapi',
+    title: 'Swagger / OpenAPI Docs in Your Notes',
+    caption:
+      'Paste a JSON or YAML OpenAPI (or Swagger 2.0) spec into a ```openapi block and Note Haven renders it as an interactive API reference: tag-grouped endpoints with colored method chips, expandable operations with parameters and response codes, a servers dropdown, and a Try-it-out button that sends real requests when you\'re online. Frontmatter can override the spec\'s servers, so the same spec can be repointed at staging or localhost without editing it.',
   },
   {
     file: 'mermaid-diagram',
@@ -815,6 +938,12 @@ const GALLERY: GallerySection[] = [
     title: 'A Calendar of Your Notes',
     caption:
       'The calendar view shows which notes you edited on each day, so you can retrace your writing history and find notes by date.',
+  },
+  {
+    file: 'sync-settings',
+    title: 'Sync Across Devices',
+    caption:
+      'Open Settings from the header and connect a sync server. Notes merge per note with last-writer-wins semantics — the newest edit wins, deletions propagate both ways, and encrypted notes stay encrypted on the wire. The wire protocol is a small REST JSON contract, so any backend that speaks it can be your note server.',
   },
   {
     file: 'encryption-locked',
