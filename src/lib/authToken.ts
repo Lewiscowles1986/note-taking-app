@@ -45,8 +45,3 @@ export async function resolveAuthToken(manualToken: string, fetchImpl?: typeof f
     return loadOidcSession()?.accessToken ?? manualToken;
   }
 }
-
-/** Synchronous best-guess token for callers that cannot await (legacy UI). */
-export function peekAuthToken(manualToken: string): string {
-  return loadOidcSession()?.accessToken ?? manualToken;
-}

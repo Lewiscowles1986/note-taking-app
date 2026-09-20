@@ -73,6 +73,8 @@ export interface JwtPayload {
   exp?: number;
   iat?: number;
   nonce?: string;
+  /** Access-token hash (OIDC Core §3.1.3.6) when the issuer includes it. */
+  at_hash?: string;
   preferred_username?: string;
   name?: string | null;
   email?: string | null;
@@ -225,6 +227,13 @@ function b64urlDecode(input: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+/** base64url (RFC 4648 §5, unpadded) — used for at_hash comparison. */
+function b64urlEncode(bytes: Uint8Array): string {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
 export function decodeJwtPayload(jwt: string): JwtPayload {
   const parts = jwt.split('.');
   if (parts.length !== 3) throw new OidcError('Malformed id_token');
@@ -239,10 +248,22 @@ interface JwkSet {
   keys?: Array<Record<string, unknown>>;
 }
 
+/** Cached JWKS (module level) — avoids a fetch per token validation.
+ * Invalidated (refetched) once when a token arrives with an unknown kid,
+ * which is how issuers signal key rotation. */
+let jwksCache: { uri: string; keys: Array<Record<string, unknown>> } | null = null;
+
+async function getJwks(jwksUri: string, fetchImpl: typeof fetch, { forceRefresh = false } = {}): Promise<Array<Record<string, unknown>>> {
+  if (!forceRefresh && jwksCache && jwksCache.uri === jwksUri) return jwksCache.keys;
+  const jwks = (await fetchJson(jwksUri, 'Reading signing keys', fetchImpl)) as JwkSet;
+  const keys = Array.isArray(jwks.keys) ? jwks.keys : [];
+  jwksCache = { uri: jwksUri, keys };
+  return keys;
+}
+
 /** Fetch + cache the issuer's public keys for the length of the call. */
 async function fetchJwks(jwksUri: string, fetchImpl: typeof fetch): Promise<Array<Record<string, unknown>>> {
-  const jwks = (await fetchJson(jwksUri, 'Reading signing keys', fetchImpl)) as JwkSet;
-  return Array.isArray(jwks.keys) ? jwks.keys : [];
+  return getJwks(jwksUri, fetchImpl);
 }
 
 /**
@@ -257,6 +278,9 @@ export async function validateIdToken(
     issuer: string;
     clientId: string;
     nonce: string;
+    /** The access token issued alongside this id_token — used to verify
+     * at_hash when the id_token carries one (OIDC Core §3.1.3.6). */
+    accessToken?: string;
     now?: number;
   },
   fetchImpl: typeof fetch = fetch,
@@ -272,8 +296,14 @@ export async function validateIdToken(
     throw new OidcError('Unsupported id_token algorithm (expected RS256)');
   }
 
-  const keys = await fetchJwks(params.jwksUri, fetchImpl);
-  const key = keys.find((k) => (k.kid === undefined || k.kid === header.kid) && k.kty === 'RSA');
+  const keys = await getJwks(params.jwksUri, fetchImpl);
+  let key = keys.find((k) => k.kid === header.kid && k.kty === 'RSA');
+  if (!key && header.kid) {
+    // Unknown kid → the issuer likely rotated its signing keys. Refetch the
+    // JWKS once (cache-bust) before failing.
+    const refreshed = await getJwks(params.jwksUri, fetchImpl, { forceRefresh: true });
+    key = refreshed.find((k) => k.kid === header.kid && k.kty === 'RSA');
+  }
   if (!key) {
     throw new OidcError('No matching signing key for the id_token');
   }
@@ -301,11 +331,21 @@ export async function validateIdToken(
     throw new OidcError('id_token audience mismatch');
   }
   const now = params.now ?? Date.now();
-  if (typeof payload.exp === 'number' && payload.exp * 1000 <= now) {
+  // ~60 s leeway for small clock skew between client and issuer.
+  if (typeof payload.exp === 'number' && payload.exp * 1000 <= now - 60_000) {
     throw new OidcError('id_token has expired');
   }
   if (payload.nonce !== params.nonce) {
     throw new OidcError('id_token nonce mismatch');
+  }
+  // at_hash binds the id_token to the access token (OIDC Core §3.1.3.6):
+  // base64url of the LEFT HALF of SHA-256 over the access_token's ASCII bytes.
+  if (typeof payload.at_hash === 'string' && payload.at_hash) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(params.accessToken));
+    const expected = new Uint8Array(digest).slice(0, 16);
+    if (b64urlEncode(expected) !== payload.at_hash) {
+      throw new OidcError('id_token at_hash mismatch (access token binding failed)');
+    }
   }
   return payload;
 }
@@ -430,6 +470,7 @@ export async function completeLogin(params: URLSearchParams, fetchImpl: typeof f
       issuer: pending.issuer,
       clientId: config.clientId,
       nonce: pending.nonce,
+      accessToken,
     },
     fetchImpl,
   );
@@ -466,6 +507,15 @@ export interface AccessTokenResult {
 }
 
 /**
+ * In-flight refresh dedup. Concurrent callers (e.g. the sync engine and a
+ * background scheduler tick) must share ONE refresh request: the reference
+ * server rotates refresh tokens and revokes the whole family on reuse, so a
+ * second parallel refresh would invalidate the first caller's rotation and
+ * log the user out.
+ */
+let refreshInFlight: Promise<string> | null = null;
+
+/**
  * Return a usable access token, refreshing (and persisting the rotation) when
  * the stored one is within REFRESH_SKEW_MS of expiry. If the refresh token was
  * rotated-and-reused (invalid_grant → family revoked server-side), the session
@@ -477,6 +527,24 @@ export async function getValidAccessToken(fetchImpl: typeof fetch = fetch): Prom
   if (session.expiresAt - REFRESH_SKEW_MS > Date.now()) {
     return session.accessToken; // still fresh
   }
+  // A refresh is already running: join it instead of racing a second one.
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = performRefresh(fetchImpl);
+  try {
+    return await refreshInFlight;
+  } finally {
+    // On failure the shared promise is dropped so the NEXT caller can retry
+    // (e.g. after a transient network error). On success it is also dropped:
+    // the session is now fresh and further callers take the fast path.
+    refreshInFlight = null;
+  }
+}
+
+/** The actual refresh POST — single-flight, only reached via
+ * getValidAccessToken's dedup wrapper. */
+async function performRefresh(fetchImpl: typeof fetch): Promise<string> {
+  const session = loadOidcSession();
+  if (!session) throw new OidcError('Not signed in');
   if (!session.refreshToken) {
     clearOidcSession();
     throw new OidcError('Session expired — sign in again');

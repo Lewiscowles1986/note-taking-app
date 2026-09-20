@@ -2,7 +2,7 @@ import { test, expect, step, seedNotes, type NoteSeed, APP_PATH } from './fixtur
 
 /**
  * OIDC + never-delete end-to-end against the REAL reference server
- * (server/index.mjs on :8080) and the built app (vite preview on :4173).
+ * (server/index.mjs on :8090 — :8080 is occupied by an unrelated local app) and the built app (vite preview on :4173).
  *
  * Run (both processes must be up):
  *   E2E_BASE_URL=http://localhost:4173 npx playwright test e2e/oidc-sync.spec.ts
@@ -38,7 +38,7 @@ function makeNote(overrides: Partial<NoteSeed> = {}): NoteSeed {
   };
 }
 
-const SERVER = 'http://localhost:8080';
+const SERVER = 'http://localhost:8090';
 const USERNAME = 'alice';
 const PASSWORD = 'correct-horse-battery-staples';
 // Unique per run: alice's server-side notes accumulate across E2E runs, and
@@ -60,7 +60,7 @@ async function pingServer(): Promise<boolean> {
 }
 
 test.beforeEach(async () => {
-  test.skip(!(await pingServer()), 'reference server not running on :8080');
+  test.skip(!(await pingServer()), 'reference server not running on :8090');
 });
 
 /**
@@ -92,52 +92,52 @@ async function countLocalNotes(
 }
 
 /** Complete the OIDC flow through the server-rendered login page. */
+/**
+ * Complete the OIDC flow through the server-rendered login page with REAL
+ * browser interactions (fill + click). The login form carries no hidden
+ * fields (the flow context rides in a cookie), and the successful POST
+ * returns a meta-refresh handoff page — Chromium applies `form-action
+ * 'self'` to the response side of a form POST, so a cross-origin 302 would
+ * itself be blocked. The flow must complete with ZERO CSP console errors.
+ */
 async function oidcLogin(page: import('@playwright/test').Page): Promise<void> {
+  const cspErrors: string[] = [];
+  const onConsole = (msg: import('@playwright/test').ConsoleMessage): void => {
+    if (msg.type() === 'error' && /Content Security Policy|violates/i.test(msg.text())) {
+      cspErrors.push(msg.text());
+    }
+  };
+  page.on('console', onConsole);
+  try {
+    await runOidcLoginSteps(page);
+  } finally {
+    page.off('console', onConsole);
+  }
+  expect(cspErrors, 'no CSP violations during the OIDC flow').toEqual([]);
+}
+
+async function runOidcLoginSteps(page: import('@playwright/test').Page): Promise<void> {
   await page.goto(APP_PATH);
   await page.getByTitle('Settings').click();
   await page.getByLabel('Sign-in server (issuer)').fill(SERVER);
   await page.getByTestId('oidc-sign-in').click();
 
   // The server-rendered login page (form posts to /authorize/submit).
-  await page.waitForURL(/localhost:8080\/authorize/, { timeout: 15000 });
+  await page.waitForURL(/localhost:8090\/authorize/, { timeout: 15000 });
   await page.locator('input[name="username"]').fill(USERNAME);
   await page.locator('input[name="password"]').fill(PASSWORD);
 
-  // Submit the login form.
-  //
-  // The reference server stamps every HTML response with a strict CSP
-  // (`default-src 'none'; form-action 'self'`, server/http-utils.mjs
-  // HTML_SECURITY_HEADERS). Headless Chromium blocks the form POST to
-  // /authorize/submit with "violates ... form-action 'self'" whenever the
-  // form carries the server's hidden `redirect_uri` field (its value is a
-  // URL), and also blocks same-origin fetch() from the page under
-  // `default-src 'none'` (no connect-src fallback allowed). Both are
-  // Chromium-vs-strict-CSP behaviors on the SERVER's page; the app is not
-  // involved. To keep this E2E about the client flow (not browser CSP
-  // quirks), the credentials + hidden pending-OIDC fields are read from the
-  // live form and POSTed via Playwright's API request context
-  // (page.request), which shares the browser context's cookies but is not
-  // subject to the page CSP. The 302 Location is then navigated to
-  // normally, so the client-side callback handling runs exactly as in
-  // production. Reported to the server-side owner (R1): real-browser
-  // logins hit the same wall.
-  const pending = await page.evaluate(() => {
-    const out: Record<string, string> = {};
-    for (const el of document.forms[0].elements) {
-      if (el instanceof HTMLInputElement && el.type === 'hidden') out[el.name] = el.value;
-    }
-    return out;
-  });
-  const response = await page.request.post(`${SERVER}/authorize/submit`, {
-    form: { ...pending, username: USERNAME, password: PASSWORD },
-    maxRedirects: 0,
-  });
-  const location = response.headers()['location'];
-  expect(response.status(), 'login submit should redirect').toBe(302);
-  expect(location, 'redirect must carry an auth code').toMatch(/code=/);
+  // Submit the login form like a human would. The form carries no URL-valued
+  // hidden fields (server reconstructs the OIDC request from its server-side
+  // pending map), so the POST passes the strict CSP (`form-action 'self'`).
+  // Success lands on /authorize/submit serving a 200 meta-refresh handoff
+  // page (a 302 to the cross-origin callback would itself be blocked by the
+  // posting page's form-action 'self'), which then navigates to /auth/callback.
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.waitForURL(/localhost:8090\/authorize\/submit/, { timeout: 15000 });
 
-  // Back through /auth/callback → app root (?settings=1 returnTo).
-  await page.goto(location);
+  // /auth/callback → app root (?settings=1 returnTo) handled client-side.
+  await page.waitForURL((u) => u.pathname.endsWith('/auth/callback'), { timeout: 15000 });
   await page.waitForURL((u) => !u.pathname.endsWith('/auth/callback'), { timeout: 15000 });
 
   // Signed in: the account section shows the username.
@@ -148,15 +148,14 @@ async function oidcLogin(page: import('@playwright/test').Page): Promise<void> {
 test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, delete on client 2', async ({
   browser,
 }) => {
-  await step('client-1-login');
-
   // ── Client 1: fresh context, seed one local note, sign in. ───────────────
   const ctx1 = await browser.newContext();
   const page1 = await ctx1.newPage();
+  await step(page1, 'client-1-login');
   await seedNotes(page1, [makeNote({ title: NOTE_TITLE, content: '# From client 1', category: 'Work' })]);
 
   await oidcLogin(page1);
-  await step('client-1-signed-in');
+  await step(page1, 'client-1-signed-in');
 
   // Server URL is auto-filled from the issuer on first sign-in; save it.
   const serverUrlValue = await page1.getByLabel('Server URL').inputValue();
@@ -170,13 +169,13 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   await page1.getByRole('button', { name: 'Sync now' }).click();
   // Exactly one push: the seeded note (client 1 starts empty).
   await expect(page1.getByText('Sync complete — 1 pushed')).toBeVisible({ timeout: 20000 });
-  await step('client-1-pushed');
+  await step(page1, 'client-1-pushed');
 
   // Server-side proof: the note is in the server's data directory. The
   // server debounces its disk writes (server/store.mjs), so poll until the
   // file reflects the push instead of asserting on a single read.
   const fs = await import('fs');
-  const dataDir = '/tmp/nh-r2-e2e';
+  const dataDir = process.env.OIDC_E2E_DATA_DIR ?? '/tmp/nh-r2-e2e';
   await expect
     .poll(
       () => {
@@ -192,7 +191,7 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
     .toBe(true);
 
   // ── Client 2: second browser context = fresh client, same user. ──────────
-  await step('client-2-login-sync');
+  await step(page1, 'client-2-login-sync');
   const ctx2 = await browser.newContext();
   const page2 = await ctx2.newPage();
   await oidcLogin(page2);
@@ -204,7 +203,7 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   await expect(page2.getByText(NOTE_TITLE, { exact: true })).toBeVisible();
 
   // ── Delete the note SERVER-SIDE (as the user, via the API). ─────────────
-  await step('server-side-delete');
+  await step(page1, 'server-side-delete');
   // Grab an access token for the API from client 2's localStorage.
   const oidcBlob = JSON.parse((await page2.evaluate(() => localStorage.getItem('notehaven.sync.oidc'))) ?? '{}');
   const token = oidcBlob.session.accessToken as string;
@@ -225,7 +224,7 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   expect((await del.json())).toMatchObject({ ok: true, deleted: true, uid });
 
   // ── Client 1 syncs → notification queue appears, local note survives. ────
-  await step('client-1-notification');
+  await step(page1, 'client-1-notification');
   await page1.getByRole('button', { name: 'Sync now' }).click();
   // The toast AND the status line both carry the summary — match the toast.
   await expect(page1.getByText(/1 deletion awaiting your choice/).first()).toBeVisible({ timeout: 20000 });
@@ -247,7 +246,7 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   await page1.getByTitle('Settings').click();
 
   // ── Choose KEEP → exception persisted, no re-prompt on the next sync. ────
-  await step('client-1-keep');
+  await step(page1, 'client-1-keep');
   await page1.getByTestId('sync-notifications-trigger').click();
   await page1.getByTestId(`sync-keep-${uid}`).click();
   await expect(page1.getByTestId(`sync-queue-item-${uid}`)).toHaveCount(0);
@@ -267,7 +266,7 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   await expect(page1.getByText(NOTE_TITLE, { exact: true }).first()).toBeVisible();
 
   // ── Client 2 (no exceptions): same deletion → Delete removes it locally. ──
-  await step('client-2-delete');
+  await step(page1, 'client-2-delete');
   await page2.getByTitle('Settings').click();
   await page2.getByRole('button', { name: 'Sync now' }).click();
   await expect(page2.getByTestId('sync-notifications-count')).toHaveText('1');
@@ -288,7 +287,7 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   await page2.getByTitle('Back to notes').click();
   await expect(page2.getByText(NOTE_TITLE, { exact: true })).toHaveCount(0);
   expect(await countLocalNotes(page2, NOTE_TITLE)).toBe(0);
-  await step('client-2-deleted');
+  await step(page1, 'client-2-deleted');
 
   // Client 2 keeps its own (empty) exception set — decisions are per client.
   const exceptions2 = JSON.parse(

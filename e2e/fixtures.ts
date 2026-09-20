@@ -22,6 +22,12 @@ export interface NoteSeed {
   editDates: string[];
   pinned: boolean;
   encrypted: null;
+  /** Renderer fast-flags — optional, computed for real notes by createNote. */
+  hasCodeBlocks?: boolean;
+  hasMermaid?: boolean;
+  hasGeoJson?: boolean;
+  hasModel3D?: boolean;
+  hasSwagger?: boolean;
 }
 
 /**

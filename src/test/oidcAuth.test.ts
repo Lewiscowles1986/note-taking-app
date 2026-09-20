@@ -86,6 +86,7 @@ interface JwtOverrides {
   alg?: string;
   kid?: string;
   key?: CryptoKey;
+  at_hash?: string;
 }
 
 async function signIdToken(overrides: JwtOverrides = {}): Promise<string> {
@@ -99,6 +100,7 @@ async function signIdToken(overrides: JwtOverrides = {}): Promise<string> {
     exp: overrides.exp ?? now + 3600,
     nonce: overrides.nonce ?? 'nonce-123',
     preferred_username: overrides.preferred_username ?? 'alice',
+    ...(overrides.at_hash !== undefined ? { at_hash: overrides.at_hash } : {}),
   };
   const enc = (obj: unknown) => btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   const signingInput = `${enc(header)}.${enc(payload)}`;
@@ -494,6 +496,104 @@ describe('validateIdToken', () => {
       ),
     ).rejects.toThrow(/No matching signing key/);
   });
+
+  it('refetches the JWKS once (cache-bust) on an unknown kid and succeeds after rotation', async () => {
+    // Unique JWKS path so this test starts from a cold cache (the JWKS cache
+    // is module-level and keyed by URI).
+    const jwksUri = `${ISSUER}/jwks-rotation.json`;
+    const token = await signIdToken({ nonce: 'n-1', kid: 'rotated-kid' });
+    let fetchCount = 0;
+    const impl = async (input: string | URL | Request): Promise<Response> => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (!url.includes('jwks-rotation')) throw new Error(`unexpected fetch: ${url}`);
+      fetchCount++;
+      // First fetch serves the OLD key set (pre-rotation); the refetch serves
+      // the key that actually signed the token.
+      return Response.json({ keys: fetchCount === 1 ? [{ ...publicJwk, kid: 'old-kid' }] : [{ ...publicJwk, kid: 'rotated-kid' }] });
+    };
+    const payload = await validateIdToken(
+      token,
+      { jwksUri, issuer: ISSUER, clientId: CLIENT_ID, nonce: 'n-1' },
+      impl as unknown as typeof fetch,
+    );
+    expect(payload.sub).toBe('user-1');
+    expect(fetchCount).toBe(2); // cached fetch + one rotation refetch
+  });
+
+  it('refetches at most once: still-unknown kid after the rotation refetch → rejected', async () => {
+    const jwksUri = `${ISSUER}/jwks-unknown.json`;
+    const token = await signIdToken({ nonce: 'n-1', kid: 'never-published' });
+    let fetchCount = 0;
+    const impl = async (input: string | URL | Request): Promise<Response> => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (!url.includes('jwks-unknown')) throw new Error(`unexpected fetch: ${url}`);
+      fetchCount++;
+      return Response.json({ keys: [{ ...publicJwk, kid: 'old-kid' }] });
+    };
+    await expect(
+      validateIdToken(
+        token,
+        { jwksUri, issuer: ISSUER, clientId: CLIENT_ID, nonce: 'n-1' },
+        impl as unknown as typeof fetch,
+      ),
+    ).rejects.toThrow(/No matching signing key/);
+    expect(fetchCount).toBe(2); // exactly one refetch, no loop
+  });
+
+  it('rejects a kid-less JWK when the token header bears a kid (no wildcard match)', async () => {
+    const token = await signIdToken({ nonce: 'n-1', kid: 'header-kid' });
+    // Key WITHOUT a kid must NOT satisfy a kid-bearing token header.
+    const kidless = { ...publicJwk } as Partial<typeof publicJwk>;
+    delete kidless.kid;
+    const { impl } = makeFetch({ '/jwks.json': () => Response.json({ keys: [kidless] }) });
+    await expect(
+      validateIdToken(
+        token,
+        { jwksUri: `${ISSUER}/jwks.json`, issuer: ISSUER, clientId: CLIENT_ID, nonce: 'n-1' },
+        impl,
+      ),
+    ).rejects.toThrow(/No matching signing key/);
+  });
+
+  it('accepts a token whose exp is within 60s of expiry (leeway) but rejects beyond it', async () => {
+    const params = { jwksUri: `${ISSUER}/jwks.json`, issuer: ISSUER, clientId: CLIENT_ID, nonce: 'n-1' };
+    const { impl } = makeFetch({ '/jwks.json': jwksHandler() });
+    // 30s past exp: inside the ~60s leeway → accepted.
+    const justInside = await signIdToken({ nonce: 'n-1', exp: Math.floor(Date.now() / 1000) - 30 });
+    await expect(validateIdToken(justInside, params, impl)).resolves.toMatchObject({ sub: 'user-1' });
+    // 90s past exp: beyond the leeway → rejected.
+    const beyond = await signIdToken({ nonce: 'n-1', exp: Math.floor(Date.now() / 1000) - 90 });
+    await expect(validateIdToken(beyond, params, impl)).rejects.toThrow(/expired/);
+  });
+
+  it('validates at_hash: matching left-half SHA-256 passes, mismatched is rejected', async () => {
+    const accessToken = 'at-for-hash-check';
+    const digest = await subtle.digest('SHA-256', new TextEncoder().encode(accessToken));
+    const view = new Uint8Array(digest);
+    let bin = '';
+    for (const b of view.slice(0, 16)) bin += String.fromCharCode(b);
+    const atHash = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const params = {
+      jwksUri: `${ISSUER}/jwks.json`,
+      issuer: ISSUER,
+      clientId: CLIENT_ID,
+      nonce: 'n-1',
+      accessToken,
+    };
+    const { impl } = makeFetch({ '/jwks.json': jwksHandler() });
+
+    // Match → resolves.
+    const good = await signIdToken({ nonce: 'n-1', at_hash: atHash });
+    await expect(validateIdToken(good, params, impl)).resolves.toMatchObject({ sub: 'user-1' });
+
+    // Mismatch → rejected.
+    const bad = await signIdToken({ nonce: 'n-1', at_hash: 'a'.repeat(43) });
+    await expect(validateIdToken(bad, params, impl)).rejects.toThrow(/at_hash mismatch/);
+
+    // Absent at_hash → no check, resolves (server MAY omit it).
+    const absent = await signIdToken({ nonce: 'n-1' });
+    await expect(validateIdToken(absent, { ...params, accessToken: 'other-token' }, impl)).resolves.toMatchObject({ sub: 'user-1' });
+  });
 });
 
 describe('decodeJwtPayload', () => {
@@ -593,6 +693,59 @@ describe('getValidAccessToken', () => {
     });
     await expect(getValidAccessToken(makeFetch().impl)).rejects.toThrow(/Session expired/);
     expect(loadOidcSession()).toBeNull();
+  });
+
+  it('dedups concurrent refreshes: two parallel callers trigger exactly ONE token POST', async () => {
+    saveOidcSession({
+      clientId: CLIENT_ID,
+      accessToken: 'stale-shared',
+      refreshToken: 'rt-shared',
+      idToken: null,
+      expiresAt: Date.now() + 30 * 1000, // within the 60s skew → both would refresh
+      scope: 'openid',
+      claims: {},
+      endpoints: { tokenEndpoint: `${ISSUER}/token` },
+    });
+    let tokenPosts = 0;
+    const impl = async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const body = typeof init?.body === 'string' ? init.body : '';
+      if (body.includes('grant_type=refresh_token')) tokenPosts++;
+      // A small delay widens the race window so both callers really overlap.
+      await new Promise((r) => setTimeout(r, 25));
+      return Response.json({ access_token: 'at-dedup', refresh_token: 'rt-dedup', expires_in: 3600, scope: 'openid' });
+    };
+    const [t1, t2] = await Promise.all([getValidAccessToken(impl as unknown as typeof fetch), getValidAccessToken(impl as unknown as typeof fetch)]);
+    expect(tokenPosts).toBe(1);
+    expect(t1).toBe('at-dedup');
+    expect(t2).toBe('at-dedup');
+    // The shared rotation is persisted exactly once; the session survives.
+    const session = loadOidcSession();
+    expect(session!.refreshToken).toBe('rt-dedup');
+    expect(session!.accessToken).toBe('at-dedup');
+  });
+
+  it('clears the shared refresh promise on failure so a later caller can retry', async () => {
+    saveOidcSession({
+      clientId: CLIENT_ID,
+      accessToken: 'stale',
+      refreshToken: 'rt-flaky',
+      idToken: null,
+      expiresAt: Date.now() + 30 * 1000,
+      scope: 'openid',
+      claims: {},
+      endpoints: { tokenEndpoint: `${ISSUER}/token` },
+    });
+    let attempts = 0;
+    const impl = async (): Promise<Response> => {
+      attempts++;
+      if (attempts === 1) throw new TypeError('transient network error');
+      return Response.json({ access_token: 'at-retry', refresh_token: 'rt-retry', expires_in: 3600 });
+    };
+    await expect(getValidAccessToken(impl as unknown as typeof fetch)).rejects.toThrow(/could not reach the server/);
+    // Second call is NOT joined to the failed promise — it retries and succeeds.
+    await expect(getValidAccessToken(impl as unknown as typeof fetch)).resolves.toBe('at-retry');
+    expect(attempts).toBe(2);
+    expect(loadOidcSession()!.accessToken).toBe('at-retry');
   });
 
   it('throws (without clearing) when not signed in', async () => {

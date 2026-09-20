@@ -11,7 +11,7 @@ import {
   sendHtml,
 } from './http-utils.mjs';
 import { signJwt, verifyJwt } from './jwt.mjs';
-import { errorPageHtml, loginPageHtml, SESSION_COOKIE, verifyPassword } from './authn.mjs';
+import { errorPageHtml, handoffPageHtml, loginPageHtml, SESSION_COOKIE, verifyPassword } from './authn.mjs';
 
 export const SCOPES_SUPPORTED = ['openid', 'profile', 'offline_access', 'notes.sync'];
 export const NOTES_CLAIMS = ['notes.categories'];
@@ -82,6 +82,14 @@ export class OidcService {
     this.codes = new Map(); // code -> { sub, clientId, redirectUri, scope, nonce, challenge, expiresAt, used }
     this.refreshTokens = new Map(); // token -> family record
     this.revokedAccessJtis = new Set();
+    // Pending authorization requests (login page rendered, not yet submitted),
+    // keyed by a random pending-request id. The id is the ONLY flow context
+    // embedded in the login form — in particular the redirect_uri (a URL) is
+    // deliberately NOT put in a hidden field: Chromium blocks form POSTs under
+    // `form-action 'self'` when a hidden input's value is a URL (verified with
+    // a real-browser A/B), and the CSP must stay strict. Entries expire with
+    // the authorization code TTL and are capped to bound memory.
+    this.pendingAuthorizations = new Map(); // pendingId -> pending request
   }
 
   // --- GET /authorize -------------------------------------------------------
@@ -142,9 +150,13 @@ export class OidcService {
       error: '',
       username: '',
     });
-    // The pending OIDC request travels through hidden form fields (rather
-    // than only the session) so the flow survives cookie-less state and is
-    // trivially testable.
+    // The pending OIDC request is stored SERVER-SIDE and addressed by a
+    // short-lived HttpOnly cookie. The login form embeds NO hidden fields at
+    // all: Chromium blocks the form POST under `form-action 'self'` when the
+    // form carries a hidden input whose value is a URL (real-browser A/B),
+    // and a later A/B showed even non-URL hidden values re-trigger the block —
+    // any hidden field present at submit time aborts the navigation. The CSP
+    // itself must stay strict, so the flow context travels in a cookie.
     const pending = {
       client_id: clientId,
       redirect_uri: redirectUri,
@@ -154,11 +166,20 @@ export class OidcService {
       nonce: nonce ?? '',
       code_challenge: codeChallenge,
       code_challenge_method: codeChallengeMethod,
+      expiresAt: Date.now() + this.config.authorizationCodeTtlSeconds * 1000,
     };
-    return sendHtml(res, 200, loginFormWithPending(html, pending), {
+    if (this.pendingAuthorizations.size >= 1000) {
+      // Bound memory: drop the oldest entry (Map preserves insertion order).
+      const oldest = this.pendingAuthorizations.keys().next().value;
+      if (oldest !== undefined) this.pendingAuthorizations.delete(oldest);
+    }
+    const pendingId = randomBytes(16).toString('base64url');
+    this.pendingAuthorizations.set(pendingId, pending);
+    return sendHtml(res, 200, html, {
       ...NO_STORE,
       ...HTML_SECURITY_HEADERS,
       ...corsHeadersIfAny(req),
+      'Set-Cookie': pendingCookie(pendingId, this.config.authorizationCodeTtlSeconds),
     });
   }
 
@@ -193,9 +214,13 @@ export class OidcService {
   // re-render the login form (200, so browsers re-render cleanly) with an
   // inline error. Missing/invalid pending fields → 400 error page.
   submitLogin(req, res, form) {
-    const pending = readPending(form);
+    // The pending authorization is addressed by the flow cookie set when the
+    // login page was rendered. It is consumed (single-use) so a replayed POST
+    // cannot mint a second code.
+    const pendingId = String(req.parsedCookies?.[PENDING_COOKIE] ?? '');
+    const pending = this.consumePendingAuthorization(pendingId);
     if (!pending) {
-      return this.renderErrorPage(req, res, 400, 'Invalid login request', 'The login form is missing its authorisation context. Start again from the application.');
+      return this.renderErrorPage(req, res, 400, 'Invalid login request', 'The login form is missing its authorisation context or it has expired. Start again from the application.');
     }
     const client = this.store.getClient(pending.client_id);
     if (!client || !client.redirect_uris.includes(pending.redirect_uri)) {
@@ -209,10 +234,15 @@ export class OidcService {
         error: 'Wrong username or password.',
         username: String(form.get('username') ?? ''),
       });
-      return sendHtml(res, 200, loginFormWithPending(html, pending), {
+      // Re-issue a fresh pending id + cookie for the retried submission (the
+      // old one is consumed so a replayed POST cannot mint a second code).
+      const newPendingId = randomBytes(16).toString('base64url');
+      this.pendingAuthorizations.set(newPendingId, pending);
+      return sendHtml(res, 200, html, {
         ...NO_STORE,
         ...HTML_SECURITY_HEADERS,
         ...corsHeadersIfAny(req),
+        'Set-Cookie': pendingCookie(newPendingId, this.config.authorizationCodeTtlSeconds),
       });
     }
 
@@ -226,7 +256,24 @@ export class OidcService {
       nonce: pending.nonce || null,
       codeChallenge: pending.code_challenge,
       sub: user.sub,
+      // The response side of a form POST is still governed by the posting
+      // page's form-action 'self': a cross-origin 302 aborts with a CSP
+      // violation (real-browser A/B). Hand off via a meta-refresh page.
+      viaForm: true,
     });
+  }
+
+  /** Look up a pending authorization by id, dropping expired entries. The
+   * entry is CONSUMED (single-use) so a replayed POST cannot mint a second
+   * code from the same login form. */
+  consumePendingAuthorization(pendingId) {
+    const id = String(pendingId ?? '');
+    if (!id) return null;
+    const pending = this.pendingAuthorizations.get(id);
+    if (!pending) return null;
+    this.pendingAuthorizations.delete(id);
+    if (Date.now() > pending.expiresAt) return null;
+    return pending;
   }
 
   authenticateUser(username, password) {
@@ -239,7 +286,7 @@ export class OidcService {
     return user;
   }
 
-  issueCodeAndRedirect(req, res, { client, redirectUri, scope, state, nonce, codeChallenge, sub }) {
+  issueCodeAndRedirect(req, res, { client, redirectUri, scope, state, nonce, codeChallenge, sub, viaForm = false }) {
     const code = randomBytes(32).toString('base64url');
     this.codes.set(code, {
       sub,
@@ -254,6 +301,16 @@ export class OidcService {
     const url = new URL(redirectUri);
     url.searchParams.set('code', code);
     if (state !== null && state !== undefined) url.searchParams.set('state', String(state));
+    if (viaForm) {
+      // Reached via the login form POST: a 302 to the (cross-origin) client
+      // is blocked by the posting page's form-action 'self' CSP. Return a
+      // minimal 200 page that meta-refreshes to the redirect_uri instead.
+      return sendHtml(res, 200, handoffPageHtml(url.toString()), {
+        ...NO_STORE,
+        ...HTML_SECURITY_HEADERS,
+        ...corsHeadersIfAny(req),
+      });
+    }
     return redirect(res, url.toString(), { ...NO_STORE, ...corsHeadersIfAny(req) });
   }
 
@@ -552,30 +609,13 @@ function corsHeadersIfAny(req) {
   return origin ? { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Credentials': 'false' } : {};
 }
 
-// Embed the pending OIDC request as hidden inputs so POST /authorize/submit
-// can rebuild the redirect without server-side flow state.
-function loginFormWithPending(baseHtml, pending) {
-  const hidden = Object.entries(pending)
-    .map(([name, value]) => `<input type="hidden" name="${name}" value="${String(value).replaceAll('"', '&quot;')}">`)
-    .join('\n    ');
-  return baseHtml.replace('</form>', `    ${hidden}\n  </form>`);
-}
+/** Cookie name addressing the server-side pending authorization. */
+const PENDING_COOKIE = 'nh_pending';
 
-function readPending(form) {
-  const clientId = form.get('client_id');
-  const redirectUri = form.get('redirect_uri');
-  const codeChallenge = form.get('code_challenge');
-  if (!clientId || !redirectUri || !codeChallenge) return null;
-  return {
-    client_id: String(clientId),
-    redirect_uri: String(redirectUri),
-    response_type: String(form.get('response_type') ?? 'code'),
-    scope: String(form.get('scope') ?? ''),
-    state: String(form.get('state') ?? ''),
-    nonce: String(form.get('nonce') ?? ''),
-    code_challenge: String(codeChallenge),
-    code_challenge_method: String(form.get('code_challenge_method') ?? 'S256'),
-  };
+/** Short-lived HttpOnly flow cookie (not a session cookie — just the login
+ * form's server-side context pointer; SameSite=Lax survives the POST). */
+function pendingCookie(pendingId, ttlSeconds) {
+  return `nh_pending=${pendingId}; Path=/authorize; Max-Age=${Math.max(60, ttlSeconds)}; HttpOnly; SameSite=Lax`;
 }
 
 function tokenError(status, error, description, headers = {}) {

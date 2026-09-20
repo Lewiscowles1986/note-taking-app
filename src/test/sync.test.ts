@@ -554,6 +554,117 @@ describe('runSync', () => {
     });
     expect(requests).toHaveLength(0);
   });
+
+  it('scope widening repatriates an out-of-scope remote note (uidMap + category cache retained)', async () => {
+    configureServer();
+    saveSyncSettings({
+      serverUrl: 'https://sync.test',
+      authToken: 'secret-token',
+      autoSync: false,
+      intervalMinutes: 15,
+      syncScope: 'categories',
+      syncedCategories: ['Work'],
+    });
+    const payload = {
+      uid: 'remote-out-of-scope',
+      title: 'Personal note',
+      content: 'private body',
+      tags: [],
+      category: 'Personal', // NOT in scope
+      attachments: [],
+      createdAt: iso(T0 - 1000),
+      updatedAt: iso(T0),
+      editDates: ['2026-01-01'],
+      pinned: false,
+      encrypted: null,
+    };
+
+    // Round 1: scope = [Work]. The note is fetched once (unknown uid), found
+    // out-of-scope on its payload, cached, and NOT stored.
+    const round1 = makeFetch([
+      { match: { method: 'GET', urlIncludes: '/api/notes' }, json: { notes: [remote('remote-out-of-scope', T0)] } },
+      { match: { method: 'GET', urlIncludes: '/api/notes/remote-out-of-scope' }, json: payload },
+    ]);
+    const r1 = await runSync({ fetchImpl: round1.impl });
+    expect(r1.ok).toBe(true);
+    expect(r1.pulled).toBe(0);
+    expect(await getAllNotes()).toHaveLength(0);
+    // The out-of-scope category is cached for the uid.
+    expect(JSON.parse(localStorage.getItem('notehaven.sync.remoteCategories')!)).toMatchObject({
+      'remote-out-of-scope': 'Personal',
+    });
+
+    // Round 2 (still [Work]): the cached category short-circuits the pull —
+    // the note payload is not even fetched again.
+    const round2 = makeFetch([
+      { match: { method: 'GET', urlIncludes: '/api/notes' }, json: { notes: [remote('remote-out-of-scope', T0)] } },
+      { match: { method: 'GET', urlIncludes: '/api/notes/remote-out-of-scope' }, json: payload },
+    ]);
+    const r2 = await runSync({ fetchImpl: round2.impl });
+    expect(r2.pulled).toBe(0);
+    expect(round2.requests.some((r) => r.url.includes('/api/notes/remote-out-of-scope'))).toBe(false);
+
+    // Round 3: the user WIDENS the scope to include Personal. The note must
+    // now be pulled in (uidMap retention is not even needed for a remote-only
+    // note — the category cache must NOT pin it out-of-scope forever).
+    saveSyncSettings({
+      serverUrl: 'https://sync.test',
+      authToken: 'secret-token',
+      autoSync: false,
+      intervalMinutes: 15,
+      syncScope: 'categories',
+      syncedCategories: ['Work', 'Personal'],
+    });
+    const round3 = makeFetch([
+      { match: { method: 'GET', urlIncludes: '/api/notes' }, json: { notes: [remote('remote-out-of-scope', T0)] } },
+      { match: { method: 'GET', urlIncludes: '/api/notes/remote-out-of-scope' }, json: payload },
+    ]);
+    const r3 = await runSync({ fetchImpl: round3.impl });
+    expect(r3.ok).toBe(true);
+    expect(r3.pulled).toBe(1);
+    const notes = await getAllNotes();
+    expect(notes).toHaveLength(1);
+    expect(notes[0].title).toBe('Personal note');
+    expect(notes[0].category).toBe('Personal');
+    expect(getUidForNoteId(notes[0].id!)).toBe('remote-out-of-scope');
+  });
+
+  it('a local note edited while out of scope pushes once the scope includes its category again (uidMap retained)', async () => {
+    configureServer();
+    saveSyncSettings({
+      serverUrl: 'https://sync.test',
+      authToken: 'secret-token',
+      autoSync: false,
+      intervalMinutes: 15,
+      syncScope: 'categories',
+      syncedCategories: ['Work'],
+    });
+    const id = await seedNote({ title: 'Moved note', category: 'Personal', updatedAt: new Date(T0) });
+
+    // Round 1: out of scope → never pushed, but keeps its uid mapping.
+    const round1 = makeFetch([{ match: { method: 'GET' }, json: { notes: [] } }]);
+    const r1 = await runSync({ fetchImpl: round1.impl });
+    expect(r1.pushed).toBe(0);
+    expect(getUidForNoteId(id)).toBeTruthy();
+
+    // Round 2: scope widened → the SAME uid pushes (mapping was retained).
+    saveSyncSettings({
+      serverUrl: 'https://sync.test',
+      authToken: 'secret-token',
+      autoSync: false,
+      intervalMinutes: 15,
+      syncScope: 'categories',
+      syncedCategories: ['Work', 'Personal'],
+    });
+    const round2 = makeFetch([
+      { match: { method: 'GET' }, json: { notes: [] } },
+      { match: { method: 'PUT' }, status: 204 },
+    ]);
+    const r2 = await runSync({ fetchImpl: round2.impl });
+    expect(r2.pushed).toBe(1);
+    const put = round2.requests.find((r) => r.method === 'PUT')!;
+    expect(put.url).toBe(`https://sync.test/api/notes/${getUidForNoteId(id)}`);
+  });
 });
 
 // ─── deletion hook (now lives in syncDeletion.ts; see syncScheduler.test.tsx) ─

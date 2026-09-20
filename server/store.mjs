@@ -11,7 +11,7 @@
 import path from 'node:path';
 import { readFile, readdir } from 'node:fs/promises';
 import { mkdirp, writeAtomic, writeAtomicSync } from './fs-utils.mjs';
-import { DEV_CLIENT } from './seed.mjs';
+import { DEV_CLIENT, DEV_CLIENT_PUBLIC } from './seed.mjs';
 
 export class Store {
   // `io` bundles the async/sync writers so tests can inject an in-memory
@@ -36,9 +36,14 @@ export class Store {
     if (this.io.writeAsync === writeAtomic) await mkdirp(this.dataDir);
     this.users = await loadUsers(this.filePath('users.json'));
     this.clients = await loadClients(this.filePath('clients.json'));
-    if (!this.clients.has(DEV_CLIENT.client_id)) {
-      this.clients.set(DEV_CLIENT.client_id, { ...DEV_CLIENT });
-      this.saveClients();
+    // Seed both dev clients on first boot (idempotent): the confidential
+    // client for the README curl walkthrough and the public PKCE-only client
+    // the Note Haven PWA signs in with by default.
+    for (const client of [DEV_CLIENT, DEV_CLIENT_PUBLIC]) {
+      if (!this.clients.has(client.client_id)) {
+        this.clients.set(client.client_id, { ...client });
+        this.saveClients();
+      }
     }
     this.notes = await loadNoteFiles(this.dataDir);
     // Every known user gets an (possibly empty) per-user notes map.

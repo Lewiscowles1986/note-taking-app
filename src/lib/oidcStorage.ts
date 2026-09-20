@@ -151,8 +151,3 @@ export function saveOidcSession(session: OidcSession): void {
 export function clearOidcSession(): void {
   writeBlob({ config: readBlob().config, session: undefined });
 }
-
-/** Cheap synchronous check used by the token resolver's fast path. */
-export function isOidcActive(): boolean {
-  return loadOidcSession() !== null;
-}

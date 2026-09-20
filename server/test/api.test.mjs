@@ -368,13 +368,37 @@ describe('userinfo', () => {
 });
 
 describe('authorize endpoint (HTML flow)', () => {
-  test('GET /authorize with valid params → 200 login page with hidden pending fields', async () => {
+  test('GET /authorize with valid params → 200 login page (cookie-addressed pending, NO hidden fields)', async () => {
     const challenge = Buffer.from('a'.repeat(32)).toString('base64url');
     const res = await request('GET', `/authorize?client_id=note-haven-dev&redirect_uri=${encodeURIComponent(DEV_CLIENT.redirect_uris[0])}&response_type=code&scope=openid%20notes.sync&state=xyz&code_challenge=${challenge}&code_challenge_method=S256`);
     assert.equal(res.status, 200);
     assert.match(res.body, /<form method="post" action="\/authorize\/submit">/);
-    assert.match(res.body, /name="client_id" value="note-haven-dev"/);
-    assert.match(res.body, /name="state" value="xyz"/);
+    // Chromium blocks the form POST under form-action 'self' whenever the form
+    // carries ANY hidden input (A/B-verified) — the flow context must travel
+    // in the nh_pending cookie instead.
+    assert.doesNotMatch(res.body, /<input type="hidden"/);
+    // The cookie must be HttpOnly + SameSite=Lax and scoped to /authorize.
+    const setCookie = String(res.headers['set-cookie']);
+    assert.match(setCookie, /nh_pending=/);
+    assert.match(setCookie, /HttpOnly/);
+    assert.match(setCookie, /SameSite=Lax/);
+    assert.match(setCookie, /Path=\/authorize/);
+  });
+
+  test('pending cookie is single-use: replaying the submitted form → 400', async () => {
+    const verifier = 'v'.repeat(64);
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
+    const start = await request('GET', `/authorize?client_id=note-haven-dev&redirect_uri=${encodeURIComponent(DEV_CLIENT.redirect_uris[0])}&response_type=code&scope=openid%20notes.sync&state=xyz&code_challenge=${challenge}&code_challenge_method=S256`);
+    const cookie = String(start.headers['set-cookie'] ?? '').split(';')[0];
+    const form = () => 'username=alice&password=correct-horse-battery-staples';
+    const headers = { 'content-type': 'application/x-www-form-urlencoded', cookie };
+    const first = await request('POST', '/authorize/submit', { body: form(), raw: true, headers });
+    assert.equal(first.status, 200);
+    assert.match(first.body, /http-equiv="refresh"/);
+    assert.match(first.body, /code=/);
+    const replay = await request('POST', '/authorize/submit', { body: form(), raw: true, headers });
+    assert.equal(replay.status, 400);
+    assert.match(replay.body, /expired|authorisation context/i);
   });
 
   test('GET /authorize with plain method → 302 error redirect', async () => {
@@ -396,28 +420,29 @@ describe('authorize endpoint (HTML flow)', () => {
     assert.match(res.body, /redirect_uri/);
   });
 
-  test('full login submit → 302 with code + state; bad password → re-rendered form', async () => {
+  test('full login submit → 200 handoff page with code + state (NOT a 302: Chromium applies form-action to the POST response, blocking cross-origin redirects); bad password → re-rendered form with a FRESH pending cookie', async () => {
     const verifier = 'v'.repeat(64);
     const challenge = createHash('sha256').update(verifier).digest('base64url');
     const start = await request('GET', `/authorize?client_id=note-haven-dev&redirect_uri=${encodeURIComponent(DEV_CLIENT.redirect_uris[0])}&response_type=code&scope=openid%20offline_access%20notes.sync&state=st-99&nonce=n-1&code_challenge=${challenge}&code_challenge_method=S256`);
     assert.equal(start.status, 200);
-    const form = (hidden) => {
-      const params = new URLSearchParams();
-      for (const m of start.body.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)) {
-        params.set(m[1], m[2]);
-      }
-      params.set('username', 'alice');
-      params.set('password', hidden ? 'wrong' : 'correct-horse-battery-staples');
-      return params.toString();
-    };
-    // wrong password
-    const bad = await request('POST', '/authorize/submit', { body: form(true), raw: true, headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+    // The pending context rides in the nh_pending cookie (no hidden fields —
+    // Chromium form-action CSP blocks the POST when any hidden input exists).
+    const cookieOf = (res) => String(res.headers['set-cookie'] ?? '').split(';').find((c) => c.startsWith('nh_pending=')) ?? '';
+    const submit = (cookie, password) => request('POST', '/authorize/submit', { body: `username=alice&password=${encodeURIComponent(password)}`, raw: true, headers: { 'content-type': 'application/x-www-form-urlencoded', ...(cookie ? { cookie } : {}) } });
+    // wrong password → re-rendered form + a FRESH pending cookie; the retried
+    // POST must use the NEWLY issued cookie (old id is consumed).
+    const bad = await submit(cookieOf(start), 'wrong');
     assert.equal(bad.status, 200);
     assert.match(bad.body, /Wrong username or password/);
-    // right password
-    const good = await request('POST', '/authorize/submit', { body: form(false), raw: true, headers: { 'content-type': 'application/x-www-form-urlencoded' } });
-    assert.equal(good.status, 302);
-    const location = new URL(good.headers.location);
+    // right password (fresh cookie from the re-rendered response) → 200
+    // handoff page: the meta refresh carries code+state to the client's
+    // redirect_uri (a 302 here would be blocked by form-action 'self').
+    const good = await submit(cookieOf(bad), 'correct-horse-battery-staples');
+    assert.equal(good.status, 200);
+    assert.match(good.body, /http-equiv="refresh"/);
+    const match = good.body.match(/content="0;url=([^"]+)"/);
+    assert.ok(match, 'handoff page must carry the meta-refresh target');
+    const location = new URL(match[1].replace(/&amp;/g, '&'));
     assert.equal(location.origin + location.pathname, DEV_CLIENT.redirect_uris[0]);
     assert.equal(location.searchParams.get('state'), 'st-99');
     assert.ok(location.searchParams.get('code'));

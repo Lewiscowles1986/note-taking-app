@@ -91,17 +91,19 @@ CHALLENGE=$(node -e "console.log(require('node:crypto').createHash('sha256').upd
 # 2. Discovery document
 curl -s $ISS/.well-known/openid-configuration
 
-# 3. Authorization request → 200 HTML login page (form posts to /authorize/submit
-#    with the OIDC request embedded as hidden fields)
+# 3. Authorization request → 200 HTML login page (no hidden fields — the OIDC
+#    request context rides in the short-lived nh_pending HttpOnly cookie)
 curl -s -c cookies.txt "$ISS/authorize?client_id=$CLIENT_ID&redirect_uri=$REDIRECT&response_type=code&scope=openid%20offline_access%20notes.sync&state=dev-state-123&nonce=n-123&code_challenge=$CHALLENGE&code_challenge_method=S256" -o login.html
 
-# 4. Submit credentials → 302 redirect_uri?code=…&state=dev-state-123
-curl -s -b cookies.txt -c cookies.txt -D - -o /dev/null \
+# 4. Submit credentials → 200 handoff page whose meta refresh carries
+#    code=…&state=dev-state-123 to redirect_uri (a 302 would be blocked by the
+#    login page's form-action 'self' CSP — Chromium checks the redirect too)
+curl -s -b cookies.txt -c cookies.txt \
   --data-urlencode username=alice \
   --data-urlencode password=correct-horse-battery-staples \
-  $(grep -o 'action="[^"]*"' login.html | cut -d'"' -f2) <(sed -n 's/.*name="\([^"]*\)" value="\([^"]*\)".*/\1=\2/p' login.html | tr '\n' '&' | sed 's/&$//') \
-  | grep -i '^location:'
-LOCATION='…the Location header from above…'
+  $(grep -o 'action="[^"]*"' login.html | cut -d'"' -f2) \
+  | grep -o 'content="0;url=[^"]*"'
+LOCATION='…the meta-refresh URL from above (HTML-escaped: &amp; → &)...'
 CODE=$(node -e "console.log(new URL(process.argv[1]).searchParams.get('code'))" "$LOCATION")
 
 # 5. Exchange the code (PKCE verifier + client_secret_post) → tokens

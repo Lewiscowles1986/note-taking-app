@@ -114,6 +114,7 @@ async function main() {
   console.log(`Issuer: ${config.issuer}`);
   console.log(`Dev users: ${DEV_USERS.map((u) => `${u.email} / ${u.password}`).join(', ')}`);
   console.log(`Dev client: client_id=note-haven-dev client_secret=dev-secret-not-for-prod`);
+  console.log(`Public client: client_id=note-haven-pkce (PKCE only, no secret)`);
   console.log(`Data dir: ${config.dataDir}`);
   console.log(`Signing key: kid=${keys.kid}${keys.persisted ? ' (loaded from data/keys.json)' : ' (newly generated)'}`);
 }

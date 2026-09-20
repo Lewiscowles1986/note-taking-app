@@ -185,6 +185,48 @@ export function loginPageHtml({ action, error = '', username = '' } = {}) {
 `;
 }
 
+/**
+ * Handoff page shown after a successful login POST. Chromium applies the
+ * posting page's `form-action 'self'` CSP to the RESPONSE side of the form
+ * submission as well: a 302 whose Location leaves the origin aborts the
+ * navigation with a CSP violation (verified with a real-browser A/B —
+ * same-origin 302 passes, cross-origin 302 to the app's /auth/callback is
+ * blocked). The CSP must stay strict, so instead of redirecting we return a
+ * minimal 200 page that meta-refreshes to the redirect_uri: a meta refresh is
+ * a document-initiated navigation and is not covered by form-action. The
+ * visible link is the no-JS/no-meta fallback (and the only visible content
+ * for the ~one frame the refresh takes).
+ */
+export function handoffPageHtml(target) {
+  const safeTarget = escapeHtml(target);
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="0;url=${safeTarget}">
+<title>Signed in — Note Haven</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    font-family: ui-serif, Georgia, 'Times New Roman', serif;
+    background: #f6f4ef; color: #2c2a26; min-height: 100vh;
+    display: grid; place-items: center; padding: 24px; margin: 0;
+  }
+  main {
+    max-width: 420px; background: #fffdf9; border: 1px solid #e4ded2;
+    border-radius: 14px; padding: 32px 28px;
+  }
+  h1 { font-size: 1.3rem; font-weight: 600; }
+  p { margin-top: 10px; font-size: 0.92rem; line-height: 1.5; color: #5c564c; }
+  a { color: #5f7355; }
+</style>
+</head>
+<body><main><h1>Signed in</h1><p>Returning to the application… <a href="${safeTarget}">Continue</a></p></main></body>
+</html>
+`;
+}
+
 export function errorPageHtml(title, detail) {
   return `<!doctype html>
 <html lang="en">

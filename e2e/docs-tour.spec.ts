@@ -160,15 +160,15 @@ test('captures sync settings', async ({ page }) => {
 
   // Configure the (mocked) server through the UI and run one sync. The run
   // pushes Trip planning and pulls Packing list — real engine, real UI state.
-  await page.getByTitle('Settings').evaluate((el) => el.click());
+  await page.getByTitle('Settings').evaluate((el: HTMLElement) => el.click());
   await expect(page.getByText('Sync server')).toBeVisible();
   await page.getByLabel('Server URL').fill('https://sync.example.test');
   await page.getByLabel('Access token (optional)').fill('demo-token');
-  await page.getByRole('button', { name: 'Test connection' }).evaluate((el) => el.click());
+  await page.getByRole('button', { name: 'Test connection' }).evaluate((el: HTMLElement) => el.click());
   await expect(page.getByText(/Connection OK/)).toBeVisible();
-  await page.getByRole('button', { name: 'Save', exact: true }).evaluate((el) => el.click());
+  await page.getByRole('button', { name: 'Save', exact: true }).evaluate((el: HTMLElement) => el.click());
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: 'Sync now' }).evaluate((el) => el.click());
+  await page.getByRole('button', { name: 'Sync now' }).evaluate((el: HTMLElement) => el.click());
   await expect(page.getByText(/Sync complete/)).toBeVisible({ timeout: 15_000 });
   // Let the success toast settle so the screenshot is deterministic.
   await page.waitForTimeout(300);

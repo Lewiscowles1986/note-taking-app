@@ -92,7 +92,8 @@ in the browser.
 │        │         scope, state, nonce, code_challenge S256)    │        │
 │        │◀───── 3. HTML login page ────────────────────────────│        │
 │        │───── 4. POST /authorize/submit (credentials) ───────▶│        │
-│        │◀───── 5. 302 redirect_uri?code=…&state=… ────────────│        │
+│        │◀───── 5. 200 handoff page, meta-refresh to ─────────│        │
+│        │         redirect_uri?code=…&state=…                  │        │
 │        │      6. GET /auth/callback (SPA route)               │        │
 │        │      7. state check → POST /token (code + verifier)  │        │
 │        │◀─────    tokens { access, refresh, id_token } ───────│        │
@@ -104,6 +105,13 @@ in the browser.
 - Pending login (PKCE verifier, state, nonce, discovered endpoints, `returnTo`)
   lives in **sessionStorage** under `notehaven.oidc.pending` — per-tab, dies
   with the tab, survives the redirect. Expired entries (> 10 min) are rejected.
+- **Why a handoff page instead of a 302:** Chromium applies the login page's
+  `form-action 'self'` CSP to the *response side* of the form POST too — a 302
+  whose `Location` leaves the origin (to the SPA's callback) aborts the
+  navigation with a CSP violation. The server therefore returns a minimal 200
+  page that meta-refreshes to `redirect_uri?code=…&state=…` (meta refresh is a
+  document navigation, not a form action). The login form itself embeds no
+  hidden fields; the flow context rides in a short-lived HttpOnly cookie.
 - Tokens (access/refresh/id_token + expiry + display claims + endpoints) live
   in **localStorage** under `notehaven.sync.oidc`. **Tradeoff:** localStorage is
   readable by any XSS on the origin. This reference client accepts that in
@@ -156,6 +164,13 @@ through one seam — `resolveAuthToken()` in `src/lib/authToken.ts`:
 Servers SHOULD store payloads opaquely (blob + indexed fields) and MUST NOT
 require unknown fields to survive — newer clients may add fields.
 
+Note that the reference client's payload intentionally omits `hasSwagger` (the
+Note record's swagger fast-flag): it is derived from the content on the other
+side — a pulled note regenerates it via `detectContentFeatures` on the content
+(`payloadToNote` in `src/lib/sync.ts`), so transmitting it would be redundant.
+All other `has*` flags travel explicitly because their detection regexes are
+heuristic; a server must treat every field as optional in both directions.
+
 ## Merge semantics (client-side, for reference implementations)
 
 1. Client fetches the manifest and compares per-uid `updatedAt` against local
@@ -198,6 +213,14 @@ Semantics under a category scope:
   pulled in.
 - **Remote deletions of out-of-scope notes are ignored silently** — the user
   chose not to sync that category, so no keep-or-delete prompt is raised.
+- **Known limitation (uid → category cache):** once a remote uid is known to
+  live in an out-of-scope category, a later server-side category change of
+  that note is INVISIBLE to this client until the user widens the sync scope
+  to include that category (the payload is not fetched while it is known
+  out-of-scope, so the change cannot be observed). After widening, the next
+  sync re-checks the authoritative payload and the note is pulled in (or its
+  new out-of-scope category is re-cached). This is a documented tradeoff, not
+  a defect — see `runSync` in `src/lib/sync.ts`.
 - "Test connection" and the manifest shape are unaffected by scope.
 
 ## Never-delete policy + notification queue
