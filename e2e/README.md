@@ -194,12 +194,13 @@ extension (`zip`/`json`/`html`/`pem`/`stl` magic bytes).
 | `calendar.spec.ts` | 3 | Notes on their edit dates, selecting a note returns to notes mode, reload-safe seeding (no duplicates) |
 | `security.spec.ts` | 5 | Password encrypt/lock, wrong-password rejection, correct-password unlock, RSA key-pair encrypt/decrypt, key-pair JWK export |
 | `export-import.spec.ts` | 4 | Single-note HTML export, full DB backup (JSON), export-all-as-ZIP, import from file |
+| `sync.spec.ts` | 6 | Settings page open/persist, connection test, push path, pull path (note appears in list), deletion propagation to server, forget server |
 | `mobile.spec.ts` | 1 | Mobile top-sheet note list, select → full-screen edit → back |
 | `offline.mobile.spec.ts` | 1 | PWA/service-worker offline shell (skipped unless `E2E_PWA=1`, see PWA section) |
 
-**Total: 32 unique specs.** `chromium` (desktop) runs all 32; `chromium-mobile`
+**Total: 33 unique specs.** `chromium` (desktop) runs all 33; `chromium-mobile`
 (real phone) runs only the two `*mobile*.spec.ts` entries at phone viewport. A
-default `npm run test:e2e` therefore runs 34 checks (32 desktop + 2 mobile); the
+default `npm run test:e2e` therefore runs 35 checks (33 desktop + 2 mobile); the
 two offline/PWA runs additionally require `E2E_PWA=1` against `vite preview`.
 
 ## Known APP BUGs (flagged in specs with `// APP BUG:`)

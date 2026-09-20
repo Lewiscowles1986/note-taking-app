@@ -78,6 +78,35 @@ if (!navigator.clipboard) {
   });
 }
 
+// Node 26 ships an experimental global `localStorage` that is UNDEFINED unless
+// --localstorage-file is passed; it shadows jsdom's working implementation in
+// vitest workers, leaving tests without any storage. Restore jsdom's, or fall
+// back to a minimal in-memory Storage (same polyfill pattern as matchMedia
+// above). Also fixes `window.localStorage`, which jsdom wires to the same
+// implementation instance.
+function polyfillStorage(target: typeof globalThis): void {
+  const existing = (target as { localStorage?: unknown }).localStorage;
+  if (existing) return; // a real Storage instance — keep it
+  const backing = new Map<string, string>();
+  const storage: Storage = {
+    get length() {
+      return backing.size;
+    },
+    clear: () => backing.clear(),
+    getItem: (key) => (backing.has(key) ? backing.get(key)! : null),
+    key: (index) => Array.from(backing.keys())[index] ?? null,
+    removeItem: (key) => {
+      backing.delete(key);
+    },
+    setItem: (key, value) => {
+      backing.set(String(key), String(value));
+    },
+  };
+  Object.defineProperty(target, "localStorage", { configurable: true, value: storage });
+}
+polyfillStorage(globalThis);
+polyfillStorage(window);
+
 // jsdom 20 has no ResizeObserver; chart/panel components instantiate one on mount.
 class ResizeObserverStub implements ResizeObserver {
   constructor(readonly callback: ResizeObserverCallback) {}

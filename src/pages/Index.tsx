@@ -12,10 +12,13 @@ const NoteViewer = lazy(() => import('@/components/NoteViewer'));
 import NoteMetaBar from '@/components/NoteMetaBar';
 import CalendarView from '@/components/CalendarView';
 import EncryptionDialog from '@/components/EncryptionDialog';
+// Settings pulls in the sync engine but not the markdown pipeline; keep it
+// out of the critical path like the other secondary surfaces.
+const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 import type { Note } from '@/lib/db';
 import type { StoredKeyPair } from '@/lib/crypto';
 import { runInFlight } from '@/lib/inFlight';
-import { Eye, Pencil, PanelLeftClose, PanelLeftOpen, Calendar, Lock, ChevronLeft } from 'lucide-react';
+import { Eye, Pencil, PanelLeftClose, PanelLeftOpen, Calendar, Settings, Lock, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Index() {
@@ -44,6 +47,7 @@ export default function Index() {
   const [mode, setMode] = useState<'edit' | 'view'>('edit');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [calendarMode, setCalendarMode] = useState(false);
+  const [settingsMode, setSettingsMode] = useState(false);
   const [encryptionDialogOpen, setEncryptionDialogOpen] = useState(false);
 
   // Decrypted content cache: noteId -> plaintext (in memory only)
@@ -191,6 +195,20 @@ export default function Index() {
   const displayNote = getDisplayNote();
   const isLocked = activeNote?.encrypted && !decryptedCache[activeNote.id!];
 
+  if (settingsMode) {
+    return (
+      <Suspense
+        fallback={
+          <div className="flex h-dvh items-center justify-center bg-background">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+          </div>
+        }
+      >
+        <SettingsPage onBack={() => setSettingsMode(false)} onSynced={refresh} />
+      </Suspense>
+    );
+  }
+
   if (calendarMode) {
     return (
       <div className="flex h-screen max-md:h-dvh bg-background overflow-hidden">
@@ -321,6 +339,13 @@ export default function Index() {
               title="Calendar view"
             >
               <Calendar size={18} />
+            </button>
+            <button
+              onClick={() => setSettingsMode(true)}
+              className="p-2.5 min-w-11 min-h-11 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground transition-colors sm:min-w-min sm:min-h-min sm:p-1.5"
+              title="Settings"
+            >
+              <Settings size={18} />
             </button>
 
             {activeNote && (

@@ -170,6 +170,10 @@ export async function deleteNote(id: number) {
   return db.notes.delete(id);
 }
 
+export async function getNote(id: number): Promise<Note | undefined> {
+  return db.notes.get(id);
+}
+
 export async function getRevisions(noteId: number): Promise<NoteRevision[]> {
   return db.revisions.where('noteId').equals(noteId).reverse().sortBy('savedAt');
 }

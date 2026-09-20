@@ -131,6 +131,12 @@ A viewport can be frozen so the model is shown at a fixed angle with no controls
 
 The calendar view shows which notes you edited on each day, so you can retrace your writing history and find notes by date.
 
+## Sync Across Devices
+
+Open Settings from the header and connect a sync server. Notes replicate per-note with last-writer-wins merging — edit on any device and the newest version wins. Deletions propagate both ways, encrypted notes stay encrypted on the wire, and the app remains fully offline-capable: sync happens only when you ask (or on the automatic cadence you choose).
+
+The wire protocol is a small REST JSON contract documented in [docs/sync.md](sync.md) — any backend that speaks it can be your note server.
+
 ## Keep Notes Private
 
 ![Keep Notes Private](images/encryption-locked.png)
