@@ -543,27 +543,4 @@ describe('runSync', () => {
   });
 });
 
-// ─── deletion hook ───────────────────────────────────────────────────────────
-
-describe('handleLocalNoteDeleted', () => {
-  it('records a tombstone for a synced note and forgets its uid', async () => {
-    const { handleLocalNoteDeleted } = await import('@/lib/sync');
-    const updatedAt = new Date(T0 + 123);
-    const id = await seedNote({ title: 'To delete', updatedAt });
-    const uid = assignUidForNoteId(id);
-
-    await handleLocalNoteDeleted(id, updatedAt);
-
-    expect(getUidForNoteId(id)).toBeNull();
-    const tombstones = loadTombstones();
-    expect(tombstones).toHaveLength(1);
-    expect(tombstones[0].uid).toBe(uid);
-    expect(tombstones[0].noteUpdatedAt).toBe(iso(T0 + 123));
-  });
-
-  it('is a no-op for notes that were never synced', async () => {
-    const { handleLocalNoteDeleted } = await import('@/lib/sync');
-    await handleLocalNoteDeleted(777, new Date());
-    expect(loadTombstones()).toHaveLength(0);
-  });
-});
+// ─── deletion hook (now lives in syncDeletion.ts; see syncScheduler.test.tsx) ─

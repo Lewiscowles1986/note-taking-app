@@ -21,11 +21,8 @@ import {
   clearSyncSettings,
   type StoredSyncSettings,
 } from '@/lib/syncSettings';
-import {
-  runSync,
-  runSyncIfConfigured,
-  SyncError,
-} from '@/lib/sync';
+import { refreshAutoSyncScheduler } from '@/lib/autoSyncScheduler';
+import { runSync, SyncError } from '@/lib/sync';
 import { runInFlight } from '@/lib/inFlight';
 import { toast } from 'sonner';
 
@@ -79,6 +76,8 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
   const persist = (extra?: Partial<StoredSyncSettings>) => {
     const next = { ...currentConfig, ...extra };
     saveSyncSettings(next);
+    // App-level scheduler follows auto-sync config changes.
+    refreshAutoSyncScheduler();
     setStored(next);
   };
 
@@ -156,6 +155,7 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
 
   const handleForget = () => {
     clearSyncSettings();
+    refreshAutoSyncScheduler();
     setStored(loadSyncSettings());
     setServerUrl('');
     setAuthToken('');
@@ -164,16 +164,8 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
     toast.success('Server connection forgotten');
   };
 
-  // Background auto-sync: a single interval while the page is mounted and a
-  // server is configured. runSyncIfConfigured never throws.
-  useEffect(() => {
-    if (!autoSync || !currentConfig.serverUrl || parsedInterval == null) return;
-    const ms = parsedInterval * 60_000;
-    const timer = window.setInterval(() => {
-      void runSyncIfConfigured();
-    }, ms);
-    return () => window.clearInterval(timer);
-  }, [autoSync, currentConfig.serverUrl, parsedInterval]);
+  // Background auto-sync is owned by the app-level scheduler (App.tsx), so it
+  // keeps ticking across pages/modes; this page just edits the config.
 
   const lastSyncLine = stored.lastSync
     ? `${new Date(stored.lastSync.at).toLocaleString()} — ${stored.lastSync.summary}`

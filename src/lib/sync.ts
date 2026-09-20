@@ -103,15 +103,6 @@ export function pruneUidMap(liveNoteIds: number[]): void {
   if (changed) saveUidMap(map);
 }
 
-/** Forget a deleted note's identity and remember the deletion for the next sync. */
-export function handleLocalNoteDeleted(noteId: number, noteUpdatedAt: Date): void {
-  const uid = getUidForNoteId(noteId);
-  if (uid) {
-    recordTombstone(uid, new Date(), noteUpdatedAt);
-  }
-  forgetUid(noteId);
-}
-
 // ─── payload shape ───────────────────────────────────────────────────────────
 
 /** JSON-ready note as it travels over the wire (dates as ISO strings). */

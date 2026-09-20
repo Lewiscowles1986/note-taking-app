@@ -78,15 +78,27 @@ if (!navigator.clipboard) {
   });
 }
 
-// Node 26 ships an experimental global `localStorage` that is UNDEFINED unless
-// --localstorage-file is passed; it shadows jsdom's working implementation in
-// vitest workers, leaving tests without any storage. Restore jsdom's, or fall
-// back to a minimal in-memory Storage (same polyfill pattern as matchMedia
-// above). Also fixes `window.localStorage`, which jsdom wires to the same
+// Node ≥25 defines a global `localStorage` object ALWAYS, but its methods are
+// all undefined unless --localstorage-file is passed; Node 26's is simply
+// undefined. Either way the broken Node global shadows jsdom's working
+// implementation in vitest workers, leaving tests without any storage.
+// Restore jsdom's (or a minimal in-memory Storage) unless the existing value
+// is a genuinely functional Storage — same polyfill pattern as matchMedia
+// above. Also fixes `window.localStorage`, which jsdom wires to the same
 // implementation instance.
+function isUsableStorage(value: unknown): value is Storage {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof (value as Storage).getItem === "function" &&
+    typeof (value as Storage).setItem === "function" &&
+    typeof (value as Storage).clear === "function"
+  );
+}
+
 function polyfillStorage(target: typeof globalThis): void {
   const existing = (target as { localStorage?: unknown }).localStorage;
-  if (existing) return; // a real Storage instance — keep it
+  if (isUsableStorage(existing)) return;
   const backing = new Map<string, string>();
   const storage: Storage = {
     get length() {

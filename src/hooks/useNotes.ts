@@ -10,7 +10,7 @@ import {
   getAllTags,
   getAllCategories,
 } from '@/lib/db';
-import { handleLocalNoteDeleted } from '@/lib/sync';
+import { recordDeletion } from '@/lib/syncDeletion';
 
 export function useNotes() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -73,7 +73,7 @@ export function useNotes() {
       // Remember the deletion for the next sync (tombstone) BEFORE removing,
       // so the note's identity and last-edit time survive the delete.
       const existing = await getNote(id);
-      await handleLocalNoteDeleted(id, existing?.updatedAt ?? new Date());
+      recordDeletion(id, existing?.updatedAt ?? new Date());
       await deleteNote(id);
       if (activeNoteId === id) setActiveNoteId(null);
       await refresh();
