@@ -4,6 +4,7 @@
 // loopback only, no external network.
 import test, { after, before, describe } from 'node:test';
 import http from 'node:http';
+import net from 'node:net';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { buildConfig } from '../config.mjs';
@@ -73,6 +74,20 @@ function request(method, path, { body, headers = {}, raw } = {}) {
   });
 }
 
+// Send a raw request over a socket (for malformed targets the http module
+// would refuse to build itself) and resolve with the full response text.
+function rawRequest(raw) {
+  return new Promise((resolve, reject) => {
+    const sock = net.connect(new URL(baseUrl).port, '127.0.0.1');
+    let buf = '';
+    sock.setEncoding('utf8');
+    sock.on('connect', () => sock.end(raw));
+    sock.on('data', (d) => { buf += d; });
+    sock.on('end', () => resolve(buf));
+    sock.on('error', reject);
+  });
+}
+
 before(async () => {
   const { writeAsync, writeSync, files } = memoryIo();
   keys = await loadOrCreateKeys('/tmp/unused', { io: { write: async (p, d) => files.set(p, d) } });
@@ -131,6 +146,53 @@ describe('discovery', () => {
     assert.equal(jwk.kid, keys.kid);
     assert.ok(jwk.n.length > 100);
     assert.equal(jwk.e, 'AQAB');
+  });
+});
+
+describe('routing hardening', () => {
+  test('malformed percent-encoding target → 400 invalid_request, process survives', async () => {
+    const res = await rawRequest('GET /%zz HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n');
+    assert.match(res, /^HTTP\/1\.1 400 /);
+    assert.match(res, /"error"\s*:\s*"invalid_request"/);
+    assert.match(res, /malformed request target/);
+    // The server is still alive and serving (no uncaughtException death).
+    const health = await request('GET', '/healthz');
+    assert.equal(health.status, 200);
+    assert.equal(health.json.ok, true);
+  });
+
+  test('HEAD mirrors GET everywhere: /api/notes, discovery, healthz, userinfo; empty body', async () => {
+    for (const [path, headers] of [
+      ['/api/notes', { authorization: `Bearer ${aliceToken}` }],
+      ['/.well-known/openid-configuration', {}],
+      ['/healthz', {}],
+      ['/userinfo', { authorization: `Bearer ${aliceToken}` }],
+      ['/jwks.json', {}],
+    ]) {
+      const head = await request('HEAD', path, { headers });
+      const get = await request('GET', path, { headers });
+      assert.equal(head.status, get.status, `HEAD vs GET status for ${path}`);
+      assert.equal(head.body, '', `HEAD body must be empty for ${path}`);
+    }
+  });
+
+  test('HEAD / still 200', async () => {
+    const res = await request('HEAD', '/');
+    assert.equal(res.status, 200);
+    assert.equal(res.body, '');
+  });
+
+  test('405 on /api/notes lists HEAD in Allow', async () => {
+    const res = await request('POST', '/api/notes', { headers: { authorization: `Bearer ${aliceToken}` } });
+    assert.equal(res.status, 405);
+    assert.match(res.headers.allow ?? '', /HEAD/);
+  });
+
+  test('GET /token → 405 with Allow: POST (not 404)', async () => {
+    const res = await request('GET', '/token');
+    assert.equal(res.status, 405);
+    assert.equal(res.headers.allow, 'POST');
+    assert.equal(res.json.error, 'method_not_allowed');
   });
 });
 
@@ -211,6 +273,27 @@ describe('notes CRUD + isolation', () => {
     const manifest = await request('GET', '/api/notes', { headers: { authorization: `Bearer ${aliceToken}` } });
     const entry = manifest.json.notes.find((n) => n.uid === 'uid-c');
     assert.ok(!Number.isNaN(Date.parse(entry.updatedAt)));
+  });
+
+  test('PUT with body uid ≠ path uid → 400', async () => {
+    const res = await request('PUT', '/api/notes/real-uid', { body: { uid: 'MISMATCH', title: 'x' }, headers: { authorization: `Bearer ${aliceToken}` } });
+    assert.equal(res.status, 400);
+    assert.equal(res.json.error, 'invalid_request');
+    assert.match(res.json.error_description, /uid does not match path uid/);
+  });
+
+  test('PUT with matching body uid → 200 and payload mirrors path', async () => {
+    const res = await request('PUT', '/api/notes/uid-match', { body: { uid: 'uid-match', title: 'ok' }, headers: { authorization: `Bearer ${aliceToken}` } });
+    assert.equal(res.status, 200);
+    const got = await request('GET', '/api/notes/uid-match', { headers: { authorization: `Bearer ${aliceToken}` } });
+    assert.equal(got.json.uid, 'uid-match');
+  });
+
+  test('PUT with absent body uid → 200 (server fills it in)', async () => {
+    const res = await request('PUT', '/api/notes/uid-absent', { body: { title: 'no uid field' }, headers: { authorization: `Bearer ${aliceToken}` } });
+    assert.equal(res.status, 200);
+    const got = await request('GET', '/api/notes/uid-absent', { headers: { authorization: `Bearer ${aliceToken}` } });
+    assert.equal(got.json.uid, 'uid-absent');
   });
 
   test('PUT with invalid JSON → 400', async () => {

@@ -57,18 +57,21 @@ salts.
 | GET | `/jwks.json` (alias `/.well-known/jwks.json`) | — | RSA public keys as JWK |
 | GET | `/authorize` | — | Authorization endpoint; renders the login page |
 | POST | `/authorize/submit` | — | Login form target (keeps `/authorize` OIDC-clean) |
-| POST | `/token` | client auth | Token exchange (`authorization_code`, `refresh_token`) |
+| POST | `/token` | client auth | Token exchange (`authorization_code`, `refresh_token`); other methods → `405 Allow: POST` |
 | GET | `/userinfo` | Bearer (scope `openid`) | Subject claims |
 | POST | `/revoke` | client auth | RFC 7009 token revocation |
 | GET | `/api/notes` | Bearer (scope `notes.sync`) | Manifest `{ notes: [{ uid, updatedAt, deleted? }] }` |
 | GET | `/api/notes/{uid}` | Bearer | Full note payload; tombstoned uid → 404 |
-| PUT | `/api/notes/{uid}` | Bearer | Upsert (body = full note payload) |
+| PUT | `/api/notes/{uid}` | Bearer | Upsert (body = full note payload); a body `uid` must equal the path uid → else 400 |
 | DELETE | `/api/notes/{uid}` | Bearer | Tombstone (never hard-delete; idempotent) |
 | GET | `/healthz` | — | Liveness |
 | OPTIONS | any | — | CORS preflight → 204 |
+| HEAD | wherever GET is served | same as GET | Same status as GET; body suppressed (Node auto-handles this) |
 
 Errors are JSON `{ error, error_description }`; 401 responses carry
-`WWW-Authenticate: Bearer …`; 405 responses carry `Allow`.
+`WWW-Authenticate: Bearer …`; 405 responses carry `Allow`. Malformed request
+targets that cannot be parsed or percent-decoded (e.g. `GET /%zz`) are
+rejected with `400 invalid_request` without crashing the process.
 
 ## OIDC flow walkthrough (curl)
 
@@ -223,7 +226,7 @@ data. **Restarting logs users out** (in-memory sessions) — noted above.
 ## Tests
 
 ```bash
-node --test server/test/
+node --test "server/test/*.test.mjs"
 ```
 
 Covers: JWT roundtrip + alg-confusion (`none`, HS256) + exp/iss/aud checks;

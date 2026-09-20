@@ -78,6 +78,11 @@ export async function putNote(req, res, ctx) {
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
     return sendJson(res, 400, { error: 'invalid_request', error_description: 'request body must be a JSON note payload' }, withCors(ctx.origin));
   }
+  // The payload's uid must mirror the path uid (docs/sync.md). A mismatch is
+  // a client bug — reject it instead of silently rewriting the body.
+  if (payload.uid !== undefined && payload.uid !== uid) {
+    return sendJson(res, 400, { error: 'invalid_request', error_description: 'body uid does not match path uid' }, withCors(ctx.origin));
+  }
   const updatedAt =
     (typeof payload.updatedAt === 'string' && !Number.isNaN(Date.parse(payload.updatedAt)) && payload.updatedAt) ||
     ctx.store.now().toISOString();

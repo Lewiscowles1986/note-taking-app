@@ -1,6 +1,7 @@
 // Token endpoint: client auth (basic/post/none), PKCE verification, code
 // single-use, refresh rotation + reuse detection, revocation.
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import {
   makeOidc,
   issueCode,
@@ -344,4 +345,72 @@ test('token without offline_access → no refresh_token issued', () => {
     authPost(),
   );
   assert.equal(res.body.refresh_token, undefined);
+});
+
+test('PKCE verifier validation (RFC 7636 §4.1): bad charset/length → 400 invalid_request, not invalid_grant', () => {
+  const cases = [
+    'a'.repeat(42),        // too short
+    'a'.repeat(129),       // too long
+    `${'a'.repeat(63)} +b`, // illegal char '+' (challenge-safe base64url char, NOT unreserved)
+    `${'a'.repeat(62)} sp`, // illegal char space
+  ];
+  for (const verifier of cases) {
+    const { oidc } = makeOidc();
+    const challenge = createHash('sha256').update(verifier, 'ascii').digest('base64url');
+    const code = issueCode(oidc, { challenge });
+    const res = oidc.token(
+      new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT, code_verifier: verifier }),
+      authPost(),
+    );
+    assert.equal(res.status, 400, `verifier ${JSON.stringify(verifier.slice(0, 8))}… should be rejected`);
+    assert.equal(res.body.error, 'invalid_request', `expected invalid_request, got ${res.body.error}`);
+  }
+});
+
+test('PKCE verifier boundary lengths (43 and 128, unreserved incl. . and ~) exchange successfully', () => {
+  const verifiers = ['a'.repeat(43), `${'a'.repeat(62)}._~${'b'.repeat(62)}`];
+  for (const v of verifiers) {
+    assert.equal(v.length >= 43 && v.length <= 128, true);
+    const { oidc } = makeOidc();
+    const challenge = createHash('sha256').update(v, 'ascii').digest('base64url');
+    const code = issueCode(oidc, { challenge });
+    const res = oidc.token(
+      new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT, code_verifier: v }),
+      authPost(),
+    );
+    assert.equal(res.status, 200, `verifier of length ${v.length} should pass`);
+  }
+});
+
+test('RFC 7636 appendix-B vector still exchanges (verifier contains only base64url chars)', () => {
+  const { oidc } = makeOidc();
+  const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
+  const challenge = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
+  const code = issueCode(oidc, { challenge });
+  const res = oidc.token(
+    new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT, code_verifier: verifier }),
+    authPost(),
+  );
+  assert.equal(res.status, 200);
+});
+
+test('id_token carries at_hash = left half of SHA-256(access_token) base64url', () => {
+  const { oidc } = makeOidc();
+  const { verifier, challenge } = verifierAndChallenge();
+  const code = issueCode(oidc, { challenge });
+  const res = oidc.token(
+    new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT, code_verifier: verifier }),
+    authPost(),
+  );
+  assert.equal(res.status, 200);
+  const id = verifyJwt(res.body.id_token, oidc.keys.publicPem, { issuer: ISSUER, audience: DEV_CLIENT.client_id });
+  const expected = createHash('sha256')
+    .update(res.body.access_token, 'ascii')
+    .digest()
+    .subarray(0, 16)
+    .toString('base64url');
+  assert.equal(id.payload.at_hash, expected);
+  // Unrelated claims unchanged.
+  assert.equal(id.payload.preferred_username, 'alice');
+  assert.deepEqual(id.payload['notes.categories'], ['*']);
 });

@@ -40,9 +40,24 @@ function b64urlSha256(input) {
   return createHash('sha256').update(String(input), 'ascii').digest('base64url');
 }
 
+// OIDC Core §3.1.3.6: at_hash = base64url(SHA-256(ASCII(access_token))
+// truncated to its leftmost half) — the hash algorithm follows the id_token
+// alg, and RS256 maps to SHA-256. The left-half truncation is what spec
+// clients (openid-client, AppAuth) validate against.
+export function atHashFor(accessToken) {
+  const digest = createHash('sha256').update(String(accessToken), 'ascii').digest();
+  return digest.subarray(0, digest.byteLength / 2).toString('base64url');
+}
+
 export function pkceChallenge(verifier) {
   return b64urlSha256(verifier);
 }
+
+// RFC 7636 §4.1: code_verifier is 43–128 chars from the unreserved set
+// ALPHA / DIGIT / "-" / "." / "_" / "~". Deliberately wider than the
+// challenge regex (which only matches base64url) — a verifier may contain
+// '.' and '~' too.
+export const CODE_VERIFIER_RE = /^[A-Za-z0-9\-._~]{43,128}$/;
 
 function timingSafeStringEqual(a, b) {
   const ba = Buffer.from(String(a), 'ascii');
@@ -293,6 +308,9 @@ export class OidcService {
       return tokenError(400, 'invalid_grant', 'code was issued to a different client');
     }
     if (!verifier) return tokenError(400, 'invalid_request', 'code_verifier is required (PKCE)');
+    if (!CODE_VERIFIER_RE.test(verifier)) {
+      return tokenError(400, 'invalid_request', 'code_verifier must be 43–128 characters from the RFC 7636 unreserved set (A-Z a-z 0-9 - . _ ~)');
+    }
     if (!timingSafeStringEqual(pkceChallenge(verifier), record.challenge)) {
       return tokenError(400, 'invalid_grant', 'PKCE verification failed');
     }
@@ -410,6 +428,9 @@ export class OidcService {
         name: user?.name ?? null,
         email: user?.email ?? null,
         amr: ['pwd'],
+        // OIDC Core §3.1.3.6: binds the id_token to the access token (code
+        // flow). Leftmost half of SHA-256 of the ASCII access token, base64url.
+        at_hash: atHashFor(accessToken),
         // Claims bound to the notes.sync scope so clients can discover what
         // they may sync without an extra round trip.
         ...(scope.split(' ').includes('notes.sync') ? { 'notes.categories': ['*'] } : {}),

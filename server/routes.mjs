@@ -77,32 +77,51 @@ export function createRouter({ config, store, oidc, keys, sessions }) {
   const maxBody = config.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
 
   return async function route(req, res) {
-    const url = new URL(req.url ?? '/', config.issuer);
-    const pathname = decodeURIComponent(url.pathname);
+    // HEAD is served by the GET handlers everywhere GET is served (Node's HTTP
+    // server suppresses the response body for HEAD requests), so the dispatch
+    // below stays single-tracked.
+    const method = req.method === 'HEAD' ? 'GET' : req.method;
     const origin = typeof req.headers.origin === 'string' ? req.headers.origin : '';
     const cors = corsHeadersFor(origin);
 
+    // `new URL` + percent-decoding can throw on malformed request targets
+    // (e.g. raw `GET /%zz`). This MUST be caught here: the try/catch below
+    // only covers the dispatch, so a throw from these lines escapes the
+    // router as an uncaughtException and kills the process (one malformed
+    // request would be a remote DoS).
+    let url;
+    let pathname;
+    try {
+      url = new URL(req.url ?? '/', config.issuer);
+      pathname = decodeURIComponent(url.pathname);
+    } catch {
+      return sendJson(res, 400, {
+        error: 'invalid_request',
+        error_description: 'malformed request target',
+      }, cors);
+    }
+
     // CORS preflight for every route (browser clients may preflight the OIDC
     // endpoints too when using fetch cross-origin).
-    if (req.method === 'OPTIONS') {
+    if (method === 'OPTIONS') {
       return respond(res, 204, preflightHeaders(origin));
     }
 
     try {
       req.parsedCookies = parseCookies(req);
       // --- well-known & discovery -----------------------------------------
-      if (req.method === 'GET' && pathname === '/.well-known/openid-configuration') {
+      if (method === 'GET' && pathname === '/.well-known/openid-configuration') {
         return sendJson(res, 200, discoveryDocument(config.issuer), {
           ...cors,
           'Cache-Control': 'public, max-age=300',
         });
       }
-      if (req.method === 'GET' && (pathname === '/jwks.json' || pathname === '/.well-known/jwks.json')) {
+      if (method === 'GET' && (pathname === '/jwks.json' || pathname === '/.well-known/jwks.json')) {
         return sendJson(res, 200, jwksDocument(keys), { ...cors, 'Cache-Control': 'public, max-age=300' });
       }
 
       // --- authorize -------------------------------------------------------
-      if (pathname === '/authorize' && (req.method === 'GET' || req.method === 'HEAD')) {
+      if (pathname === '/authorize' && method === 'GET') {
         return oidc.authorize(req, res, url.searchParams);
       }
       if (pathname === '/authorize/submit' && req.method === 'POST') {
@@ -111,7 +130,10 @@ export function createRouter({ config, store, oidc, keys, sessions }) {
       }
 
       // --- token (form-encoded only; JSON bodies get 415 per spec decision)
-      if (pathname === '/token' && req.method === 'POST') {
+      if (pathname === '/token') {
+        if (method !== 'POST') {
+          return methodNotAllowed(res, 'POST', cors);
+        }
         const ctype = String(req.headers['content-type'] ?? '');
         if (!/application\/x-www-form-urlencoded/i.test(ctype)) {
           return sendJson(res, 415, {
@@ -125,14 +147,14 @@ export function createRouter({ config, store, oidc, keys, sessions }) {
       }
 
       // --- userinfo --------------------------------------------------------
-      if (pathname === '/userinfo' && req.method === 'GET') {
+      if (pathname === '/userinfo' && method === 'GET') {
         const payload = api.requireBearer(oidc, req, res, origin, { scope: 'openid' });
         if (!payload) return;
         return sendJson(res, 200, oidc.userinfo(payload), cors);
       }
 
       // --- revocation (RFC 7009) ---------------------------------------------
-      if (pathname === '/revoke' && req.method === 'POST') {
+      if (pathname === '/revoke' && method === 'POST') {
         const ctype = String(req.headers['content-type'] ?? '');
         if (!/application\/x-www-form-urlencoded/i.test(ctype)) {
           return sendJson(res, 415, { error: 'invalid_request', error_description: 'the revocation endpoint accepts application/x-www-form-urlencoded bodies only' }, cors);
@@ -147,44 +169,44 @@ export function createRouter({ config, store, oidc, keys, sessions }) {
       // --- notes API ---------------------------------------------------------
       const notesMatch = matchPath(pathname, '/api/notes/{uid}');
       if (pathname === '/api/notes' || notesMatch) {
-        const allowed = 'GET, PUT, DELETE, OPTIONS';
+        const allowed = 'GET, HEAD, PUT, DELETE, OPTIONS';
         const methods = { GET: true, PUT: true, DELETE: true };
-        if (!methods[req.method]) {
+        if (!methods[method]) {
           return methodNotAllowed(res, allowed, cors);
         }
         // AuthN + scope. Scope failure → 403; missing/bad token → 401.
         const payload = api.requireBearer(oidc, req, res, origin, { scope: 'notes.sync' });
         if (!payload) return;
         const ctx = { store, oidc, payload, origin, config };
-        if (pathname === '/api/notes' && req.method === 'GET') {
+        if (pathname === '/api/notes' && method === 'GET') {
           return api.getManifest(req, res, ctx);
         }
         if (notesMatch) {
           const uid = notesMatch.uid;
           api.assertSafeUid(uid);
           const inner = { ...ctx, uid };
-          if (req.method === 'GET') {
+          if (method === 'GET') {
             return api.getNote(req, res, inner);
           }
-          if (req.method === 'PUT') {
+          if (method === 'PUT') {
             inner.jsonBody = await readJsonBody(req, maxBody);
             return api.putNote(req, res, inner);
           }
-          if (req.method === 'DELETE') {
+          if (method === 'DELETE') {
             return api.deleteNote(req, res, inner);
           }
         }
       }
 
       // --- root landing page ---------------------------------------------------
-      if (pathname === '/' && (req.method === 'GET' || req.method === 'HEAD')) {
+      if (pathname === '/' && method === 'GET') {
         return respond(res, 200, {
           'Content-Type': 'text/html; charset=utf-8',
           ...cors,
         }, landingHtml(config.issuer));
       }
 
-      if (pathname === '/healthz' && req.method === 'GET') {
+      if (pathname === '/healthz' && method === 'GET') {
         return sendJson(res, 200, { ok: true, issuer: config.issuer }, cors);
       }
 

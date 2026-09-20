@@ -27,7 +27,8 @@ export async function loadOrCreateKeys(dataDir, { io = { write: writeFile } } = 
     }
   }
   const keys = generateRsaKeyPair(2048);
-  await io.write(file, JSON.stringify(keys, null, 2) + '\n');
+  // RS256 private PEM: 0600 (owner read/write only) — keys.json is a secret.
+  await io.write(file, JSON.stringify(keys, null, 2) + '\n', { mode: 0o600 });
   return { ...keys, persisted: false };
 }
 
