@@ -111,6 +111,27 @@ export class Store {
     return null;
   }
 
+  /**
+   * Single-pass login lookup: resolve an identifier that may be either the
+   * username or the email. Both are unique per user, so at most one record
+   * can match; a single scan answers "username OR email" without walking
+   * the map twice.
+   *
+   * NOTE on timing: this lookup IS data-dependent by design (linear scan,
+   * early return on match). That is safe here because the secret material —
+   * the password — never touches this function; it is only compared later
+   * via scrypt + timingSafeEqual (see authn.verifyPassword). Lookup timing
+   * varies with map position/count for ANY identifier, known or unknown, so
+   * it leaks nothing about existence. The existence-vs-password distinction
+   * is equalized by the caller's decoy scrypt burn, not here.
+   */
+  findUserByUsernameOrEmail(identifier) {
+    for (const user of this.users.values()) {
+      if (user.username === identifier || user.email === identifier) return user;
+    }
+    return null;
+  }
+
   findUserBySub(sub) {
     return this.users.get(sub) ?? null;
   }

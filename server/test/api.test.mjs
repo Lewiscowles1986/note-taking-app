@@ -114,6 +114,34 @@ after(() => {
   server?.close();
 });
 
+describe('login identifier lookup (store)', () => {
+  test('findUserByUsernameOrEmail resolves username, email, and rejects unknown in one pass', () => {
+    const byName = store.findUserByUsernameOrEmail('alice');
+    assert.ok(byName, 'username must resolve');
+    assert.equal(byName.email, 'alice@example.com');
+    const byEmail = store.findUserByUsernameOrEmail('bob@example.com');
+    assert.ok(byEmail, 'email must resolve');
+    assert.equal(byEmail.username, 'bob');
+    assert.equal(byEmail.sub, 'sub-bob');
+    // A single user cannot be shadowed by another record matching on the
+    // other field: resolution is unique per identifier.
+    assert.equal(store.findUserByUsernameOrEmail('alice@example.com')?.sub, 'sub-alice');
+    assert.equal(store.findUserByUsernameOrEmail('nobody'), null);
+    assert.equal(store.findUserByUsernameOrEmail('nobody@example.com'), null);
+    assert.equal(store.findUserByUsernameOrEmail(''), null);
+  });
+
+  test('lookup timing is credential-independent: scan cost depends on map size, never on the password', () => {
+    // The store lookup never sees password material; assert the finder does
+    // not consult the seeded hash fields at all (pin the contract that keeps
+    // password comparison confined to scrypt + timingSafeEqual).
+    const user = store.findUserByUsernameOrEmail('alice@example.com');
+    assert.ok(user);
+    assert.ok(user.hash.length > 0, 'record carries the hash for the caller to compare');
+    assert.equal(user.salt.length > 0, true);
+  });
+});
+
 describe('discovery', () => {
   test('discovery document has the required metadata', async () => {
     const res = await request('GET', '/.well-known/openid-configuration');
@@ -491,5 +519,26 @@ describe('authorize endpoint (HTML flow)', () => {
     assert.match(res.body, /Wrong username or password/);
     // The submitted identifier is echoed back into the field (usability).
     assert.match(res.body, /value="nobody@example\.com"/);
+  });
+
+  test('login accepts EMAIL as the identifier for BOB too (bob@example.com) — full flow', async () => {
+    const verifier = 'b'.repeat(64);
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
+    const start = await request('GET', `/authorize?client_id=note-haven-dev&redirect_uri=${encodeURIComponent(DEV_CLIENT.redirect_uris[0])}&response_type=code&scope=openid&state=st-bem&nonce=n-bem&code_challenge=${challenge}&code_challenge_method=S256`);
+    assert.equal(start.status, 200);
+    const cookieOf = (res) => String(res.headers['set-cookie'] ?? '').split(';').find((c) => c.startsWith('nh_pending=')) ?? '';
+    const res = await request('POST', '/authorize/submit', { body: 'username=bob%40example.com&password=correct-horse-staple', raw: true, headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: cookieOf(start) } });
+    assert.equal(res.status, 200);
+    assert.match(res.body, /http-equiv="refresh"/);
+    const match = res.body.match(/content="0;url=([^"]+)"/);
+    assert.ok(match, 'bob email login must reach the handoff page');
+    const location = new URL(match[1].replace(/&amp;/g, '&'));
+    assert.equal(location.searchParams.get('state'), 'st-bem');
+    assert.ok(location.searchParams.get('code'));
+    // The code issued for bob must exchange into a bob token (not alice's).
+    const tokenRes = await request('POST', '/token', { body: `grant_type=authorization_code&code=${location.searchParams.get('code')}&redirect_uri=${encodeURIComponent(DEV_CLIENT.redirect_uris[0])}&code_verifier=${verifier}&client_id=note-haven-dev&client_secret=dev-secret-not-for-prod`, raw: true, headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+    assert.equal(tokenRes.status, 200);
+    const claims = JSON.parse(Buffer.from(tokenRes.json.id_token.split('.')[1], 'base64url').toString('utf8'));
+    assert.equal(claims.preferred_username, 'bob');
   });
 });

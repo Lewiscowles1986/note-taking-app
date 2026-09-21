@@ -96,15 +96,14 @@ export class SessionManager {
 // HttpError(401) with a rendered login page on failure (the caller decides how
 // to surface it).
 //
-// The identifier field accepts EITHER the username or the email — both are
-// unique per user (store enforces uniqueness on seed), so the lookup is
-// unambiguous. Missing users and wrong passwords must stay
-// indistinguishable: the decoy scrypt below keeps unknown-identifier
-// responses in the same latency band as a wrong password.
+// The identifier field accepts EITHER the username or the email (one-pass
+// lookup in the store; both unique per user). Missing users and wrong
+// passwords must stay indistinguishable: the decoy scrypt below keeps
+// unknown-identifier responses in the same latency band as a wrong password.
+// The password is only compared via scrypt + timingSafeEqual — never by any
+// map/index lookup — so lookup timing cannot leak credential material.
 export function authenticate(store, { username, password }) {
-  const identifier = String(username ?? '');
-  const user =
-    store.findUserByUsername(identifier) ?? store.findUserByEmail(identifier);
+  const user = store.findUserByUsernameOrEmail(String(username ?? ''));
   if (!user) {
     // Burn comparable time so a missing user is not distinguishable from a
     // wrong password by response latency.

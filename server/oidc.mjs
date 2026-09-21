@@ -278,11 +278,11 @@ export class OidcService {
 
   authenticateUser(username, password) {
     // The identifier field accepts EITHER the username or the email (both
-    // unique per user). Keep unknown-identifier and wrong-password in the
-    // same latency band via the decoy scrypt.
-    const identifier = String(username ?? '');
-    const user =
-      this.store.findUserByUsername(identifier) ?? this.store.findUserByEmail(identifier);
+    // unique per user; one-pass lookup in the store). The password itself is
+    // only ever compared via scrypt + timingSafeEqual — never by lookup —
+    // and the decoy burn below equalizes unknown-identifier vs wrong-
+    // password responses.
+    const user = this.store.findUserByUsernameOrEmail(String(username ?? ''));
     if (!user) {
       scryptSync(String(password ?? ''), 'decoy-salt', 64); // constant-ish time
       return null;
