@@ -216,7 +216,8 @@ export function createRouter({ config, store, oidc, keys, sessions }) {
       return notFound(res, `${req.method} ${pathname}`, cors);
     } catch (err) {
       if (err && err.status && err.payload !== undefined) {
-        return sendJson(res, err.status, err.payload, { ...cors, ...(err.headers ?? {}) });
+        const headers = { ...cors, ...err.headers };
+        return sendJson(res, err.status, err.payload, headers);
       }
       console.error('[server] unhandled error:', err);
       return sendJson(res, 500, { error: 'server_error', error_description: 'internal server error' }, cors);

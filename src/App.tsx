@@ -4,7 +4,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Suspense, lazy } from "react";
 import InFlightManager from "@/components/InFlightManager";
-import SyncNotifications from "@/components/SyncNotifications";
 import AutoSyncScheduler from "@/lib/autoSyncScheduler";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
@@ -19,8 +18,6 @@ const App = () => (
     <Sonner />
     {/* Non-blocking in-flight action indicator + cancel-conflict dialog. */}
     <InFlightManager />
-    {/* Queued keep-or-delete prompts for server-side deletions. */}
-    <SyncNotifications />
     {/* Background auto-sync — loads the engine lazily, only when configured. */}
     <AutoSyncScheduler />
     <BrowserRouter basename={import.meta.env.BASE_URL}>

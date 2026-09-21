@@ -11,6 +11,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 const NoteViewer = lazy(() => import('@/components/NoteViewer'));
 import NoteMetaBar from '@/components/NoteMetaBar';
 import CalendarView from '@/components/CalendarView';
+import SyncNotifications from '@/components/SyncNotifications';
 import EncryptionDialog from '@/components/EncryptionDialog';
 // Settings pulls in the sync engine but not the markdown pipeline; keep it
 // out of the critical path like the other secondary surfaces.
@@ -333,6 +334,9 @@ export default function Index() {
           </div>
 
           <div className="flex items-center gap-2 pr-[env(safe-area-inset-right)]">
+            {/* Queued keep-or-delete prompts — inline with the other header
+                actions rather than a bar of its own. */}
+            <SyncNotifications />
             <button
               onClick={() => setCalendarMode(true)}
               className="p-2.5 min-w-11 min-h-11 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground transition-colors sm:min-w-min sm:min-h-min sm:p-1.5"

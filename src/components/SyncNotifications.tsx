@@ -18,14 +18,15 @@ import {
  * Queued keep-or-delete prompts for notes the SERVER deleted (the client
  * never deletes on its own — docs/sync.md, "Never-delete policy").
  *
- * A bell in the header shows the pending count; the panel lists each queued
- * note with its title, category and deletion date plus the two actions:
- * Keep on this device (permanent exception for this browser profile) and
- * Delete from this device (explicit user-commanded removal).
+ * An inline bell in the header icon cluster (beside Calendar/Settings) shows
+ * the pending count; the panel lists each queued note with its title,
+ * category and deletion date plus the two actions: Keep on this device
+ * (permanent exception for this browser profile) and Delete from this device
+ * (explicit user-commanded removal).
  *
- * Mounted once in App.tsx (lazy — only downloads when first rendered; it has
- * no sync-engine dependency, which stays behind a dynamic import in
- * resolveNotification).
+ * Rendered inline by each top-level surface's header (Index, SettingsPage) —
+ * never a bar of its own. It has no sync-engine dependency, which stays
+ * behind a dynamic import in resolveNotification.
  */
 
 const formatDate = (iso: string): string => {

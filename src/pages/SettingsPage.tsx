@@ -43,6 +43,7 @@ import {
   type OidcSession,
 } from '@/lib/oidcStorage';
 import { getAllCategories } from '@/lib/db';
+import SyncNotifications from '@/components/SyncNotifications';
 import { toast } from 'sonner';
 
 interface SettingsPageProps {
@@ -321,17 +322,21 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
             </button>
             <span className="text-sm font-medium text-foreground">Settings</span>
           </div>
-          <button
-            onClick={() => {
-              save();
-              onBack();
-            }}
-            disabled={!dirty}
-            className="flex items-center gap-1.5 px-3 py-2.5 min-h-11 whitespace-nowrap rounded text-xs font-medium bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 sm:py-1 sm:min-h-0"
-          >
-            <Check size={12} />
-            Done
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Queued keep-or-delete prompts — inline with the header actions. */}
+            <SyncNotifications />
+            <button
+              onClick={() => {
+                save();
+                onBack();
+              }}
+              disabled={!dirty}
+              className="flex items-center gap-1.5 px-3 py-2.5 min-h-11 whitespace-nowrap rounded text-xs font-medium bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 sm:py-1 sm:min-h-0"
+            >
+              <Check size={12} />
+              Done
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">

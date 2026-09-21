@@ -598,7 +598,7 @@ export class OidcService {
 
   // Internal: revoke every member of a refresh family.
   revokeFamily(familyId) {
-    for (const [tok, rec] of [...this.refreshTokens]) {
+    for (const [tok, rec] of this.refreshTokens) {
       if (rec.familyId === familyId) this.refreshTokens.delete(tok);
     }
   }
