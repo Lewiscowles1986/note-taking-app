@@ -95,8 +95,16 @@ export class SessionManager {
 // Process a POST /authorize/submit login. Returns the user or throws an
 // HttpError(401) with a rendered login page on failure (the caller decides how
 // to surface it).
+//
+// The identifier field accepts EITHER the username or the email — both are
+// unique per user (store enforces uniqueness on seed), so the lookup is
+// unambiguous. Missing users and wrong passwords must stay
+// indistinguishable: the decoy scrypt below keeps unknown-identifier
+// responses in the same latency band as a wrong password.
 export function authenticate(store, { username, password }) {
-  const user = store.findUserByUsername(String(username ?? ''));
+  const identifier = String(username ?? '');
+  const user =
+    store.findUserByUsername(identifier) ?? store.findUserByEmail(identifier);
   if (!user) {
     // Burn comparable time so a missing user is not distinguishable from a
     // wrong password by response latency.
@@ -170,7 +178,7 @@ export function loginPageHtml({ action, error = '', username = '' } = {}) {
   <p class="sub">Sign in to authorise this app to sync your notes.</p>
   ${errBlock}
   <form method="post" action="${escapeHtml(action)}">
-    <label>Username
+    <label>Username or email
       <input name="username" value="${escapeHtml(username)}" autocomplete="username" required autofocus>
     </label>
     <label>Password

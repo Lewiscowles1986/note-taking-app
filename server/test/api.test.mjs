@@ -454,4 +454,42 @@ describe('authorize endpoint (HTML flow)', () => {
     assert.equal(idClaims.preferred_username, 'alice');
     assert.equal(idClaims.nonce, 'n-1');
   });
+
+  test('login accepts EMAIL as the identifier (alice@example.com) — full flow', async () => {
+    const verifier = 'e'.repeat(64);
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
+    const start = await request('GET', `/authorize?client_id=note-haven-dev&redirect_uri=${encodeURIComponent(DEV_CLIENT.redirect_uris[0])}&response_type=code&scope=openid%20offline_access%20notes.sync&state=st-em&nonce=n-em&code_challenge=${challenge}&code_challenge_method=S256`);
+    assert.equal(start.status, 200);
+    const cookieOf = (res) => String(res.headers['set-cookie'] ?? '').split(';').find((c) => c.startsWith('nh_pending=')) ?? '';
+    const submit = (cookie, identifier, password) => request('POST', '/authorize/submit', { body: `username=${encodeURIComponent(identifier)}&password=${encodeURIComponent(password)}`, raw: true, headers: { 'content-type': 'application/x-www-form-urlencoded', ...(cookie ? { cookie } : {}) } });
+    const viaEmail = await submit(cookieOf(start), 'alice@example.com', 'correct-horse-battery-staples');
+    assert.equal(viaEmail.status, 200);
+    assert.match(viaEmail.body, /http-equiv="refresh"/);
+    const match = viaEmail.body.match(/content="0;url=([^"]+)"/);
+    assert.ok(match, 'email login must reach the handoff page');
+    const location = new URL(match[1].replace(/&amp;/g, '&'));
+    assert.equal(location.searchParams.get('state'), 'st-em');
+    assert.ok(location.searchParams.get('code'));
+    // bob's email must resolve to BOB, not alice. Fresh flow: the alice
+    // login above CONSUMED its pending authorization (single-use), so the
+    // next POST needs a brand-new pending cookie.
+    const start2 = await request('GET', `/authorize?client_id=note-haven-dev&redirect_uri=${encodeURIComponent(DEV_CLIENT.redirect_uris[0])}&response_type=code&scope=openid&state=st-em2&nonce=n-em2&code_challenge=${challenge}&code_challenge_method=S256`);
+    assert.equal(start2.status, 200);
+    const badUser = await submit(cookieOf(start2), 'bob@example.com', 'correct-horse-battery-staples');
+    assert.equal(badUser.status, 200);
+    assert.match(badUser.body, /Wrong username or password/);
+  });
+
+  test('login form label invites either identifier; unknown identifier re-renders with the value echoed', async () => {
+    const verifier = 'u'.repeat(64);
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
+    const start = await request('GET', `/authorize?client_id=note-haven-dev&redirect_uri=${encodeURIComponent(DEV_CLIENT.redirect_uris[0])}&response_type=code&scope=openid&state=st-lbl&nonce=n-lbl&code_challenge=${challenge}&code_challenge_method=S256`);
+    assert.match(start.body, /Username or email/);
+    const cookieOf = (res) => String(res.headers['set-cookie'] ?? '').split(';').find((c) => c.startsWith('nh_pending=')) ?? '';
+    const res = await request('POST', '/authorize/submit', { body: 'username=nobody%40example.com&password=x', raw: true, headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: cookieOf(start) } });
+    assert.equal(res.status, 200);
+    assert.match(res.body, /Wrong username or password/);
+    // The submitted identifier is echoed back into the field (usability).
+    assert.match(res.body, /value="nobody@example\.com"/);
+  });
 });
