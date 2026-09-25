@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Lock, X } from 'lucide-react';
 import {
   loadSyncSettings,
   saveSyncSettings,
@@ -30,6 +31,7 @@ import {
   type StoredSyncSettings,
   type SyncScope,
 } from '@/lib/syncSettings';
+import { parseDiscoveryExclusions, type ServerExclusions } from '@/lib/sync';
 import { refreshAutoSyncScheduler } from '@/lib/autoSyncScheduler';
 import { runSync, SyncError } from '@/lib/sync';
 import { runInFlight } from '@/lib/inFlight';
@@ -89,6 +91,13 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
   const [syncScope, setSyncScope] = useState<SyncScope>(stored.syncScope);
   const [syncedCategories, setSyncedCategories] = useState<string[]>(stored.syncedCategories);
   const [dbCategories, setDbCategories] = useState<string[]>([]);
+  // Client-side exclusions (deny lists, per device).
+  const [excludedCategories, setExcludedCategories] = useState<string[]>(stored.excludedCategories);
+  // Server-side policy, read from the discovery document (read-only here).
+  const [serverExclusions, setServerExclusions] = useState<ServerExclusions>({
+    excludedCategories: [],
+    excludedUids: [],
+  });
 
   const dirty =
     serverUrl !== stored.serverUrl ||
@@ -96,7 +105,8 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
     autoSync !== stored.autoSync ||
     intervalInput !== String(stored.intervalMinutes) ||
     syncScope !== stored.syncScope ||
-    JSON.stringify(syncedCategories) !== JSON.stringify(stored.syncedCategories);
+    JSON.stringify(syncedCategories) !== JSON.stringify(stored.syncedCategories) ||
+    JSON.stringify(excludedCategories) !== JSON.stringify(stored.excludedCategories);
 
   const parsedInterval = useMemo(() => {
     const n = Number(intervalInput);
@@ -111,6 +121,8 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
       intervalMinutes: parsedInterval ?? stored.intervalMinutes,
       syncScope,
       syncedCategories,
+      excludedCategories,
+      excludedNoteIds: stored.excludedNoteIds,
       lastSync: stored.lastSync,
     }),
     [
@@ -119,9 +131,11 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
       autoSync,
       parsedInterval,
       stored.intervalMinutes,
+      stored.excludedNoteIds,
       stored.lastSync,
       syncScope,
       syncedCategories,
+      excludedCategories,
     ],
   );
 
@@ -144,6 +158,32 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
     const gone = syncedCategories.filter((c) => !dbCategories.includes(c));
     return Array.from(new Set([...dbCategories, ...gone])).sort((a, b) => a.localeCompare(b));
   }, [dbCategories, syncedCategories]);
+
+  // Categories this server refuses to store (from discovery notes.excluded_*).
+  const serverDeniedCategories = useMemo(
+    () => new Set(serverExclusions.excludedCategories),
+    [serverExclusions],
+  );
+
+  // Server policy: fetch the discovery document when a server is configured.
+  // setState happens only inside the async continuation (never synchronously
+  // in the effect body), and a cleared server URL resets the policy to none.
+  useEffect(() => {
+    let cancelled = false;
+    const base = stored.serverUrl;
+    const policy = base
+      ? fetch(`${base}/.well-known/openid-configuration`)
+          .then((res) => (res.ok ? res.json() : null))
+          .catch(() => null)
+      : Promise.resolve(null);
+    policy.then((doc) => {
+      if (cancelled) return;
+      setServerExclusions(doc ? parseDiscoveryExclusions(doc) : { excludedCategories: [], excludedUids: [] });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [stored.serverUrl]);
 
   /** Persist current fields (also used before a sync so the engine sees them). */
   const persist = (extra?: Partial<StoredSyncSettings>) => {
@@ -595,14 +635,18 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
                   {selectableCategories.map((category) => {
                     const gone = !dbCategories.includes(category);
                     const checked = syncedCategories.includes(category);
+                    const serverDenied = serverDeniedCategories.has(category);
                     return (
                       <label
                         key={category}
-                        className="flex items-center gap-2 text-sm text-foreground cursor-pointer"
+                        className={`flex items-center gap-2 text-sm text-foreground ${serverDenied ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                        title={serverDenied ? 'Denied by server policy' : undefined}
                       >
                         <Checkbox
                           checked={checked}
+                          disabled={serverDenied}
                           onCheckedChange={(v) => {
+                            if (serverDenied) return;
                             setSyncedCategories((prev) =>
                               v === true
                                 ? Array.from(new Set([...prev, category]))
@@ -611,15 +655,89 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
                           }}
                           data-testid={`sync-scope-cat-${category}`}
                         />
-                        <span>
+                        <span className="flex items-center gap-1">
                           {category}
                           {gone && <span className="text-xs text-muted-foreground"> (gone)</span>}
+                          {serverDenied && (
+                            <span
+                              className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground"
+                              data-testid={`sync-server-denied-${category}`}
+                              title="Denied by server policy — this category never syncs"
+                            >
+                              <Lock size={10} aria-hidden />
+                              Denied by server policy
+                            </span>
+                          )}
                         </span>
                       </label>
                     );
                   })}
                 </div>
               )}
+
+              {/* Client-side exclusions (deny wins over everything above). */}
+              <div className="rounded-md border px-3 py-2.5 space-y-2" data-testid="sync-exclusions">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Excluded from sync</p>
+                  <p className="text-xs text-muted-foreground">
+                    Notes in these categories stay on this device and are never pushed or pulled —
+                    even if the category is selected above. Deny always wins.
+                  </p>
+                </div>
+                {excludedCategories.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {excludedCategories.map((category) => (
+                      <span
+                        key={category}
+                        className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-foreground"
+                        data-testid={`sync-excluded-chip-${category}`}
+                      >
+                        {category}
+                        <button
+                          type="button"
+                          aria-label={`Stop excluding ${category}`}
+                          className="rounded-full p-0.5 hover:bg-foreground/10"
+                          onClick={() => setExcludedCategories((prev) => prev.filter((c) => c !== category))}
+                        >
+                          <X size={10} aria-hidden />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {(() => {
+                  const remaining = dbCategories.filter(
+                    (c) => !excludedCategories.includes(c) && !serverDeniedCategories.has(c),
+                  );
+                  if (remaining.length === 0) return null;
+                  return (
+                    <select
+                      className="w-full rounded-md border bg-transparent px-2 py-1.5 text-sm"
+                      value=""
+                      aria-label="Add a category to exclude from sync"
+                      data-testid="sync-excluded-add"
+                      onChange={(e) => {
+                        const category = e.target.value;
+                        if (!category) return;
+                        setExcludedCategories((prev) => Array.from(new Set([...prev, category])));
+                      }}
+                    >
+                      <option value="">Exclude a category…</option>
+                      {remaining.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  );
+                })()}
+                {serverExclusions.excludedCategories.length > 0 && (
+                  <p className="text-xs text-muted-foreground" data-testid="sync-server-exclusions-note">
+                    <Lock size={10} className="inline mr-1 -mt-0.5" aria-hidden />
+                    Server policy also excludes: {serverExclusions.excludedCategories.join(', ')}
+                  </p>
+                )}
+              </div>
             </section>
 
             {/* Sync now + status */}

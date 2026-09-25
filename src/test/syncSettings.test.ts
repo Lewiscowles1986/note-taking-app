@@ -31,6 +31,8 @@ describe('loadSyncSettings', () => {
       intervalMinutes: 15,
       syncScope: 'all',
       syncedCategories: [],
+      excludedCategories: [],
+      excludedNoteIds: [],
       lastSync: null,
     });
   });
@@ -52,6 +54,8 @@ describe('loadSyncSettings', () => {
       intervalMinutes: 30,
       syncScope: 'categories',
       syncedCategories: ['Work'],
+      excludedCategories: [],
+      excludedNoteIds: [],
       lastSync: { at: '2026-01-01T00:00:00.000Z', ok: true, summary: '2 pushed' },
     });
   });

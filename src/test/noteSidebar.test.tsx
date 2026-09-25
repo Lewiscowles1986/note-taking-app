@@ -418,4 +418,44 @@ describe('NoteSidebar component', () => {
     expect(screen.queryByRole('button', { name: 'work' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Inbox' })).toBeNull();
   });
+
+  describe('sync exclusion affordances', () => {
+    it('shows a muted "excluded" badge on excluded notes and no badge on others', () => {
+      render(
+        <NoteSidebar
+          {...makeProps({
+            notes: [makeNote({ id: 1, title: 'Excluded note' }), makeNote({ id: 2, title: 'Normal note' })],
+            excludedNoteIds: [1],
+            onToggleSyncExcluded: vi.fn(),
+          })}
+        />,
+      );
+      expect(screen.getByTestId('sync-excluded-badge-1')).toBeTruthy();
+      expect(screen.queryByTestId('sync-excluded-badge-2')).toBeNull();
+    });
+
+    it('toggle button flips its label/aria state and calls onToggleSyncExcluded with the note', () => {
+      const onToggle = vi.fn();
+      const note = makeNote({ id: 5, title: 'Toggle me' });
+      const view = render(
+        <NoteSidebar {...makeProps({ notes: [note], excludedNoteIds: [], onToggleSyncExcluded: onToggle })} />,
+      );
+      const toggle = screen.getByTestId('sync-exclude-toggle-5');
+      expect(toggle.getAttribute('title')).toBe('Exclude from sync');
+      fireEvent.click(toggle);
+      expect(onToggle).toHaveBeenCalledWith(note);
+      view.unmount();
+
+      const excludedView = render(
+        <NoteSidebar {...makeProps({ notes: [note], excludedNoteIds: [5], onToggleSyncExcluded: onToggle })} />,
+      );
+      expect(screen.getByTestId('sync-exclude-toggle-5').getAttribute('title')).toBe('Include in sync');
+      excludedView.unmount();
+    });
+
+    it('hides the toggle affordance when no handler is wired (prop-driven optional)', () => {
+      render(<NoteSidebar {...makeProps({ notes: [makeNote({ id: 1, title: 'No handler' })] })} />);
+      expect(screen.queryByTestId('sync-exclude-toggle-1')).toBeNull();
+    });
+  });
 });

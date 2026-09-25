@@ -32,8 +32,16 @@ Signing key: kid=<16-hex> (newly generated)
 | `--host` | `HOST` | `localhost` | bind address |
 | `--data-dir` | `NOTEHAVEN_DATA_DIR` | `server/data` | state directory |
 | `--issuer` | `NOTEHAVEN_ISSUER` | `http://<host>:<port>` | OIDC issuer URL (set when behind a proxy) |
+| — | `NOTEHAVEN_EXCLUDED_CATEGORIES` | *(empty)* | Comma-separated category names that must never sync (exact, case-sensitive match) |
+| — | `NOTEHAVEN_EXCLUDED_NOTES` | *(empty)* | Comma-separated note uids that must never sync |
 
 Precedence: defaults < env < CLI flags.
+
+Sync exclusions (deny lists): PUT for an excluded category/uid → `403
+{"error":"excluded",…}`; the manifest omits excluded uids entirely (even
+tombstones); DELETE stays allowed. Advertised in discovery as
+`notes.excluded_categories` / `notes.excluded_uids` when non-empty. Full
+details: [docs/server-admin.md](../docs/server-admin.md).
 
 ## Dev credentials (local only)
 
@@ -62,8 +70,8 @@ salts.
 | POST | `/revoke` | client auth | RFC 7009 token revocation |
 | GET | `/api/notes` | Bearer (scope `notes.sync`) | Manifest `{ notes: [{ uid, updatedAt, deleted? }] }` |
 | GET | `/api/notes/{uid}` | Bearer | Full note payload; tombstoned uid → 404 |
-| PUT | `/api/notes/{uid}` | Bearer | Upsert (body = full note payload); a body `uid` must equal the path uid → else 400 |
-| DELETE | `/api/notes/{uid}` | Bearer | Tombstone (never hard-delete; idempotent) |
+| PUT | `/api/notes/{uid}` | Bearer | Upsert (body = full note payload); a body `uid` must equal the path uid → else 400; excluded category/uid → 403 `excluded` |
+| DELETE | `/api/notes/{uid}` | Bearer | Tombstone (never hard-delete; idempotent; allowed even for excluded uids) |
 | GET | `/healthz` | — | Liveness |
 | OPTIONS | any | — | CORS preflight → 204 |
 | HEAD | wherever GET is served | same as GET | Same status as GET; body suppressed (Node auto-handles this) |

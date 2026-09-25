@@ -36,6 +36,10 @@ export interface SyncSettings {
   syncScope: SyncScope;
   /** Chosen categories — used (and only used) when syncScope === 'categories'. */
   syncedCategories: string[];
+  /** Client-side deny list: these categories never sync from this device. */
+  excludedCategories: string[];
+  /** Client-side deny list: these local note ids never sync from this device. */
+  excludedNoteIds: number[];
 }
 
 export interface LastSyncInfo {
@@ -65,6 +69,8 @@ const DEFAULT_SETTINGS: StoredSyncSettings = {
   intervalMinutes: 15,
   syncScope: 'all',
   syncedCategories: [],
+  excludedCategories: [],
+  excludedNoteIds: [],
   lastSync: null,
 };
 
@@ -72,6 +78,12 @@ const DEFAULT_SETTINGS: StoredSyncSettings = {
 function toCategoryList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return Array.from(new Set(value.filter((v): v is string => typeof v === 'string' && v.length > 0)));
+}
+
+/** Validate a note-id list: finite numbers only, deduped. */
+function toNoteIdList(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.filter((v): v is number => typeof v === 'number' && Number.isFinite(v))));
 }
 
 function toScope(value: unknown): SyncScope {
@@ -115,6 +127,8 @@ export function loadSyncSettings(): StoredSyncSettings {
         : DEFAULT_SETTINGS.intervalMinutes,
       syncScope: toScope(obj.syncScope),
       syncedCategories: toCategoryList(obj.syncedCategories),
+      excludedCategories: toCategoryList(obj.excludedCategories),
+      excludedNoteIds: toNoteIdList(obj.excludedNoteIds),
       lastSync,
     };
   } catch {
@@ -124,10 +138,12 @@ export function loadSyncSettings(): StoredSyncSettings {
 
 /** Persist the editable fields + lastSync. Normalizes the server URL. */
 export function saveSyncSettings(
-  settings: Omit<SyncSettings, 'syncScope' | 'syncedCategories'> & {
+  settings: Omit<SyncSettings, 'syncScope' | 'syncedCategories' | 'excludedCategories' | 'excludedNoteIds'> & {
     lastSync?: LastSyncInfo | null;
     syncScope?: SyncScope;
     syncedCategories?: string[];
+    excludedCategories?: string[];
+    excludedNoteIds?: number[];
   },
 ): void {
   const stored: StoredSyncSettings = {
@@ -139,6 +155,8 @@ export function saveSyncSettings(
       : DEFAULT_SETTINGS.intervalMinutes,
     syncScope: toScope(settings.syncScope),
     syncedCategories: toCategoryList(settings.syncedCategories),
+    excludedCategories: toCategoryList(settings.excludedCategories),
+    excludedNoteIds: toNoteIdList(settings.excludedNoteIds),
     lastSync: settings.lastSync ?? null,
   };
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(stored));
@@ -172,6 +190,79 @@ export function isCategoryInScope(
 ): boolean {
   if (scope !== 'categories') return true;
   return syncedCategories.includes(category);
+}
+
+/** True when the note id is on the device's deny list. */
+export function isNoteExcluded(noteId: number, excludedNoteIds: number[]): boolean {
+  return excludedNoteIds.includes(noteId);
+}
+
+// ─── the exclusion precedence model ──────────────────────────────────────────
+
+export type SyncDecisionReason = 'server-denied' | 'client-denied' | 'out-of-scope' | 'allowed';
+export type SyncDecision = 'sync' | 'skip';
+
+export interface SyncDecisionInput {
+  /** Layer 1 (server policy): categories the sync server refuses to store. */
+  serverExcludedCategories: string[];
+  /** Layer 1 (server policy): note uids the sync server refuses to store. */
+  serverExcludedUids: string[];
+  /** Sync identity (uid) of the note being decided — may be unknown (''). */
+  uid: string;
+  /** Local note id — may be unknown (-1) for remote-only notes. */
+  noteId: number;
+  /** The note's category. */
+  category: string;
+  /** Layer 2 (client allow): the configured sync scope. */
+  syncScope: SyncScope;
+  /** Layer 2 (client allow): chosen categories when scope === 'categories'. */
+  syncedCategories: string[];
+  /** Layer 2 (client deny): categories excluded on this device. */
+  excludedCategories: string[];
+  /** Layer 2 (client deny): local note ids excluded on this device. */
+  excludedNoteIds: number[];
+}
+
+/**
+ * The ONE decision function for "does this note sync?" — the single source of
+ * truth used by the sync engine and rendered by the settings UI.
+ *
+ * PRECEDENCE TABLE (deny always wins):
+ *
+ *   | server deny | client allow (scope) | client deny | result   |
+ *   |-------------|-----------------------|-------------|----------|
+ *   | yes         | —                     | —           | EXCLUDED |
+ *   | no          | no                    | —           | EXCLUDED |
+ *   | no          | yes                   | no          | ALLOWED  |
+ *   | no          | yes                   | yes         | EXCLUDED |
+ *
+ * Evaluated fail-closed: the first deny reason wins; a note only syncs when
+ * every layer says yes. A server deny short-circuits before the client's
+ * allow/deny layers are even consulted — the server is authoritative.
+ */
+export function resolveSyncDecision(input: SyncDecisionInput): {
+  decision: SyncDecision;
+  reason: SyncDecisionReason;
+} {
+  // Layer 1 — server policy. Checked first: it wins over everything else.
+  if (input.serverExcludedUids.includes(input.uid) && input.uid !== '') {
+    return { decision: 'skip', reason: 'server-denied' };
+  }
+  if (input.serverExcludedCategories.includes(input.category)) {
+    return { decision: 'skip', reason: 'server-denied' };
+  }
+  // Layer 2 — the device's own deny lists. Client deny beats client allow.
+  if (input.excludedNoteIds.includes(input.noteId)) {
+    return { decision: 'skip', reason: 'client-denied' };
+  }
+  if (input.excludedCategories.includes(input.category)) {
+    return { decision: 'skip', reason: 'client-denied' };
+  }
+  // Layer 2 — the allow list. Only reached when nothing denied the note.
+  if (!isCategoryInScope(input.category, input.syncScope, input.syncedCategories)) {
+    return { decision: 'skip', reason: 'out-of-scope' };
+  }
+  return { decision: 'sync', reason: 'allowed' };
 }
 
 // ─── tombstones ──────────────────────────────────────────────────────────────

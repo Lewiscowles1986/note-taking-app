@@ -1,10 +1,12 @@
 // Configuration for the Note Haven reference sync server.
 //
 // Precedence: built-in defaults < environment overrides (PORT, HOST,
-// NOTEHAVEN_DATA_DIR, NOTEHAVEN_ISSUER) < CLI flags (parsed in index.mjs and
+// NOTEHAVEN_DATA_DIR, NOTEHAVEN_ISSUER, NOTEHAVEN_EXCLUDED_CATEGORIES,
+// NOTEHAVEN_EXCLUDED_NOTES) < CLI flags (parsed in index.mjs and
 // passed in as `args`).
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseExclusions } from './exclusions.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -30,6 +32,11 @@ export function envOverrides(env = process.env) {
   if (env.HOST) overrides.host = env.HOST;
   if (env.NOTEHAVEN_DATA_DIR) overrides.dataDir = path.resolve(env.NOTEHAVEN_DATA_DIR);
   if (env.NOTEHAVEN_ISSUER) overrides.issuer = String(env.NOTEHAVEN_ISSUER).replace(/\/+$/, '');
+  // Server-side exclusion policy (deny lists). Empty/absent → nothing denied.
+  const exclusions = parseExclusions(env);
+  if (exclusions.excludedCategories.length || exclusions.excludedUids.length) {
+    overrides.exclusions = exclusions;
+  }
   return overrides;
 }
 
@@ -40,6 +47,13 @@ export function resolveIssuer(host, port, explicitIssuer = '') {
 
 export function buildConfig({ args = {}, env = process.env } = {}) {
   const merged = { ...DEFAULTS, ...envOverrides(env), ...args };
+  // Exclusion policy always exists on the config object (empty = nothing
+  // denied) so route handlers never need an undefined check.
+  merged.exclusions = {
+    excludedCategories: [],
+    excludedUids: [],
+    ...merged.exclusions,
+  };
   merged.issuer = resolveIssuer(merged.host, merged.port, merged.issuer);
   return merged;
 }

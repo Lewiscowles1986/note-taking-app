@@ -17,6 +17,7 @@ import EncryptionDialog from '@/components/EncryptionDialog';
 // out of the critical path like the other secondary surfaces.
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 import type { Note } from '@/lib/db';
+import { loadSyncSettings, saveSyncSettings } from '@/lib/syncSettings';
 import type { StoredKeyPair } from '@/lib/crypto';
 import { runInFlight } from '@/lib/inFlight';
 import { Eye, Pencil, PanelLeftClose, PanelLeftOpen, Calendar, Settings, Lock, ChevronLeft } from 'lucide-react';
@@ -84,6 +85,20 @@ export default function Index() {
       saveNote(note.id, { pinned: !note.pinned });
     }
   };
+
+  // Per-device sync exclusion for a single note (deny list in localStorage —
+  // the Dexie schema is never touched for sync configuration).
+  const [excludedNoteIds, setExcludedNoteIds] = useState<number[]>(() => loadSyncSettings().excludedNoteIds);
+  const handleToggleSyncExcluded = useCallback((note: Note) => {
+    if (!note.id) return;
+    setExcludedNoteIds((prev) => {
+      const next = prev.includes(note.id)
+        ? prev.filter((id) => id !== note.id)
+        : [...prev, note.id];
+      saveSyncSettings({ ...loadSyncSettings(), excludedNoteIds: next });
+      return next;
+    });
+  }, []);
 
   // Selecting a note from the list: desktop keeps the sidebar open, mobile
   // closes the top sheet so the note opens full-screen.
@@ -273,6 +288,8 @@ export default function Index() {
               onFilterTag={setFilterTag}
               onFilterCategory={setFilterCategory}
               onRefresh={refresh}
+              excludedNoteIds={excludedNoteIds}
+              onToggleSyncExcluded={handleToggleSyncExcluded}
               className="w-full max-h-[80dvh] pt-[env(safe-area-inset-top)]"
             />
           </SheetContent>
@@ -295,6 +312,8 @@ export default function Index() {
             onFilterTag={setFilterTag}
             onFilterCategory={setFilterCategory}
             onRefresh={refresh}
+            excludedNoteIds={excludedNoteIds}
+            onToggleSyncExcluded={handleToggleSyncExcluded}
           />
         )
       )}

@@ -15,6 +15,7 @@ import {
 } from './http-utils.mjs';
 import { SESSION_COOKIE } from './authn.mjs';
 import { discoveryDocument } from './oidc.mjs';
+import { exclusionDiscoveryFields } from './exclusions.mjs';
 import { jwksDocument } from './keys.mjs';
 import * as api from './api.mjs';
 
@@ -111,7 +112,10 @@ export function createRouter({ config, store, oidc, keys, sessions }) {
       req.parsedCookies = parseCookies(req);
       // --- well-known & discovery -----------------------------------------
       if (method === 'GET' && pathname === '/.well-known/openid-configuration') {
-        return sendJson(res, 200, discoveryDocument(config.issuer), {
+        return sendJson(res, 200, {
+          ...discoveryDocument(config.issuer),
+          ...exclusionDiscoveryFields(config.exclusions ?? { excludedCategories: [], excludedUids: [] }),
+        }, {
           ...cors,
           'Cache-Control': 'public, max-age=300',
         });
@@ -177,7 +181,7 @@ export function createRouter({ config, store, oidc, keys, sessions }) {
         // AuthN + scope. Scope failure → 403; missing/bad token → 401.
         const payload = api.requireBearer(oidc, req, res, origin, { scope: 'notes.sync' });
         if (!payload) return;
-        const ctx = { store, oidc, payload, origin, config };
+        const ctx = { store, oidc, payload, origin, config, exclusions: config.exclusions ?? { excludedCategories: [], excludedUids: [] } };
         if (pathname === '/api/notes' && method === 'GET') {
           return api.getManifest(req, res, ctx);
         }

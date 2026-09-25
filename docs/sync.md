@@ -223,6 +223,28 @@ Semantics under a category scope:
   a defect — see `runSync` in `src/lib/sync.ts`.
 - "Test connection" and the manifest shape are unaffected by scope.
 
+### Exclusions (deny lists) — deny always wins
+
+On top of the scope allow-list there are two deny layers, evaluated at sync
+time by one pure function (`resolveSyncDecision` in `src/lib/syncSettings.ts`):
+
+1. **Server policy** — the sync server may declare excluded categories/uids
+   (`NOTEHAVEN_EXCLUDED_CATEGORIES` / `NOTEHAVEN_EXCLUDED_NOTES`), advertised
+   in discovery as `notes.excluded_categories` / `notes.excluded_uids` and
+   enforced server-side (PUT → 403; manifest omits the uids entirely).
+2. **Device deny lists** — the user's own per-device exclusions
+   (`excludedCategories`, `excludedNoteIds` in the settings blob).
+
+**Deny always wins:** an entity syncs iff it is server-allowed AND
+client-allowed (scope) AND client-not-denied — the first denial wins and is
+reported as the reason (`server-denied` / `client-denied` / `out-of-scope`).
+Excluded notes are never pushed, never pulled, and their server-side
+deletions raise no keep-or-delete prompt; local deletions of excluded notes
+still propagate (exclusions govern content, not lifecycle bookkeeping).
+
+Full user-facing semantics and diagrams: [exclusions.md](exclusions.md) ·
+sysadmin configuration: [server-admin.md](server-admin.md).
+
 ## Never-delete policy + notification queue
 
 The client **never removes a local note because the server says so**. This is

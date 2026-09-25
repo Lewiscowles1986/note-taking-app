@@ -28,7 +28,7 @@ import { db, detectContentFeatures, type Note } from './db';
 import {
   loadSyncSettings,
   loadTombstones,
-  isCategoryInScope,
+  resolveSyncDecision,
   recordSyncResult,
   recordTombstone,
   retainTombstones,
@@ -395,6 +395,30 @@ async function bearerHeaders(
   return authHeaders(token, hasBody);
 }
 
+/** Exclusion lists advertised by a server in its discovery document. */
+export interface ServerExclusions {
+  excludedCategories: string[];
+  excludedUids: string[];
+}
+
+const NO_EXCLUSIONS: ServerExclusions = { excludedCategories: [], excludedUids: [] };
+
+/**
+ * Extract `notes.excluded_categories` / `notes.excluded_uids` from a discovery
+ * document. Tolerates absent/invalid shapes (older servers, wrong types) by
+ * returning empty lists — the server still enforces its own policy on PUT.
+ */
+export function parseDiscoveryExclusions(data: unknown): ServerExclusions {
+  const notes = (data as { notes?: unknown } | null)?.notes;
+  if (!notes || typeof notes !== 'object' || Array.isArray(notes)) return { ...NO_EXCLUSIONS };
+  const toList = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.length > 0) : [];
+  return {
+    excludedCategories: toList((notes as { excluded_categories?: unknown }).excluded_categories),
+    excludedUids: toList((notes as { excluded_uids?: unknown }).excluded_uids),
+  };
+}
+
 async function requestJson<T>(
   fetchImpl: FetchLike,
   url: string,
@@ -418,6 +442,29 @@ async function requestJson<T>(
     return JSON.parse(text) as T;
   } catch {
     throw new SyncError(`${what}: server returned invalid JSON`);
+  }
+}
+
+/**
+ * Read the server's exclusion policy from its discovery document. Best-effort:
+ * an unreachable/undecipherable discovery endpoint yields empty lists so sync
+ * proceeds — the server still enforces its own policy with 403 on PUT.
+ */
+export async function fetchServerExclusions(
+  base: string,
+  fetchImpl: FetchLike,
+  signal?: AbortSignal,
+): Promise<ServerExclusions> {
+  try {
+    const doc = await requestJson<unknown>(
+      fetchImpl,
+      `${base}/.well-known/openid-configuration`,
+      { method: 'GET', headers: {}, signal },
+      'Reading server sync policy',
+    );
+    return parseDiscoveryExclusions(doc);
+  } catch {
+    return { ...NO_EXCLUSIONS };
   }
 }
 
@@ -480,12 +527,29 @@ export async function runSync(options: {
   const notes = await db.notes.toArray();
   const liveIds = notes.map((n) => n.id!);
   pruneUidMap(liveIds);
-  const inScope = (category: string): boolean =>
-    isCategoryInScope(category, settings.syncScope, settings.syncedCategories);
-  // Out-of-scope notes keep their uid mapping (a later move back into scope
-  // syncs normally) but are invisible to this sync round.
+
+  // Layer 1 — the server's exclusion policy, read from discovery each run.
+  const serverExclusions = await fetchServerExclusions(base, fetchImpl, options.signal);
+
+  /** The ONE sync/not-sync decision for a note (deny always wins). */
+  const decide = (noteId: number, uid: string, category: string) =>
+    resolveSyncDecision({
+      serverExcludedCategories: serverExclusions.excludedCategories,
+      serverExcludedUids: serverExclusions.excludedUids,
+      uid,
+      noteId,
+      category,
+      syncScope: settings.syncScope,
+      syncedCategories: settings.syncedCategories,
+      excludedCategories: settings.excludedCategories,
+      excludedNoteIds: settings.excludedNoteIds,
+    });
+
+  // Excluded/out-of-scope notes keep their uid mapping (a later move back
+  // into scope syncs normally) but are invisible to this sync round —
+  // neither pushed, pulled, nor prompted about.
   const localMetas: LocalNoteMeta[] = notes
-    .filter((n) => inScope(n.category))
+    .filter((n) => decide(n.id!, assignUidForNoteId(n.id!), n.category).decision === 'sync')
     .map((n) => ({
       noteId: n.id!,
       uid: assignUidForNoteId(n.id!),
@@ -508,14 +572,18 @@ export async function runSync(options: {
   );
   const remote = parseManifest(manifestData);
 
-  // Category-scoped syncs drop manifest entries whose uid is KNOWN to live in
-  // an out-of-scope category (from the uid→category cache). Unknown uids are
-  // fetched once; if their payload turns out to be out of scope they land in
-  // the cache and are skipped from the next run on.
+  // Remote manifest entries are filtered through the SAME decision function:
+  // a uid whose stored category is known client-denied/server-denied/out-of-
+  // scope is invisible to this round WITHOUT fetching its payload. Unknown
+  // uids are fetched once; if their payload turns out excluded they land in
+  // the category cache and are skipped from the next run on. Excluded uids
+  // (server deny list) are filtered even when cached, since the server never
+  // lists them in the manifest anyway.
   const remoteCategories = loadRemoteCategories();
   const remoteInScope = remote.filter((r) => {
     const known = remoteCategories[r.uid];
-    return known === undefined || inScope(known);
+    if (known === undefined) return true;
+    return decide(-1, r.uid, known).decision === 'sync';
   });
 
   // Local notes by uid for titles/categories in notifications.
@@ -563,14 +631,15 @@ export async function runSync(options: {
           { method: 'GET', headers: await bearerHeaders(settings.authToken, fetchImpl), signal: options.signal },
           'Pulling note',
         );
-        // Scope re-check on the payload: the manifest entry was in scope, but
-        // the stored payload's category is authoritative — a note that moved
-        // out of scope on another device must not be pulled in.
-        if (!inScope(payload.category)) {
-          rememberRemoteCategory(op.uid, payload.category);
+        // Re-check the decision on the payload: the manifest entry looked
+        // syncable, but the stored payload's category is authoritative — a
+        // note that moved into an excluded/out-of-scope category on another
+        // device must not be pulled in.
+        const payloadDecision = decide(-1, op.uid, payload.category);
+        rememberRemoteCategory(op.uid, payload.category);
+        if (payloadDecision.decision === 'skip') {
           continue;
         }
-        rememberRemoteCategory(op.uid, payload.category);
         const note = payloadToNote(payload);
         if (op.noteId != null) {
           await db.notes.update(op.noteId, { ...note });
@@ -584,13 +653,19 @@ export async function runSync(options: {
       } else if (op.kind === 'delete-local') {
         // NEVER-DELETE POLICY: a remote deletion must not remove the local
         // note. Queue a keep-or-delete prompt instead (unless this client
-        // already has a permanent exception or a pending prompt for the uid).
+        // already has a permanent exception, a pending prompt for the uid, or
+        // the note is excluded from sync — an excluded note is not managed,
+        // so its deletion is none of this client's business).
         const meta = noteByUid.get(op.uid);
-        if (!wouldPromptBeSuppressed(op.uid)) {
+        const noteInfo = noteIdByUid.get(op.uid);
+        const excludedNote = meta
+          ? decide(meta.noteId, op.uid, meta.category).reason !== 'allowed'
+          : !!noteInfo && decide(noteInfo.id!, op.uid, noteInfo.category).reason !== 'allowed';
+        if (!wouldPromptBeSuppressed(op.uid) && !excludedNote) {
           enqueueRemoteDeletion({
             uid: op.uid,
-            title: meta?.title ?? noteIdByUid.get(op.uid)?.title ?? 'Untitled',
-            category: meta?.category ?? noteIdByUid.get(op.uid)?.category ?? 'General',
+            title: meta?.title ?? noteInfo?.title ?? 'Untitled',
+            category: meta?.category ?? noteInfo?.category ?? 'General',
             deletedAt: remote.find((r) => r.uid === op.uid)?.updatedAt ?? new Date().toISOString(),
           });
           notifiedDeletions++;

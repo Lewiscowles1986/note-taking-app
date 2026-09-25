@@ -1,6 +1,7 @@
 // The /api/notes routes — per-user note storage behind Bearer-token auth.
 // Every access requires a valid access token with the notes.sync scope.
 import { HttpError, NO_STORE, sendJson } from './http-utils.mjs';
+import { isCategoryExcluded, isUidExcluded } from './exclusions.mjs';
 
 const CORS_JSON = { 'Access-Control-Allow-Credentials': 'false' };
 
@@ -52,11 +53,17 @@ function withCors(origin, extra = {}) {
   };
 }
 
-// GET /api/notes → manifest for the token's user only.
+// GET /api/notes → manifest for the token's user only. Excluded uids are
+// omitted entirely — the server does not leak the existence of notes it has
+// denied (even their tombstones stay hidden).
 export function getManifest(req, res, ctx) {
   const { payload } = ctx;
   const manifest = ctx.store.manifest(payload.sub);
-  return sendJson(res, 200, manifest, withCors(ctx.origin));
+  const exclusions = ctx.exclusions ?? { excludedCategories: [], excludedUids: [] };
+  const filtered = exclusions.excludedUids.length
+    ? { notes: manifest.notes.filter((n) => !isUidExcluded(exclusions, n.uid)) }
+    : manifest;
+  return sendJson(res, 200, filtered, withCors(ctx.origin));
 }
 
 // GET /api/notes/{uid} → full payload; tombstoned uids 404.
@@ -82,6 +89,16 @@ export async function putNote(req, res, ctx) {
   // a client bug — reject it instead of silently rewriting the body.
   if (payload.uid !== undefined && payload.uid !== uid) {
     return sendJson(res, 400, { error: 'invalid_request', error_description: 'body uid does not match path uid' }, withCors(ctx.origin));
+  }
+  // SERVER POLICY: exclusions are authoritative. A note payload in an
+  // excluded category (or an excluded uid) is refused with 403 regardless of
+  // what the client believes is in scope — deny wins at the server too.
+  const exclusions = ctx.exclusions ?? { excludedCategories: [], excludedUids: [] };
+  if (isUidExcluded(exclusions, uid)) {
+    return sendJson(res, 403, { error: 'excluded', error_description: `note uid "${uid}" is excluded on this server` }, withCors(ctx.origin));
+  }
+  if (isCategoryExcluded(exclusions, payload.category)) {
+    return sendJson(res, 403, { error: 'excluded', error_description: `category "${payload.category}" is excluded on this server` }, withCors(ctx.origin));
   }
   const updatedAt =
     (typeof payload.updatedAt === 'string' && !Number.isNaN(Date.parse(payload.updatedAt)) && payload.updatedAt) ||

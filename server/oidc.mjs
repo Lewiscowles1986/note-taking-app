@@ -12,11 +12,12 @@ import {
 } from './http-utils.mjs';
 import { signJwt, verifyJwt } from './jwt.mjs';
 import { errorPageHtml, handoffPageHtml, loginPageHtml, SESSION_COOKIE, verifyPassword } from './authn.mjs';
+import { exclusionDiscoveryFields } from './exclusions.mjs';
 
 export const SCOPES_SUPPORTED = ['openid', 'profile', 'offline_access', 'notes.sync'];
 export const NOTES_CLAIMS = ['notes.categories'];
 
-export function discoveryDocument(issuer) {
+export function discoveryDocument(issuer, exclusions = { excludedCategories: [], excludedUids: [] }) {
   return {
     issuer,
     authorization_endpoint: `${issuer}/authorize`,
@@ -33,6 +34,9 @@ export function discoveryDocument(issuer) {
     claims_supported: ['sub', 'preferred_username', 'name', 'email', 'amr', ...NOTES_CLAIMS],
     // OIDC Core §15.5.2: advertise the prompt values the IdP understands.
     prompt_values_supported: ['login', 'none'],
+    // Server-side sync policy: categories/uids this server will never store.
+    // Empty when nothing is excluded (see exclusions.mjs).
+    ...exclusionDiscoveryFields(exclusions),
   };
 }
 
