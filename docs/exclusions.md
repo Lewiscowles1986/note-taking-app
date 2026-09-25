@@ -118,7 +118,7 @@ later resumes cleanly.
 | `notes.excluded_categories` / `notes.excluded_uids` | — | — | discovery doc | Read-only advertisement of the above |
 | **Selected categories only** | client allow | user | Settings → What to sync | Scope allow-list (`syncedCategories`) |
 | **Excluded from sync** (categories) | client deny | user | Settings → What to sync | Per-device category deny-list (`excludedCategories`) |
-| **Exclude from sync** (note) | client deny | user | Sidebar row action | Per-device note deny-list (`excludedNoteIds`) |
+| **Exclude from sync** (note) | client deny | user | Sidebar row action | DEVICE-wide note deny-list (`excludedNoteIds`) — one exclusion applies to every configured sync server |
 | **excluded** badge | — | — | Sidebar | Shows a note is on the device deny-list |
 | 🔒 **Denied by server policy** | — | — | Settings | Server-denied category (cannot be allow-listed) |
 | 🔒 **server-denied** badge | — | — | Sidebar | Note's category is denied by the server — shown but never synced |

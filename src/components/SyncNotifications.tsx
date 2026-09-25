@@ -9,24 +9,24 @@ import {
 } from '@/components/ui/popover';
 import {
   SYNC_NOTIFICATIONS_EVENT,
-  getPendingNotifications,
+  getAllPendingNotifications,
   resolveNotification,
   type SyncNotification,
 } from '@/lib/syncNotifications';
+import { listServers } from '@/lib/syncServers';
 
 /**
  * Queued keep-or-delete prompts for notes the SERVER deleted (the client
  * never deletes on its own — docs/sync.md, "Never-delete policy").
  *
- * An inline bell in the header icon cluster (beside Calendar/Settings) shows
- * the pending count; the panel lists each queued note with its title,
- * category and deletion date plus the two actions: Keep on this device
- * (permanent exception for this browser profile) and Delete from this device
- * (explicit user-commanded removal).
+ * The bell aggregates across EVERY configured sync server (each server has
+ * its own queue); each item shows which server it came from. Actions are
+ * Keep on this device (permanent exception for this browser profile + that
+ * server) and Delete from this device (explicit user-commanded removal).
  *
- * Rendered inline by each top-level surface's header (Index, SettingsPage) —
- * never a bar of its own. It has no sync-engine dependency, which stays
- * behind a dynamic import in resolveNotification.
+ * Rendered inline by each top-level surface's header (Index, SettingsPage,
+ * ServersPage) — never a bar of its own. It has no sync-engine dependency,
+ * which stays behind a dynamic import in resolveNotification.
  */
 
 const formatDate = (iso: string): string => {
@@ -35,12 +35,14 @@ const formatDate = (iso: string): string => {
 };
 
 export default function SyncNotifications() {
-  const [pending, setPending] = useState<SyncNotification[]>(() => getPendingNotifications());
+  const [pending, setPending] = useState<SyncNotification[]>(() =>
+    getAllPendingNotifications(listServers().map((s) => s.id)),
+  );
   const [open, setOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
-    const refresh = () => setPending(getPendingNotifications());
+    const refresh = () => setPending(getAllPendingNotifications(listServers().map((s) => s.id)));
     window.addEventListener(SYNC_NOTIFICATIONS_EVENT, refresh);
     window.addEventListener('storage', refresh);
     return () => {
@@ -97,11 +99,16 @@ export default function SyncNotifications() {
         ) : (
           <ul className="max-h-80 overflow-y-auto divide-y divide-border">
             {pending.map((entry) => (
-              <li key={entry.uid} data-testid={`sync-queue-item-${entry.uid}`} className="px-3 py-2.5 space-y-2">
+              <li key={entry.id} data-testid={`sync-queue-item-${entry.uid}`} className="px-3 py-2.5 space-y-2">
                 <div>
                   <p className="text-sm font-medium text-foreground truncate">{entry.title}</p>
                   <p className="text-xs text-muted-foreground">
                     {entry.category} · deleted {formatDate(entry.deletedAt)}
+                    {entry.serverId && (
+                      <span className="ml-1.5" data-testid={`sync-queue-server-${entry.uid}`}>
+                        · {entry.serverId}
+                      </span>
+                    )}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">

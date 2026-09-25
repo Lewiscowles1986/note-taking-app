@@ -119,6 +119,10 @@ async function oidcLogin(page: import('@playwright/test').Page): Promise<void> {
 async function runOidcLoginSteps(page: import('@playwright/test').Page): Promise<void> {
   await page.goto(APP_PATH);
   await page.getByTitle('Settings').click();
+  // Gear → the SERVERS page (multi-server entry point).
+  await page.getByTestId('add-server-url').fill(SERVER);
+  await page.getByTestId('add-server-button').click();
+  await page.getByTestId(`server-settings-${SERVER}`).click();
   await page.getByLabel('Sign-in server (issuer)').fill(SERVER);
   await page.getByTestId('oidc-sign-in').click();
 
@@ -140,8 +144,10 @@ async function runOidcLoginSteps(page: import('@playwright/test').Page): Promise
   await page.waitForURL((u) => u.pathname.endsWith('/auth/callback'), { timeout: 15000 });
   await page.waitForURL((u) => !u.pathname.endsWith('/auth/callback'), { timeout: 15000 });
 
-  // Signed in: the account section shows the username.
+  // Signed in: reopen this server's settings from the servers page and the
+  // account section shows the username.
   await page.getByTitle('Settings').click();
+  await page.getByTestId(`server-settings-${SERVER}`).click();
   await expect(page.getByTestId('oidc-signed-in-as')).toHaveText(USERNAME, { timeout: 15000 });
 }
 
@@ -157,16 +163,13 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   await oidcLogin(page1);
   await step(page1, 'client-1-signed-in');
 
-  // Server URL is auto-filled from the issuer on first sign-in; save it.
-  const serverUrlValue = await page1.getByLabel('Server URL').inputValue();
-  if (!serverUrlValue) {
-    await page1.getByLabel('Server URL').fill(SERVER);
-    await page1.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page1.getByText('Sync settings saved')).toBeVisible();
-  }
+  // The server was added on the servers page before sign-in (runOidcLoginSteps),
+  // so its settings exist; the per-server "Sync now" button lives on that row.
+  await page1.getByTitle('Settings').click();
+  await expect(page1.getByTestId(`server-row-${SERVER}`)).toBeVisible();
 
-  // ── Sync now: pushes the local note to the server. ───────────────────────
-  await page1.getByRole('button', { name: 'Sync now' }).click();
+  // ── Sync now (per-server row): pushes the local note to the server. ──────
+  await page1.getByTestId(`server-sync-${SERVER}`).click();
   // Exactly one push: the seeded note (client 1 starts empty).
   await expect(page1.getByText('Sync complete — 1 pushed')).toBeVisible({ timeout: 20000 });
   await step(page1, 'client-1-pushed');
@@ -197,20 +200,21 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   await oidcLogin(page2);
   // Exactly one pull is NOT guaranteed (alice may carry notes from earlier
   // E2E runs), so assert on OUR note appearing rather than the summary count.
-  await page2.getByRole('button', { name: 'Sync now' }).click();
+  await page2.getByTitle('Settings').click();
+  await page2.getByTestId(`server-sync-${SERVER}`).click();
   await expect(page2.getByText(/Sync complete|already up to date/)).toBeVisible({ timeout: 20000 });
-  await page2.getByTitle('Back to notes').click();
+  await page2.getByTitle('Close both pages').click();
   await expect(page2.getByText(NOTE_TITLE, { exact: true })).toBeVisible();
 
   // ── Delete the note SERVER-SIDE (as the user, via the API). ─────────────
   await step(page1, 'server-side-delete');
-  // Grab an access token for the API from client 2's localStorage.
-  const oidcBlob = JSON.parse((await page2.evaluate(() => localStorage.getItem('notehaven.sync.oidc'))) ?? '{}');
+  // Grab an access token for the API from client 2's per-server OIDC blob.
+  const oidcBlob = JSON.parse((await page2.evaluate(() => localStorage.getItem('notehaven.sync.oidc.' + SERVER))) ?? '{}');
   const token = oidcBlob.session.accessToken as string;
 
-  // Find the uid from client 1's uidMap (the note was pushed from there).
+  // Find the uid from client 1's per-server uidMap (the note was pushed there).
   const uidMap1 = JSON.parse(
-    (await page1.evaluate(() => localStorage.getItem('notehaven.sync.uidMap'))) ?? '{}',
+    (await page1.evaluate(() => localStorage.getItem('notehaven.sync.uidMap.' + SERVER))) ?? '{}',
   );
   const uid = Object.values(uidMap1)[0] as string;
   expect(uid).toBeTruthy();
@@ -225,7 +229,7 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
 
   // ── Client 1 syncs → notification queue appears, local note survives. ────
   await step(page1, 'client-1-notification');
-  await page1.getByRole('button', { name: 'Sync now' }).click();
+  await page1.getByTestId(`server-sync-${SERVER}`).click();
   // The toast AND the status line both carry the summary — match the toast.
   await expect(page1.getByText(/1 deletion awaiting your choice/).first()).toBeVisible({ timeout: 20000 });
 
@@ -241,7 +245,7 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   // The local note is STILL in client 1's store (never-delete) — proven at the
   // IndexedDB level, independent of what the notes list renders.
   expect(await countLocalNotes(page1, NOTE_TITLE)).toBe(1);
-  await page1.getByTitle('Back to notes').click();
+  await page1.getByTitle('Close both pages').click();
   await expect(page1.getByText(NOTE_TITLE, { exact: true }).first()).toBeVisible();
   await page1.getByTitle('Settings').click();
 
@@ -253,22 +257,22 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   await expect(page1.getByTestId('sync-notifications-count')).toHaveCount(0);
 
   const exceptions = JSON.parse(
-    (await page1.evaluate(() => localStorage.getItem('notehaven.sync.keepExceptions'))) ?? '{}',
+    (await page1.evaluate(() => localStorage.getItem('notehaven.sync.keepExceptions.' + SERVER))) ?? '{}',
   );
   expect(Object.keys(exceptions)).toContain(uid);
 
   // Sync again: no re-prompt, note still local.
-  await page1.getByRole('button', { name: 'Sync now' }).click();
+  await page1.getByTestId(`server-sync-${SERVER}`).click();
   // Older toasts can still be on screen — assert the newest one by position.
   await expect(page1.getByText(/Sync complete|already up to date/).last()).toBeVisible();
   await expect(page1.getByTestId('sync-notifications-count')).toHaveCount(0);
-  await page1.getByTitle('Back to notes').click();
+  await page1.getByTitle('Close both pages').click();
   await expect(page1.getByText(NOTE_TITLE, { exact: true }).first()).toBeVisible();
 
   // ── Client 2 (no exceptions): same deletion → Delete removes it locally. ──
   await step(page1, 'client-2-delete');
   await page2.getByTitle('Settings').click();
-  await page2.getByRole('button', { name: 'Sync now' }).click();
+  await page2.getByTestId(`server-sync-${SERVER}`).click();
   await expect(page2.getByTestId('sync-notifications-count')).toHaveText('1');
   await page2.getByTestId('sync-notifications-trigger').click();
   await expect(page2.getByTestId(`sync-queue-item-${uid}`)).toBeVisible();
@@ -276,7 +280,7 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   // Note still there before the decision (never-delete until told) — at the
   // store level and in the UI.
   expect(await countLocalNotes(page2, NOTE_TITLE)).toBe(1);
-  await page2.getByTitle('Back to notes').click();
+  await page2.getByTitle('Close both pages').click();
   await expect(page2.getByText(NOTE_TITLE, { exact: true }).first()).toBeVisible();
   await page2.getByTitle('Settings').click();
 
@@ -284,14 +288,14 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   await page2.getByTestId(`sync-delete-${uid}`).click();
   await expect(page2.getByTestId(`sync-queue-item-${uid}`)).toHaveCount(0);
 
-  await page2.getByTitle('Back to notes').click();
+  await page2.getByTitle('Close both pages').click();
   await expect(page2.getByText(NOTE_TITLE, { exact: true })).toHaveCount(0);
   expect(await countLocalNotes(page2, NOTE_TITLE)).toBe(0);
   await step(page1, 'client-2-deleted');
 
   // Client 2 keeps its own (empty) exception set — decisions are per client.
   const exceptions2 = JSON.parse(
-    (await page2.evaluate(() => localStorage.getItem('notehaven.sync.keepExceptions'))) ?? '{}',
+    (await page2.evaluate(() => localStorage.getItem('notehaven.sync.keepExceptions.' + SERVER))) ?? '{}',
   );
   expect(Object.keys(exceptions2)).not.toContain(uid);
 

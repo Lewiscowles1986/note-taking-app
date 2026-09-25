@@ -6,6 +6,13 @@
  * notes schema, so both live in localStorage. Keeping them OUT of IndexedDB
  * also means the database schema (and its e2e-pinned version) never changes.
  *
+ * MULTI-SERVER: the single-server blob here is the LEGACY layout, kept
+ * importable (default fallback + migration source) — but the live layout is
+ * per-server, owned by syncServers.ts (`notehaven.sync.server.<id>` et al).
+ * New code should use getServerSettings/saveServerSettings (syncServers.ts)
+ * and the `*For(serverId)` tombstone helpers below. The legacy accessors
+ * remain for the migration path and the legacy-key unit tests.
+ *
  * Tombstones: when a note is deleted we remember `{ uid, deletedAt, updatedAt }`
  * so the next sync can propagate the deletion to the server (and refrain from
  * pulling a stale remote copy back). Entries are pruned after 90 days — by
@@ -15,6 +22,13 @@
 
 const SETTINGS_KEY = 'notehaven.sync.settings';
 const TOMBSTONES_KEY = 'notehaven.sync.tombstones';
+
+// Per-server settings read/write come from syncServers.ts (the owner of the
+// per-server layout). Imported here so recordSyncResultFor can merge into the
+// server's CURRENT stored settings without a circular import (syncServers
+// imports loadSyncSettings from this module — a runtime cycle via ESM
+// function hoisting is safe, but keep it lazy to be robust in any bundler).
+import { getServerSettings, saveServerSettings } from './syncServers';
 
 /** Tombstones older than this are pruned on load (ms ≈ 90 days). */
 const TOMBSTONE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
@@ -267,9 +281,57 @@ export function resolveSyncDecision(input: SyncDecisionInput): {
 
 // ─── tombstones ──────────────────────────────────────────────────────────────
 
-export function loadTombstones(): Tombstone[] {
+// Per-server tombstone keys (multi-server sync): the engine and
+// syncDeletion.ts address a server's list by its id (the normalized URL).
+// See syncServers.ts for the full per-server key layout.
+
+export function tombstonesKeyFor(serverId: string): string {
+  return `notehaven.sync.tombstones.${serverId}`;
+}
+
+/** Read ONE server's tombstone list (TTL + cap applied on load). */
+export function loadTombstonesFor(serverId: string): Tombstone[] {
+  return readTombstones(tombstonesKeyFor(serverId));
+}
+
+/** Remember a note deletion for ONE server so the next sync can propagate it. */
+export function recordTombstoneFor(serverId: string, uid: string, deletedAt: Date, noteUpdatedAt: Date): void {
+  writeTombstones(tombstonesKeyFor(serverId), [
+    ...loadTombstonesFor(serverId).filter((t) => t.uid !== uid),
+    {
+      uid,
+      deletedAt: deletedAt.toISOString(),
+      noteUpdatedAt: noteUpdatedAt.toISOString(),
+    },
+  ]);
+}
+
+/** Keep only tombstones whose uid is in `keepUids` — for ONE server. */
+export function retainTombstonesFor(serverId: string, keepUids: Set<string>): void {
+  const kept = loadTombstonesFor(serverId).filter((t) => keepUids.has(t.uid));
+  const key = tombstonesKeyFor(serverId);
+  if (kept.length) {
+    localStorage.setItem(key, JSON.stringify(kept));
+  } else {
+    localStorage.removeItem(key);
+  }
+}
+
+/**
+ * Record the outcome of a sync run against ONE server, merging into THAT
+ * server's stored settings (load-fresh-then-save) so a background auto-sync
+ * never clobbers edits the user made to the config while a sync was running.
+ */
+export function recordSyncResultFor(serverId: string, info: LastSyncInfo): void {
+  // Read fresh per-server settings, reattach serverUrl, merge lastSync.
+  const current = getServerSettings(serverId);
+  saveServerSettings(serverId, { ...current, lastSync: info });
+}
+
+/** Shared tombstone reader (TTL prune, sort, cap) for any storage key. */
+function readTombstones(key: string): Tombstone[] {
   try {
-    const raw = localStorage.getItem(TOMBSTONES_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -290,23 +352,32 @@ export function loadTombstones(): Tombstone[] {
   }
 }
 
-/** Remember a note deletion so the next sync can propagate it. */
+/** Shared tombstone writer (same-uid replace + cap) for any storage key. */
+function writeTombstones(key: string, tombstones: Tombstone[]): void {
+  localStorage.setItem(key, JSON.stringify(tombstones.slice(-MAX_TOMBSTONES)));
+}
+
+export function loadTombstones(): Tombstone[] {
+  return readTombstones(TOMBSTONES_KEY);
+}
+
+/** Remember a note deletion so the next sync can propagate it (legacy key). */
 export function recordTombstone(uid: string, deletedAt: Date, noteUpdatedAt: Date): void {
-  const tombstones = loadTombstones().filter((t) => t.uid !== uid);
-  tombstones.push({
-    uid,
-    deletedAt: deletedAt.toISOString(),
-    noteUpdatedAt: noteUpdatedAt.toISOString(),
-  });
-  // Keep the newest MAX_TOMBSTONES.
-  const trimmed = tombstones.slice(-MAX_TOMBSTONES);
-  localStorage.setItem(TOMBSTONES_KEY, JSON.stringify(trimmed));
+  writeTombstones(TOMBSTONES_KEY, [
+    ...loadTombstones().filter((t) => t.uid !== uid),
+    {
+      uid,
+      deletedAt: deletedAt.toISOString(),
+      noteUpdatedAt: noteUpdatedAt.toISOString(),
+    },
+  ]);
 }
 
 /**
  * Keep only tombstones whose uid is in `keepUids` — the engine's way to drop
  * tombstones whose delete-remote operation has been acknowledged by the
- * server. Persisting an empty list clears the key entirely.
+ * server. Persisting an empty list clears the key entirely. (Legacy key;
+ * engine code uses retainTombstonesFor.)
  */
 export function retainTombstones(keepUids: Set<string>): void {
   const kept = loadTombstones().filter((t) => keepUids.has(t.uid));

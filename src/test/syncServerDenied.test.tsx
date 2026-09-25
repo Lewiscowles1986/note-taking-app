@@ -11,7 +11,27 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import SettingsPage from '@/pages/SettingsPage';
 import { saveSyncSettings, loadSyncSettings } from '@/lib/syncSettings';
+import { addServer, saveServerSettings, getServerSettings } from '@/lib/syncServers';
 import { db } from '@/lib/db';
+
+// All tests edit ONE configured test server.
+const SRV = 'https://sync.test';
+
+/** Seed the per-server settings + register the server row. */
+function configureServerSettings(overrides: Record<string, unknown> = {}): void {
+  addServer(SRV);
+  saveServerSettings(SRV, {
+    authToken: '',
+    autoSync: false,
+    intervalMinutes: 15,
+    syncScope: 'all',
+    syncedCategories: [],
+    excludedCategories: [],
+    excludedNoteIds: [],
+    lastSync: null,
+    ...overrides,
+  });
+}
 
 beforeAll(() => {
   // SettingsPage links to the docs pinned at the deployed ref — the vite
@@ -57,7 +77,7 @@ function stubDiscovery(): void {
 }
 
 async function openScopePicker(): Promise<HTMLButtonElement> {
-  render(<SettingsPage onBack={() => undefined} />);
+  render(<SettingsPage serverId={SRV} onBack={() => undefined} />);
   fireEvent.click(screen.getByTestId('sync-scope-categories'));
   return waitFor(() => {
     const el = screen.getByTestId('sync-scope-cat-Private') as HTMLButtonElement;
@@ -76,12 +96,7 @@ beforeEach(async () => {
 
 describe('SettingsPage — server-denied categories (add blocked, removal free)', () => {
   it('server-denied + pre-checked → uncheck REMOVES it from syncedCategories (in-page state + save)', async () => {
-    saveSyncSettings({
-      ...loadSyncSettings(),
-      serverUrl: 'https://sync.test',
-      authToken: '',
-      autoSync: false,
-      intervalMinutes: 15,
+    configureServerSettings({
       syncScope: 'categories',
       syncedCategories: ['Private'], // pre-existing allow-list entry
     });
@@ -98,17 +113,12 @@ describe('SettingsPage — server-denied categories (add blocked, removal free)'
     // The removal survives a Save (persisted to localStorage).
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => {
-      expect(loadSyncSettings().syncedCategories).toEqual([]);
+      expect(getServerSettings(SRV).syncedCategories).toEqual([]);
     });
   });
 
   it('server-denied + unchecked → checking is a NO-OP (cannot add)', async () => {
-    saveSyncSettings({
-      ...loadSyncSettings(),
-      serverUrl: 'https://sync.test',
-      authToken: '',
-      autoSync: false,
-      intervalMinutes: 15,
+    configureServerSettings({
       syncScope: 'categories',
       syncedCategories: [],
     });
@@ -140,12 +150,7 @@ describe('SettingsPage — server-denied categories (add blocked, removal free)'
       hasGeoJson: false,
       hasModel3D: false,
     } as never);
-    saveSyncSettings({
-      ...loadSyncSettings(),
-      serverUrl: 'https://sync.test',
-      authToken: '',
-      autoSync: false,
-      intervalMinutes: 15,
+    configureServerSettings({
       syncScope: 'categories',
       syncedCategories: [],
     });

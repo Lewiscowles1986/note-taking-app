@@ -1,44 +1,50 @@
 /**
- * App-level auto-sync scheduler.
+ * App-level auto-sync scheduler (multi-server).
  *
- * Mounted once in `App.tsx`. Reads the stored settings synchronously (a few
- * bytes of localStorage) and ONLY when a server is actually configured does
- * it dynamically import the sync engine and start the background interval.
+ * Mounted once in `App.tsx`. Reads the per-server settings synchronously (a
+ * few bytes of localStorage each) and ONLY for servers with auto-sync enabled
+ * does it dynamically import the sync engine and start a background interval
+ * — ONE interval per configured server, each on its own cadence.
  * Never-configured users never load the engine; auto-sync users load it
  * lazily after first paint.
  *
- * The interval lives across route/mode changes because it hangs off App, not
- * the settings page — auto-sync keeps working while the user is editing.
+ * The intervals live across route/mode changes because they hang off App, not
+ * the servers page — auto-sync keeps working while the user is editing.
  */
 
 import { useEffect } from 'react';
-import { loadSyncSettings } from '@/lib/syncSettings';
+import { listServers, getServerSettings } from '@/lib/syncServers';
 
 /** Started-interval bookkeeping so HMR/strict-mode double-mounts don't stack timers. */
-let stopScheduler: (() => void) | null = null;
+const stopFns = new Map<string, () => void>();
 /** Generation counter: a queued start is ignored if a newer stop superseded it. */
 let generation = 0;
 
 function startScheduler(): void {
-  if (stopScheduler) return;
-  const settings = loadSyncSettings();
-  if (!settings.autoSync || !settings.serverUrl) return;
-  const minutes = Math.max(1, Math.round(settings.intervalMinutes) || 15);
-  let timer: number | undefined;
-  let cancelled = false;
+  if (stopFns.size > 0) return;
+  // One interval PER server with autoSync enabled; servers without it are
+  // skipped entirely (their tick would be a no-op anyway, and skipping keeps
+  // manual-only servers from loading the engine at all).
+  for (const server of listServers()) {
+    const settings = getServerSettings(server.id);
+    if (!settings.autoSync) continue;
+    const minutes = Math.max(1, Math.round(settings.intervalMinutes) || 15);
+    const serverId = server.id;
+    let timer: number | undefined;
 
-  const tick = () => {
-    // Dynamic import: the engine (and its ~15 KB) only downloads for users
-    // who opted into a server. runSyncIfConfigured never throws.
-    void import('./sync').then(({ runSyncIfConfigured }) => runSyncIfConfigured());
-  };
+    const tick = () => {
+      // Dynamic import: the engine (and its ~15 KB) only downloads for users
+      // who opted into a server. runSyncIfConfigured never throws.
+      void import('./sync').then(({ runSyncIfConfigured }) => runSyncIfConfigured(serverId));
+    };
 
-  timer = window.setInterval(tick, minutes * 60_000);
-  stopScheduler = () => {
-    if (timer !== undefined) window.clearInterval(timer);
-    timer = undefined;
-    stopScheduler = null;
-  };
+    timer = window.setInterval(tick, minutes * 60_000);
+    stopFns.set(serverId, () => {
+      if (timer !== undefined) window.clearInterval(timer);
+      timer = undefined;
+      stopFns.delete(serverId);
+    });
+  }
 }
 
 /**
@@ -52,16 +58,20 @@ export function refreshAutoSyncScheduler(): void {
   const gen = ++generation;
   queueMicrotask(() => {
     if (gen !== generation) return; // superseded (stopped/unmounted meanwhile)
-    stopScheduler?.();
-    stopScheduler = null;
+    for (const stop of stopFns.values()) stop();
     startScheduler();
   });
 }
 
 function stopNow(): void {
   generation++; // invalidate any queued start
-  stopScheduler?.();
-  stopScheduler = null;
+  for (const stop of stopFns.values()) stop();
+}
+
+/** Which storage keys the scheduler reacts to (per-server settings keys). */
+export function isSchedulerStorageKey(key: string | null): boolean {
+  if (key === null) return true; // key === null: clear() touched everything
+  return key.startsWith('notehaven.sync.server.');
 }
 
 /**
@@ -73,9 +83,7 @@ export default function AutoSyncScheduler() {
   useEffect(() => {
     refreshAutoSyncScheduler();
     const onStorage = (e: StorageEvent) => {
-      if (e.key === 'notehaven.sync.settings' || e.key === null) {
-        refreshAutoSyncScheduler();
-      }
+      if (isSchedulerStorageKey(e.key)) refreshAutoSyncScheduler();
     };
     window.addEventListener('storage', onStorage);
     return () => {

@@ -160,9 +160,13 @@ test('captures sync settings', async ({ page }) => {
 
   // Configure the (mocked) server through the UI and run one sync. The run
   // pushes Trip planning and pulls Packing list — real engine, real UI state.
+  // Multi-server flow: gear → servers page → add → per-server settings.
   await page.getByTitle('Settings').evaluate((el: HTMLElement) => el.click());
+  await expect(page.getByTestId('add-server-url')).toBeVisible();
+  await page.getByTestId('add-server-url').fill('https://sync.example.test');
+  await page.getByTestId('add-server-button').evaluate((el: HTMLElement) => el.click());
+  await page.getByTestId('server-settings-https://sync.example.test').evaluate((el: HTMLElement) => el.click());
   await expect(page.getByText('Sync server')).toBeVisible();
-  await page.getByLabel('Server URL').fill('https://sync.example.test');
   await page.getByLabel('Access token (optional)').fill('demo-token');
   await page.getByRole('button', { name: 'Test connection' }).evaluate((el: HTMLElement) => el.click());
   await expect(page.getByText(/Connection OK/)).toBeVisible();

@@ -20,6 +20,11 @@
 
 export const OIDC_STORAGE_KEY = 'notehaven.sync.oidc';
 
+/** Per-server OIDC blob: the server id (normalized URL) is the suffix. */
+export function oidcKeyFor(serverId: string): string {
+  return `notehaven.sync.oidc.${serverId}`;
+}
+
 /** Sensible defaults for the reference server (see server/README.md). */
 export const DEFAULT_CLIENT_CONFIG: OidcClientConfig = {
   issuer: 'http://localhost:8080',
@@ -67,9 +72,9 @@ interface OidcBlob {
   session?: unknown;
 }
 
-function readBlob(): OidcBlob {
+function readBlob(key: string = OIDC_STORAGE_KEY): OidcBlob {
   try {
-    const raw = localStorage.getItem(OIDC_STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
@@ -79,18 +84,70 @@ function readBlob(): OidcBlob {
   }
 }
 
-function writeBlob(blob: OidcBlob): void {
+function writeBlob(key: string, blob: OidcBlob): void {
   const hasContent = blob.config !== undefined || blob.session !== undefined;
   if (hasContent) {
-    localStorage.setItem(OIDC_STORAGE_KEY, JSON.stringify(blob));
+    localStorage.setItem(key, JSON.stringify(blob));
   } else {
-    localStorage.removeItem(OIDC_STORAGE_KEY);
+    localStorage.removeItem(key);
   }
 }
 
 /** Read the stored client config, filling missing fields with defaults. */
 export function loadOidcConfig(): OidcClientConfig {
-  const raw = readBlob().config;
+  return toConfig(readBlob().config);
+}
+
+/** Persist client config, preserving any stored session. */
+export function saveOidcConfig(config: OidcClientConfig): void {
+  writeBlob(OIDC_STORAGE_KEY, {
+    config: {
+      issuer: config.issuer.trim().replace(/\/+$/, ''),
+      clientId: config.clientId,
+      scope: config.scope,
+    },
+    session: readBlob().session,
+  });
+}
+
+/**
+ * Read the stored session, tolerating corrupt/partial storage. Returns null
+ * unless the blob holds a minimally valid session.
+ */
+export function loadOidcSession(): OidcSession | null {
+  return toSession(readBlob().session);
+}
+
+/** Persist the session, preserving the stored client config. */
+export function saveOidcSession(session: OidcSession): void {
+  writeBlob(OIDC_STORAGE_KEY, { config: readBlob().config, session });
+}
+
+/** Forget the session (keeps the client config so re-login is one click). */
+export function clearOidcSession(): void {
+  writeBlob(OIDC_STORAGE_KEY, { config: readBlob().config, session: undefined });
+}
+
+// ─── per-server variants (multi-server sync) ────────────────────────────────
+
+function toSession(raw: unknown): OidcSession | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const s = raw as Partial<OidcSession>;
+  if (typeof s.accessToken !== 'string' || !s.accessToken) return null;
+  if (typeof s.expiresAt !== 'number' || !Number.isFinite(s.expiresAt)) return null;
+  return {
+    clientId: typeof s.clientId === 'string' ? s.clientId : '',
+    accessToken: s.accessToken,
+    refreshToken: typeof s.refreshToken === 'string' ? s.refreshToken : null,
+    idToken: typeof s.idToken === 'string' ? s.idToken : null,
+    expiresAt: s.expiresAt,
+    scope: typeof s.scope === 'string' ? s.scope : '',
+    claims: (s.claims && typeof s.claims === 'object' ? s.claims : {}) as OidcSession['claims'],
+    endpoints: (s.endpoints && typeof s.endpoints === 'object' ? s.endpoints : {}) as OidcSession['endpoints'],
+  };
+}
+
+function toConfig(raw: unknown): OidcClientConfig {
   const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   return {
     issuer:
@@ -108,46 +165,34 @@ export function loadOidcConfig(): OidcClientConfig {
   };
 }
 
-/** Persist client config, preserving any stored session. */
-export function saveOidcConfig(config: OidcClientConfig): void {
-  writeBlob({
+/** Read the per-server client config, filling missing fields with defaults. */
+export function loadOidcConfigFor(serverId: string): OidcClientConfig {
+  return toConfig(readBlob(oidcKeyFor(serverId)).config);
+}
+
+/** Persist the per-server client config, preserving any stored session. */
+export function saveOidcConfigFor(serverId: string, config: OidcClientConfig): void {
+  writeBlob(oidcKeyFor(serverId), {
     config: {
       issuer: config.issuer.trim().replace(/\/+$/, ''),
       clientId: config.clientId,
       scope: config.scope,
     },
-    session: readBlob().session,
+    session: readBlob(oidcKeyFor(serverId)).session,
   });
 }
 
-/**
- * Read the stored session, tolerating corrupt/partial storage. Returns null
- * unless the blob holds a minimally valid session.
- */
-export function loadOidcSession(): OidcSession | null {
-  const raw = readBlob().session;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const s = raw as Partial<OidcSession>;
-  if (typeof s.accessToken !== 'string' || !s.accessToken) return null;
-  if (typeof s.expiresAt !== 'number' || !Number.isFinite(s.expiresAt)) return null;
-  return {
-    clientId: typeof s.clientId === 'string' ? s.clientId : '',
-    accessToken: s.accessToken,
-    refreshToken: typeof s.refreshToken === 'string' ? s.refreshToken : null,
-    idToken: typeof s.idToken === 'string' ? s.idToken : null,
-    expiresAt: s.expiresAt,
-    scope: typeof s.scope === 'string' ? s.scope : '',
-    claims: (s.claims && typeof s.claims === 'object' ? s.claims : {}) as OidcSession['claims'],
-    endpoints: (s.endpoints && typeof s.endpoints === 'object' ? s.endpoints : {}) as OidcSession['endpoints'],
-  };
+/** Read the per-server session (null when signed out or corrupt). */
+export function loadOidcSessionFor(serverId: string): OidcSession | null {
+  return toSession(readBlob(oidcKeyFor(serverId)).session);
 }
 
-/** Persist the session, preserving the stored client config. */
-export function saveOidcSession(session: OidcSession): void {
-  writeBlob({ config: readBlob().config, session });
+/** Persist the per-server session, preserving the stored client config. */
+export function saveOidcSessionFor(serverId: string, session: OidcSession): void {
+  writeBlob(oidcKeyFor(serverId), { config: readBlob(oidcKeyFor(serverId)).config, session });
 }
 
-/** Forget the session (keeps the client config so re-login is one click). */
-export function clearOidcSession(): void {
-  writeBlob({ config: readBlob().config, session: undefined });
+/** Forget the per-server session (keeps the client config). */
+export function clearOidcSessionFor(serverId: string): void {
+  writeBlob(oidcKeyFor(serverId), { config: readBlob(oidcKeyFor(serverId)).config, session: undefined });
 }

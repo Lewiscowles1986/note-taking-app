@@ -23,10 +23,10 @@
  */
 
 import {
-  loadOidcConfig,
-  loadOidcSession,
-  saveOidcSession,
-  clearOidcSession,
+  loadOidcConfigFor,
+  loadOidcSessionFor,
+  saveOidcSessionFor,
+  clearOidcSessionFor,
   type OidcClientConfig,
   type OidcEndpoints,
   type OidcSession,
@@ -49,6 +49,10 @@ export interface OidcPendingLogin {
   redirectUri: string;
   /** Where to land after a successful login (e.g. "/" or "/?settings=1"). */
   returnTo: string;
+  /** Which sync server slot this login belongs to (multi-server: the
+   * normalized server URL). The callback resolves the session into that
+   * server's per-server storage. */
+  serverId?: string;
   /** Endpoints resolved from discovery at login() time so the callback does
    * not need to fetch the discovery document again. */
   issuer: string;
@@ -176,8 +180,8 @@ export interface LoginOptions {
  * Resolves only when navigation was initiated (it "never returns" in practice —
  * the page unloads).
  */
-export async function login(options: LoginOptions = {}): Promise<void> {
-  const config = loadOidcConfig();
+export async function login(serverId: string, options: LoginOptions = {}): Promise<void> {
+  const config = loadOidcConfigFor(serverId);
   const endpoints = await discoverEndpoints(config.issuer, options.fetchImpl ?? fetch);
   const redirectUri = buildRedirectUri();
 
@@ -193,6 +197,7 @@ export async function login(options: LoginOptions = {}): Promise<void> {
     issuedAt: Date.now(),
     redirectUri,
     returnTo: options.returnTo ?? '/',
+    serverId,
     issuer: config.issuer,
     tokenEndpoint: endpoints.tokenEndpoint,
     jwksUri: endpoints.jwksUri,
@@ -450,7 +455,11 @@ export async function completeLogin(params: URLSearchParams, fetchImpl: typeof f
     throw new OidcError('Sign-in state check failed — start again');
   }
 
-  const config = loadOidcConfig();
+  // The pending login carries the server slot it belongs to; the session is
+  // written into that server's per-server storage (fallback: the legacy
+  // single-server slot for pendings started before multi-server existed).
+  const serverId = pending.serverId ?? '';
+  const config = loadOidcConfigFor(serverId);
   const body = (await postForm(
     pending.tokenEndpoint,
     {
@@ -503,7 +512,7 @@ export async function completeLogin(params: URLSearchParams, fetchImpl: typeof f
       userinfoEndpoint: pending.userinfoEndpoint,
     },
   };
-  saveOidcSession(session);
+  saveOidcSessionFor(serverId, session);
   sessionStorage.removeItem(PENDING_KEY);
   return { returnTo: pending.returnTo || '/' };
 }
@@ -515,51 +524,52 @@ export interface AccessTokenResult {
   session: OidcSession;
 }
 
-/**
- * In-flight refresh dedup. Concurrent callers (e.g. the sync engine and a
- * background scheduler tick) must share ONE refresh request: the reference
- * server rotates refresh tokens and revokes the whole family on reuse, so a
- * second parallel refresh would invalidate the first caller's rotation and
- * log the user out.
- */
-let refreshInFlight: Promise<string> | null = null;
+/** In-flight refresh dedup PER SERVER (each server refreshes independently;
+ * concurrent callers for the SAME server must share ONE refresh request: the
+ * reference server rotates refresh tokens and revokes the whole family on
+ * reuse, so a second parallel refresh would invalidate the first caller's
+ * rotation and log the user out). */
+const refreshInFlight = new Map<string, Promise<string>>();
 
 /**
- * Return a usable access token, refreshing (and persisting the rotation) when
- * the stored one is within REFRESH_SKEW_MS of expiry. If the refresh token was
- * rotated-and-reused (invalid_grant → family revoked server-side), the session
- * is expired locally and OidcError is thrown — the caller must re-login.
+ * Return a usable access token for ONE server, refreshing (and persisting the
+ * rotation) when the stored one is within REFRESH_SKEW_MS of expiry. If the
+ * refresh token was rotated-and-reused (invalid_grant → family revoked
+ * server-side), the session is expired locally and OidcError is thrown — the
+ * caller must re-login.
  */
-export async function getValidAccessToken(fetchImpl: typeof fetch = fetch): Promise<string> {
-  const session = loadOidcSession();
+export async function getValidAccessToken(serverId: string, fetchImpl: typeof fetch = fetch): Promise<string> {
+  const session = loadOidcSessionFor(serverId);
   if (!session) throw new OidcError('Not signed in');
   if (session.expiresAt - REFRESH_SKEW_MS > Date.now()) {
     return session.accessToken; // still fresh
   }
   // A refresh is already running: join it instead of racing a second one.
-  if (refreshInFlight) return refreshInFlight;
-  refreshInFlight = performRefresh(fetchImpl);
+  const running = refreshInFlight.get(serverId);
+  if (running) return running;
+  const refresh = performRefresh(serverId, fetchImpl);
+  refreshInFlight.set(serverId, refresh);
   try {
-    return await refreshInFlight;
+    return await refresh;
   } finally {
     // On failure the shared promise is dropped so the NEXT caller can retry
     // (e.g. after a transient network error). On success it is also dropped:
     // the session is now fresh and further callers take the fast path.
-    refreshInFlight = null;
+    refreshInFlight.delete(serverId);
   }
 }
 
-/** The actual refresh POST — single-flight, only reached via
+/** The actual refresh POST — single-flight per server, only reached via
  * getValidAccessToken's dedup wrapper. */
-async function performRefresh(fetchImpl: typeof fetch): Promise<string> {
-  const session = loadOidcSession();
+async function performRefresh(serverId: string, fetchImpl: typeof fetch): Promise<string> {
+  const session = loadOidcSessionFor(serverId);
   if (!session) throw new OidcError('Not signed in');
   if (!session.refreshToken) {
-    clearOidcSession();
+    clearOidcSessionFor(serverId);
     throw new OidcError('Session expired — sign in again');
   }
   if (!session.endpoints?.tokenEndpoint) {
-    clearOidcSession();
+    clearOidcSessionFor(serverId);
     throw new OidcError('Session is missing its token endpoint — sign in again');
   }
   let body: RawTokenResponse;
@@ -578,7 +588,7 @@ async function performRefresh(fetchImpl: typeof fetch): Promise<string> {
     // invalid_grant on refresh = rotated token reused → family revoked
     // server-side. Expire the session locally so the UI asks for a re-login.
     if (e instanceof OidcError && /invalid_grant|rejected/i.test(e.message)) {
-      clearOidcSession();
+      clearOidcSessionFor(serverId);
       throw new OidcError('Your session has expired — please sign in again');
     }
     throw e;
@@ -586,7 +596,7 @@ async function performRefresh(fetchImpl: typeof fetch): Promise<string> {
 
   const accessToken = typeof body.access_token === 'string' ? body.access_token : '';
   if (!accessToken) {
-    clearOidcSession();
+    clearOidcSessionFor(serverId);
     throw new OidcError('Refresh response did not include an access token');
   }
   const expiresIn = typeof body.expires_in === 'number' ? body.expires_in : 3600;
@@ -599,7 +609,7 @@ async function performRefresh(fetchImpl: typeof fetch): Promise<string> {
     expiresAt: Date.now() + expiresIn * 1000,
     scope: typeof body.scope === 'string' ? body.scope : session.scope,
   };
-  saveOidcSession(next);
+  saveOidcSessionFor(serverId, next);
   return accessToken;
 }
 
@@ -608,19 +618,20 @@ async function performRefresh(fetchImpl: typeof fetch): Promise<string> {
  * the session on invalid_grant). Kept as a named seam for callers that want
  * the explicit semantics.
  */
-export async function refreshOrExpireSession(fetchImpl: typeof fetch = fetch): Promise<string> {
-  return getValidAccessToken(fetchImpl);
+export async function refreshOrExpireSession(serverId: string, fetchImpl: typeof fetch = fetch): Promise<string> {
+  return getValidAccessToken(serverId, fetchImpl);
 }
 
-// ─── logout (RFC 7009 revocation) ────────────────────────────────────────────
+// ─── logout (RFC 7009 revocation) ────────────────────────────────────────
 
 /**
- * Revoke the access and refresh tokens at the revocation endpoint (when the
- * issuer advertises one) and clear the stored session. Best-effort: network
- * failures still clear local state.
+ * Revoke the access and refresh tokens of ONE server's session at the
+ * revocation endpoint (when the issuer advertises one) and clear that
+ * server's stored session. Best-effort: network failures still clear local
+ * state. Other servers' sessions are untouched.
  */
-export async function logout(fetchImpl: typeof fetch = fetch): Promise<void> {
-  const session = loadOidcSession();
+export async function logout(serverId: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  const session = loadOidcSessionFor(serverId);
   if (session?.endpoints?.revocationEndpoint) {
     const tokens = [session.accessToken, session.refreshToken].filter((t): t is string => !!t);
     for (const token of tokens) {
@@ -632,16 +643,18 @@ export async function logout(fetchImpl: typeof fetch = fetch): Promise<void> {
       ).catch(() => undefined); // RFC 7009: clear locally regardless
     }
   }
-  clearOidcSession();
+  clearOidcSessionFor(serverId);
 }
 
-/** Fetch the userinfo claims with the current access token (refreshes first). */
+/** Fetch the userinfo claims for ONE server with its current access token
+ * (refreshes first). */
 export async function getUserInfo(
+  serverId: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Record<string, unknown> | null> {
-  const session = loadOidcSession();
+  const session = loadOidcSessionFor(serverId);
   if (!session?.endpoints?.userinfoEndpoint) return null;
-  const token = await getValidAccessToken(fetchImpl);
+  const token = await getValidAccessToken(serverId, fetchImpl);
   let response: Response;
   try {
     response = await fetchImpl(session.endpoints.userinfoEndpoint, {
@@ -658,7 +671,7 @@ export async function getUserInfo(
   }
 }
 
-/** Convenience: the stored config as endpoints-bearing object for callers. */
-export function currentConfig(): OidcClientConfig {
-  return loadOidcConfig();
+/** Convenience: one server's stored config as endpoints-bearing object. */
+export function currentConfig(serverId: string): OidcClientConfig {
+  return loadOidcConfigFor(serverId);
 }

@@ -283,18 +283,22 @@ Guarantees:
   resurrects a kept note (PUT again, `deleted` cleared), the next sync pulls
   it normally.
 
-Queue storage layout (all localStorage; the Dexie schema is never touched):
+Queue storage layout (all localStorage; the Dexie schema is never touched).
+MULTI-SERVER: every per-server datum is keyed by the server id (the
+normalized URL) — see [servers.md](servers.md) for the full model:
 
 | Key | Contents |
 |---|---|
-| `notehaven.sync.settings` | server URL, token, auto-sync cadence, sync scope |
-| `notehaven.sync.tombstones` | local deletion tombstones (90-day TTL, cap 500) |
-| `notehaven.sync.uidMap` | noteId → uid mapping |
-| `notehaven.sync.remoteCategories` | uid → last-known category (scope filter) |
-| `notehaven.sync.notifications` | queued keep-or-delete prompts |
-| `notehaven.sync.keepExceptions` | uid → ISO date the user chose Keep (per client) |
-| `notehaven.sync.oidc` | OIDC client config + session tokens |
-| `notehaven.oidc.pending` (sessionStorage) | in-flight login (PKCE/state/nonce) |
+| `notehaven.sync.servers` | the configured server list `{ servers: [{ id, label?, addedAt }] }` |
+| `notehaven.sync.server.<id>` | THAT server's settings (token, scope, cadence, lastSync) |
+| `notehaven.sync.tombstones.<id>` | that server's local deletion tombstones (90-day TTL, cap 500) |
+| `notehaven.sync.uidMap.<id>` | noteId → uid mapping FOR that server |
+| `notehaven.sync.remoteCategories.<id>` | uid → last-known category (scope filter, per server) |
+| `notehaven.sync.notifications.<id>` | that server's queued keep-or-delete prompts |
+| `notehaven.sync.keepExceptions.<id>` | uid → Keep timestamp (per client AND per server) |
+| `notehaven.sync.oidc.<id>` | that server's OIDC client config + session tokens |
+| `notehaven.sync.excludedNotes` | DEVICE-WIDE note deny list (all servers) |
+| `notehaven.oidc.pending` (sessionStorage) | in-flight login (PKCE/state/nonce + the serverId it belongs to) |
 
 ## Reference server (minimal Express sketch)
 
@@ -328,25 +332,49 @@ app.listen(8787);
 
 ## Storage layout on the client
 
-- Settings (server URL, token, auto-sync cadence) live in
-  `localStorage` under `notehaven.sync.settings`.
-- Deletion tombstones (90-day TTL, capped at 500) live under
-  `notehaven.sync.tombstones`.
-- The note-id → uid mapping lives under `notehaven.sync.uidMap`.
+- **Multi-server:** every per-server datum lives under a key suffixed with
+  the server id (the normalized URL): `notehaven.sync.server.<id>` (settings),
+  `…tombstones.<id>`, `…uidMap.<id>`, `…remoteCategories.<id>`,
+  `…notifications.<id>`, `…keepExceptions.<id>`, `…oidc.<id>`. The list of
+  configured servers itself lives in `notehaven.sync.servers`. See
+  [servers.md](servers.md).
+- The legacy single-server keys (`notehaven.sync.settings`,
+  `…tombstones`, …) are read ONCE by the one-time migration and then never
+  written again; they are deliberately NOT deleted (a buggy migration must
+  never destroy the user's only copy of the configuration).
+- Deletion tombstones (90-day TTL, capped at 500) live per server.
+- The note-id → uid mapping lives per server — a note synced to two servers
+  carries a DIFFERENT uid on each.
+- The device-wide note-exclusion list lives in
+  `notehaven.sync.excludedNotes` (one exclusion applies to every server).
   Nothing about sync touches the IndexedDB schema.
 
 ## Where it's implemented
 
-- `src/lib/syncSettings.ts` — settings (+ sync scope) + tombstone persistence
-- `src/lib/sync.ts` — planner (`planSync`) + orchestrator (`runSync`) with the
-  scope filter and never-delete policy
-- `src/lib/authToken.ts` — the token resolver seam (OIDC session → manual token)
-- `src/lib/oidcAuth.ts` / `src/lib/oidcStorage.ts` — OIDC flows + session storage
-- `src/lib/syncNotifications.ts` — deletion prompt queue + Keep exceptions
-- `src/components/SyncNotifications.tsx` — header bell + keep/delete UI
-- `src/pages/SettingsPage.tsx` — sign-in, scope picker, connection UI
+- `src/lib/syncServers.ts` — the multi-server store (server list,
+  per-server settings/keys, migration)
+- `src/lib/syncSettings.ts` — settings shape + tombstone helpers
+  (`*For(serverId)`) + the exclusion decision function
+- `src/lib/sync.ts` — planner (`planSync`) + orchestrator (`runSync`:
+  all servers, or one via `{ serverId }`) with the scope filter and
+  never-delete policy
+- `src/lib/syncDeletion.ts` — the eager, dependency-free deletion hook
+  (fans a tombstone out to every server where the note has a uid)
+- `src/lib/authToken.ts` — the token resolver seam (per-server OIDC session →
+  that server's manual token)
+- `src/lib/oidcAuth.ts` / `src/lib/oidcStorage.ts` — per-server OIDC flows +
+  session storage (`notehaven.sync.oidc.<id>`)
+- `src/lib/syncNotifications.ts` — per-server deletion prompt queue + Keep
+  exceptions
+- `src/components/SyncNotifications.tsx` — header bell (aggregated across
+  servers) + keep/delete UI
+- `src/pages/ServersPage.tsx` — the servers list (add/rename/remove/sign in/
+  sync per server)
+- `src/pages/SettingsPage.tsx` — ONE server's settings (scope picker, token,
+  cadence, forget)
 - `src/pages/AuthCallbackPage.tsx` — `/auth/callback` landing (lazy-loaded)
-- `src/test/sync.test.ts`, `src/test/syncSettings.test.ts`,
+- `src/test/syncServers.test.ts`, `src/test/sync.test.ts`,
+  `src/test/syncSettings.test.ts`,
   `src/test/oidcAuth.test.ts`, `src/test/syncScopeNotifications.test.ts` — unit tests
 - `e2e/sync.spec.ts` — end-to-end against a mocked server;
   `e2e/oidc-sync.spec.ts` — end-to-end against the reference server

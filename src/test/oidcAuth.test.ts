@@ -30,12 +30,17 @@ import {
   OidcError,
 } from '@/lib/oidcAuth';
 import {
-  clearOidcSession,
-  loadOidcConfig,
-  loadOidcSession,
-  saveOidcConfig,
-  saveOidcSession,
+  clearOidcSessionFor,
+  loadOidcConfigFor,
+  loadOidcSessionFor,
+  saveOidcConfigFor,
+  saveOidcSessionFor,
 } from '@/lib/oidcStorage';
+
+// All tests exercise ONE canonical test server slot. The serverId is a
+// normalized URL (any non-empty string works — the tests never hit the network
+// for discovery against it because the pending blob carries the endpoints).
+const SRV = 'https://srv.test';
 
 const { subtle } = webcrypto;
 
@@ -62,7 +67,7 @@ function b64urlDecodeToString(input: string): string {
 beforeEach(async () => {
   localStorage.clear();
   sessionStorage.clear();
-  saveOidcConfig({ issuer: ISSUER, clientId: CLIENT_ID, scope: 'openid profile offline_access notes.sync' });
+  saveOidcConfigFor(SRV, { issuer: ISSUER, clientId: CLIENT_ID, scope: 'openid profile offline_access notes.sync' });
   if (!keyPair) {
     keyPair = (await subtle.generateKey(
       { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
@@ -179,6 +184,7 @@ function seedPending(overrides: Partial<Record<string, unknown>> = {}): void {
       issuedAt: Date.now(),
       redirectUri: 'http://localhost:3000/auth/callback',
       returnTo: '/',
+      serverId: SRV,
       issuer: ISSUER,
       tokenEndpoint: `${ISSUER}/token`,
       jwksUri: `${ISSUER}/jwks.json`,
@@ -258,7 +264,7 @@ describe('login', () => {
     };
     vi.stubGlobal('location', locationStub);
     try {
-      await login({ returnTo: '/?settings=1', fetchImpl: impl });
+      await login(SRV, { returnTo: '/?settings=1', fetchImpl: impl });
     } finally {
       vi.unstubAllGlobals();
     }
@@ -287,7 +293,7 @@ describe('login', () => {
     const impl = (async (): Response => {
       throw new TypeError('down');
     }) as unknown as typeof fetch;
-    await expect(login({ fetchImpl: impl })).rejects.toThrow(OidcError);
+    await expect(login(SRV, { fetchImpl: impl })).rejects.toThrow(OidcError);
     expect(sessionStorage.getItem(PENDING_KEY)).toBeNull();
   });
 });
@@ -346,7 +352,7 @@ describe('completeLogin', () => {
     expect(bodies[0].client_secret).toBeUndefined();
 
     // Session persisted with claims from the validated id_token.
-    const session = loadOidcSession();
+    const session = loadOidcSessionFor(SRV);
     expect(session).not.toBeNull();
     expect(session!.accessToken).toBe('at-123');
     expect(session!.refreshToken).toBe('rt-123');
@@ -613,7 +619,7 @@ describe('decodeJwtPayload', () => {
 
 describe('getValidAccessToken', () => {
   it('returns the stored token while it is fresh (no network)', async () => {
-    saveOidcSession({
+    saveOidcSessionFor(SRV, {
       clientId: CLIENT_ID,
       accessToken: 'fresh-token',
       refreshToken: 'rt',
@@ -624,12 +630,12 @@ describe('getValidAccessToken', () => {
       endpoints: { tokenEndpoint: `${ISSUER}/token` },
     });
     const { impl, calls } = makeFetch();
-    await expect(getValidAccessToken(impl)).resolves.toBe('fresh-token');
+    await expect(getValidAccessToken(SRV, impl)).resolves.toBe('fresh-token');
     expect(calls).toHaveLength(0);
   });
 
   it('refreshes when within 60s of expiry and persists the rotation', async () => {
-    saveOidcSession({
+    saveOidcSessionFor(SRV, {
       clientId: CLIENT_ID,
       accessToken: 'stale-token',
       refreshToken: 'rt-old',
@@ -647,19 +653,19 @@ describe('getValidAccessToken', () => {
     });
     const { impl } = makeFetch({ '/token': handler });
 
-    await expect(getValidAccessToken(impl)).resolves.toBe('at-new');
+    await expect(getValidAccessToken(SRV, impl)).resolves.toBe('at-new');
     expect(bodies[0].grant_type).toBe('refresh_token');
     expect(bodies[0].refresh_token).toBe('rt-old');
     expect(bodies[0].client_id).toBe(CLIENT_ID);
 
-    const session = loadOidcSession();
+    const session = loadOidcSessionFor(SRV);
     expect(session!.accessToken).toBe('at-new');
     expect(session!.refreshToken).toBe('rt-new'); // rotation persisted
     expect(session!.expiresAt).toBeGreaterThan(Date.now() + 55 * 60 * 1000);
   });
 
   it('expires the session on refresh-token reuse (invalid_grant)', async () => {
-    saveOidcSession({
+    saveOidcSessionFor(SRV, {
       clientId: CLIENT_ID,
       accessToken: 'stale',
       refreshToken: 'rt-reused',
@@ -676,12 +682,12 @@ describe('getValidAccessToken', () => {
           { status: 400 },
         ),
     });
-    await expect(getValidAccessToken(impl)).rejects.toThrow(/session has expired/);
-    expect(loadOidcSession()).toBeNull(); // cleared → UI shows signed-out
+    await expect(getValidAccessToken(SRV, impl)).rejects.toThrow(/session has expired/);
+    expect(loadOidcSessionFor(SRV)).toBeNull(); // cleared → UI shows signed-out
   });
 
   it('expires the session when no refresh token exists', async () => {
-    saveOidcSession({
+    saveOidcSessionFor(SRV, {
       clientId: CLIENT_ID,
       accessToken: 'stale',
       refreshToken: null,
@@ -691,12 +697,12 @@ describe('getValidAccessToken', () => {
       claims: {},
       endpoints: { tokenEndpoint: `${ISSUER}/token` },
     });
-    await expect(getValidAccessToken(makeFetch().impl)).rejects.toThrow(/Session expired/);
-    expect(loadOidcSession()).toBeNull();
+    await expect(getValidAccessToken(SRV, makeFetch().impl)).rejects.toThrow(/Session expired/);
+    expect(loadOidcSessionFor(SRV)).toBeNull();
   });
 
   it('dedups concurrent refreshes: two parallel callers trigger exactly ONE token POST', async () => {
-    saveOidcSession({
+    saveOidcSessionFor(SRV, {
       clientId: CLIENT_ID,
       accessToken: 'stale-shared',
       refreshToken: 'rt-shared',
@@ -714,18 +720,18 @@ describe('getValidAccessToken', () => {
       await new Promise((r) => setTimeout(r, 25));
       return Response.json({ access_token: 'at-dedup', refresh_token: 'rt-dedup', expires_in: 3600, scope: 'openid' });
     };
-    const [t1, t2] = await Promise.all([getValidAccessToken(impl as unknown as typeof fetch), getValidAccessToken(impl as unknown as typeof fetch)]);
+    const [t1, t2] = await Promise.all([getValidAccessToken(SRV, impl as unknown as typeof fetch), getValidAccessToken(SRV, impl as unknown as typeof fetch)]);
     expect(tokenPosts).toBe(1);
     expect(t1).toBe('at-dedup');
     expect(t2).toBe('at-dedup');
     // The shared rotation is persisted exactly once; the session survives.
-    const session = loadOidcSession();
+    const session = loadOidcSessionFor(SRV);
     expect(session!.refreshToken).toBe('rt-dedup');
     expect(session!.accessToken).toBe('at-dedup');
   });
 
   it('clears the shared refresh promise on failure so a later caller can retry', async () => {
-    saveOidcSession({
+    saveOidcSessionFor(SRV, {
       clientId: CLIENT_ID,
       accessToken: 'stale',
       refreshToken: 'rt-flaky',
@@ -741,15 +747,50 @@ describe('getValidAccessToken', () => {
       if (attempts === 1) throw new TypeError('transient network error');
       return Response.json({ access_token: 'at-retry', refresh_token: 'rt-retry', expires_in: 3600 });
     };
-    await expect(getValidAccessToken(impl as unknown as typeof fetch)).rejects.toThrow(/could not reach the server/);
+    await expect(getValidAccessToken(SRV, impl as unknown as typeof fetch)).rejects.toThrow(/could not reach the server/);
     // Second call is NOT joined to the failed promise — it retries and succeeds.
-    await expect(getValidAccessToken(impl as unknown as typeof fetch)).resolves.toBe('at-retry');
+    await expect(getValidAccessToken(SRV, impl as unknown as typeof fetch)).resolves.toBe('at-retry');
     expect(attempts).toBe(2);
-    expect(loadOidcSession()!.accessToken).toBe('at-retry');
+    expect(loadOidcSessionFor(SRV)!.accessToken).toBe('at-retry');
   });
 
   it('throws (without clearing) when not signed in', async () => {
-    await expect(getValidAccessToken(makeFetch().impl)).rejects.toThrow(/Not signed in/);
+    await expect(getValidAccessToken(SRV, makeFetch().impl)).rejects.toThrow(/Not signed in/);
+  });
+
+  it('per-server sessions do not collide: B signed out ≠ A signed out, tokens are independent', async () => {
+    const SRV_A = 'https://alpha.test';
+    const SRV_B = 'https://beta.test';
+    saveOidcSessionFor(SRV_A, {
+      clientId: CLIENT_ID,
+      accessToken: 'token-A',
+      refreshToken: 'rt-A',
+      idToken: null,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+      scope: 'openid',
+      claims: { preferred_username: 'alice' },
+      endpoints: { tokenEndpoint: `${ISSUER}/token` },
+    });
+    saveOidcSessionFor(SRV_B, {
+      clientId: CLIENT_ID,
+      accessToken: 'token-B',
+      refreshToken: 'rt-B',
+      idToken: null,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+      scope: 'openid',
+      claims: { preferred_username: 'bob' },
+      endpoints: { tokenEndpoint: `${ISSUER}/token` },
+    });
+
+    // Each server resolves its OWN token.
+    const { impl: noNet } = makeFetch();
+    await expect(getValidAccessToken(SRV_A, noNet)).resolves.toBe('token-A');
+    await expect(getValidAccessToken(SRV_B, noNet)).resolves.toBe('token-B');
+
+    // Signing out of A leaves B intact.
+    await logout(SRV_A, noNet);
+    expect(loadOidcSessionFor(SRV_A)).toBeNull();
+    expect(loadOidcSessionFor(SRV_B)?.accessToken).toBe('token-B');
   });
 });
 
@@ -757,7 +798,7 @@ describe('getValidAccessToken', () => {
 
 describe('logout', () => {
   it('revokes access + refresh tokens and clears the session', async () => {
-    saveOidcSession({
+    saveOidcSessionFor(SRV, {
       clientId: CLIENT_ID,
       accessToken: 'at-revoke',
       refreshToken: 'rt-revoke',
@@ -775,18 +816,18 @@ describe('logout', () => {
       },
     });
 
-    await logout(impl);
+    await logout(SRV, impl);
     expect(bodies).toHaveLength(2);
     expect(bodies[0].token).toBe('at-revoke');
     expect(bodies[0].client_id).toBe(CLIENT_ID);
     expect(bodies[1].token).toBe('rt-revoke');
-    expect(loadOidcSession()).toBeNull();
+    expect(loadOidcSessionFor(SRV)).toBeNull();
     // Client config survives so re-login is one click.
-    expect(loadOidcConfig().clientId).toBeTruthy();
+    expect(loadOidcConfigFor(SRV).clientId).toBeTruthy();
   });
 
   it('clears locally even when the revoke call fails', async () => {
-    saveOidcSession({
+    saveOidcSessionFor(SRV, {
       clientId: CLIENT_ID,
       accessToken: 'at-x',
       refreshToken: null,
@@ -801,8 +842,8 @@ describe('logout', () => {
         throw new TypeError('network down');
       },
     });
-    await logout(impl);
-    expect(loadOidcSession()).toBeNull();
+    await logout(SRV, impl);
+    expect(loadOidcSessionFor(SRV)).toBeNull();
   });
 });
 

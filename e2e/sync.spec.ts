@@ -115,9 +115,16 @@ function installMockServer(page: Page) {
   };
 }
 
-/** Configure + save the connection through the UI (settings page open). */
+/** Add the server through the servers page and open its settings. */
+async function openServerSettings(page: Page): Promise<void> {
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('add-server-url').fill(SERVER);
+  await page.getByTestId('add-server-button').click();
+  await page.getByTestId(`server-settings-${SERVER}`).click();
+}
+
+/** Configure + save the connection through the UI (this server's settings). */
 async function configureServer(page: Page, token = ''): Promise<void> {
-  await page.getByLabel('Server URL').fill(SERVER);
   if (token) await page.getByLabel('Access token (optional)').fill(token);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Sync settings saved')).toBeVisible();
@@ -128,16 +135,18 @@ test('settings page opens from the header and persists configuration', async ({ 
   await expect(page.getByRole('heading', { name: 'No note selected' })).toBeVisible();
   await debugBreak(page, 'app loaded — inspect before opening settings');
 
-  await page.getByTitle('Settings').click();
+  await openServerSettings(page);
   await expect(page.getByText('Sync server')).toBeVisible();
   await step(page, 'settings-open');
 
   await configureServer(page, 'e2e-token');
 
-  // Persisted: reload and confirm the fields survive.
+  // Persisted: reload and confirm the fields survive. Navigation goes
+  // gear → servers → this server's settings (the multi-server path).
   await page.reload();
-  await page.getByTitle('Settings').click();
-  await expect(page.getByLabel('Server URL')).toHaveValue(SERVER);
+  await openServerSettings(page);
+  await expect(page.getByTestId(`server-settings-${SERVER}`)).toBeVisible();
+  await page.getByTestId(`server-settings-${SERVER}`).click();
   await expect(page.getByLabel('Access token (optional)')).toHaveValue('e2e-token');
   await step(page, 'settings-persisted');
 });
@@ -147,7 +156,7 @@ test('connection test reaches the mocked server and reports the note count', asy
   server.seed('remote-1', { uid: 'remote-1', updatedAt: new Date().toISOString(), title: 'x' });
 
   await page.goto(APP_PATH);
-  await page.getByTitle('Settings').click();
+  await openServerSettings(page);
   await configureServer(page);
 
   await page.getByRole('button', { name: 'Test connection' }).click();
@@ -161,7 +170,7 @@ test('sync pushes a local note to the server (two-way merge, push path)', async 
   await page.goto(APP_PATH);
   await expect(page.getByText('PushMe', { exact: true })).toBeVisible();
 
-  await page.getByTitle('Settings').click();
+  await openServerSettings(page);
   await configureServer(page);
   await debugBreak(page, 'configured — inspect before sync');
 
@@ -194,7 +203,7 @@ test('sync pulls a server-only note into the note list', async ({ page }) => {
   });
 
   await page.goto(APP_PATH);
-  await page.getByTitle('Settings').click();
+  await openServerSettings(page);
   await configureServer(page);
 
   await page.getByRole('button', { name: 'Sync now' }).click();
@@ -214,7 +223,7 @@ test('deleting a local note deletes it on the server at the next sync', async ({
   await expect(page.getByText('Doomed', { exact: true })).toBeVisible();
 
   // First sync: pushes the note and establishes its uid.
-  await page.getByTitle('Settings').click();
+  await openServerSettings(page);
   await configureServer(page);
   await page.getByRole('button', { name: 'Sync now' }).click();
   await expect(page.getByText('Sync complete — 1 pushed')).toBeVisible();
@@ -229,7 +238,7 @@ test('deleting a local note deletes it on the server at the next sync', async ({
   await debugBreak(page, 'note deleted locally — inspect before second sync');
 
   // Second sync: the tombstone propagates as a server-side delete.
-  await page.getByTitle('Settings').click();
+  await openServerSettings(page);
   await page.getByRole('button', { name: 'Sync now' }).click();
   await expect(page.getByText(/Sync complete.*1 deleted on server/)).toBeVisible();
   expect(server.deletes).toHaveLength(1);
@@ -239,11 +248,10 @@ test('deleting a local note deletes it on the server at the next sync', async ({
 
 test('forget server clears the stored connection', async ({ page }) => {
   await page.goto(APP_PATH);
-  await page.getByTitle('Settings').click();
+  await openServerSettings(page);
   await configureServer(page);
 
   await page.getByRole('button', { name: 'Forget server' }).click();
   await expect(page.getByText('Server connection forgotten')).toBeVisible();
-  await expect(page.getByLabel('Server URL')).toHaveValue('');
   await step(page, 'server-forgotten');
 });

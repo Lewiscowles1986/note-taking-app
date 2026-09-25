@@ -15,6 +15,7 @@ import {
   isNoteExcluded,
   type SyncDecisionInput,
 } from '@/lib/syncSettings';
+import { saveExcludedNoteIds } from '@/lib/syncServers';
 import { runSync, parseDiscoveryExclusions, SyncError } from '@/lib/sync';
 import { getPendingNotifications } from '@/lib/syncNotifications';
 
@@ -301,6 +302,10 @@ function configureServer(): void {
 
 const DEFAULT_DISCOVERY = { notes: { excluded_categories: [], excluded_uids: [] } };
 
+// All engine tests run against ONE configured test server.
+const SRV = 'https://sync.test';
+const pending = () => getPendingNotifications(SRV);
+
 beforeEach(async () => {
   await db.delete();
   await db.open();
@@ -328,7 +333,7 @@ describe('runSync with exclusions (engine integration)', () => {
     const note = await db.notes.get(id);
     expect(note?.title).toBe('Moved out');
     expect(result.summary).not.toMatch(/awaiting your choice/);
-    expect(getPendingNotifications()).toHaveLength(0);
+    expect(pending()).toHaveLength(0);
   });
 
   it('edge (b): note moves INTO exclusion after being synced → next sync skips the push, local copy untouched', async () => {
@@ -370,28 +375,28 @@ describe('runSync with exclusions (engine integration)', () => {
     // Local note that was previously synced under uid 'gone-uid' and is now
     // client-excluded; the server has tombstoned it.
     const id = await seedNote({ title: 'Excluded and gone', category: 'General' });
-    saveSyncSettings({ ...loadSyncSettings(), excludedNoteIds: [id] });
+    saveExcludedNoteIds([id]);
     // Map the note to its uid via a first sync in scope (engine assigns uids).
     // Simpler: rely on assignUidForNoteId through a normal pull cycle — instead
     // put the note back in scope and have the manifest show the tombstone.
-    saveSyncSettings({ ...loadSyncSettings(), excludedNoteIds: [] });
+    saveExcludedNoteIds([]);
     const fetchImpl1 = makeFetch([
       { match: { urlIncludes: '/.well-known' }, json: DEFAULT_DISCOVERY },
       { match: { method: 'GET', urlIncludes: '/api/notes' }, json: { notes: [] } },
     ]);
     await runSync({ fetchImpl: fetchImpl1 });
-    const uid = (await import('@/lib/sync')).getUidForNoteId(id);
+    const uid = (await import('@/lib/sync')).getUidForNoteId(SRV, id);
     expect(uid).toBeTruthy();
 
     // Now exclude it and have the server report a deletion.
-    saveSyncSettings({ ...loadSyncSettings(), excludedNoteIds: [id] });
+    saveExcludedNoteIds([id]);
     const fetchImpl2 = makeFetch([
       { match: { urlIncludes: '/.well-known' }, json: DEFAULT_DISCOVERY },
       { match: { method: 'GET', urlIncludes: '/api/notes' }, json: { notes: [{ uid: uid!, updatedAt: iso(T0 + 900), deleted: true }] } },
     ]);
     const result = await runSync({ fetchImpl: fetchImpl2 });
     expect(result.ok).toBe(true);
-    expect(getPendingNotifications()).toHaveLength(0);
+    expect(pending()).toHaveLength(0);
     // Local copy untouched (never-delete, and excluded → not our business).
     const note = await db.notes.get(id);
     expect(note?.title).toBe('Excluded and gone');
@@ -409,14 +414,14 @@ describe('runSync with exclusions (engine integration)', () => {
     const first = await runSync({ fetchImpl: fetchImpl1 });
     expect(first.pushed).toBe(1);
     const { getUidForNoteId } = await import('@/lib/sync');
-    const uid = getUidForNoteId(id);
+    const uid = getUidForNoteId(SRV, id);
     expect(uid).toBeTruthy();
     // User deletes the note locally; tombstone recorded (same bookkeeping as syncDeletion).
-    const { recordTombstone } = await import('@/lib/syncSettings');
-    recordTombstone(uid!, new Date(T0 + 100), new Date(T0));
+    const { recordTombstoneFor } = await import('@/lib/syncSettings');
+    recordTombstoneFor(SRV, uid!, new Date(T0 + 100), new Date(T0));
     await db.notes.delete(id);
     // Exclude the note id now (deny list) — lifecycle bookkeeping must still run.
-    saveSyncSettings({ ...loadSyncSettings(), excludedNoteIds: [id] });
+    saveExcludedNoteIds([id]);
     const fetchImpl2 = makeFetch([
       { match: { urlIncludes: '/.well-known' }, json: DEFAULT_DISCOVERY },
       { match: { method: 'GET', urlIncludes: '/api/notes' }, json: { notes: [{ uid: uid!, updatedAt: iso(T0) }] } },
@@ -495,7 +500,7 @@ describe('runSync with exclusions (engine integration)', () => {
     const note = await db.notes.get(id);
     expect(note?.title).toBe('Local only');
     expect((await db.notes.toArray()).map((n) => n.title)).not.toContain('FORBIDDEN');
-    expect(getPendingNotifications()).toHaveLength(0);
+    expect(pending()).toHaveLength(0);
     // The skipped entry did not become a deletion prompt either.
     expect(result.deletedLocal).toBe(0);
   });
@@ -514,10 +519,10 @@ describe('runSync with exclusions (engine integration)', () => {
     ]);
     expect((await runSync({ fetchImpl: fetchImpl1 })).pushed).toBe(1);
     const { getUidForNoteId } = await import('@/lib/sync');
-    const uid = getUidForNoteId(id)!;
+    const uid = getUidForNoteId(SRV, id)!;
     expect(uid).toBeTruthy();
-    addKeepException(uid);
-    expect(hasKeepException(uid)).toBe(true);
+    addKeepException(SRV, uid);
+    expect(hasKeepException(SRV, uid)).toBe(true);
 
     // Sync round under the exclusion policy: the manifest shows the remote
     // tombstone; the keep-exception must suppress any NEW prompt and the
@@ -528,17 +533,17 @@ describe('runSync with exclusions (engine integration)', () => {
     ]);
     const result = await runSync({ fetchImpl: fetchImpl2 });
     expect(result.ok).toBe(true);
-    expect(getPendingNotifications()).toHaveLength(0); // no NEW prompt enqueued
+    expect(pending()).toHaveLength(0); // no NEW prompt enqueued
     expect((await db.notes.get(id))?.title).toBe('Kept note'); // local untouched
 
     // A PRE-EXISTING queued prompt for the same uid remains resolvable: the
     // engine must not have consumed or blocked it.
     const { enqueueRemoteDeletion } = await import('@/lib/syncNotifications');
-    const pre = enqueueRemoteDeletion({ uid: 'other-uid', title: 'Older deletion', category: 'General', deletedAt: iso(T0 + 100) });
+    const pre = enqueueRemoteDeletion({ serverId: SRV, uid: 'other-uid', title: 'Older deletion', category: 'General', deletedAt: iso(T0 + 100) });
     expect(pre).not.toBeNull();
-    expect(getPendingNotifications()).toHaveLength(1);
+    expect(pending()).toHaveLength(1);
     await resolveNotification(pre!.id, 'keep');
-    expect(getPendingNotifications()).toHaveLength(0);
+    expect(pending()).toHaveLength(0);
   });
 
   it('pull-waste: a client-excluded note with a remote update fetches the payload once and discards it; local copy byte-identical', async () => {

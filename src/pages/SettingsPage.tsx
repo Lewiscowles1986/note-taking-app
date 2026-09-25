@@ -25,22 +25,23 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Lock, X } from 'lucide-react';
 import {
-  loadSyncSettings,
-  saveSyncSettings,
-  clearSyncSettings,
-  type StoredSyncSettings,
-  type SyncScope,
-} from '@/lib/syncSettings';
+  getServerSettings,
+  saveServerSettings,
+  clearServerData,
+  loadExcludedNoteIds,
+  listServers,
+} from '@/lib/syncServers';
+import type { StoredSyncSettings } from '@/lib/syncSettings';
+import type { SyncScope } from '@/lib/syncSettings';
 import { parseDiscoveryExclusions, type ServerExclusions } from '@/lib/sync';
 import { refreshAutoSyncScheduler } from '@/lib/autoSyncScheduler';
 import { runSync, SyncError } from '@/lib/sync';
 import { runInFlight } from '@/lib/inFlight';
-import { resolveAuthToken } from '@/lib/authToken';
 import {
-  loadOidcConfig,
-  loadOidcSession,
-  saveOidcConfig,
-  clearOidcSession,
+  loadOidcConfigFor,
+  loadOidcSessionFor,
+  saveOidcConfigFor,
+  clearOidcSessionFor,
   type OidcClientConfig,
   type OidcSession,
 } from '@/lib/oidcStorage';
@@ -49,29 +50,33 @@ import SyncNotifications from '@/components/SyncNotifications';
 import { toast } from 'sonner';
 
 interface SettingsPageProps {
+  /** The server this page edits — REQUIRED under multi-server sync. */
+  serverId: string;
   onBack: () => void;
   /** Fires after a successful sync so the caller can refresh its note list. */
   onSynced?: () => void;
 }
 
 /**
- * Full-screen sync settings page (same layout pattern as the calendar view).
+ * Full-screen sync settings page for ONE server (same layout pattern as the
+ * calendar view). Reached either from the servers page ("Settings" on a row)
+ * or — as the only remaining entry — with the server preselected by Index.
  *
  * Account: OIDC (Authorization Code + PKCE) sign-in against the configured
  * server — the preferred path. The manual bearer token moves into an
- * "Advanced" collapsible for servers without OIDC.
+ * "Advanced" collapsible for servers without OIDC. Sessions are per-server:
+ * signing in/out here never touches another server's tokens.
  *
  * What to sync: all notes, or only chosen categories (out-of-scope notes are
- * never pushed/pulled and their remote deletions are ignored).
+ * never pushed/pulled and their remote deletions are ignored). Per-server.
  *
- * Server connection: base URL + auto-sync cadence. "Sync now" runs the
- * two-way merge through the global in-flight registry so it shows in the
- * indicator, is cancellable, and conflicts with concurrent syncs instead of
- * racing them.
+ * Server connection: the URL is FIXED here (the id of the server being
+ * edited — rename/re-point happens on the servers page); auto-sync cadence,
+ * token, scope and the "Forget" (per-server data wipe) live here. "Sync now"
+ * syncs THIS server only, through the global in-flight registry.
  */
-export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
-  const [stored, setStored] = useState<StoredSyncSettings>(() => loadSyncSettings());
-  const [serverUrl, setServerUrl] = useState(stored.serverUrl);
+export default function SettingsPage({ serverId, onBack, onSynced }: SettingsPageProps) {
+  const [stored, setStored] = useState<StoredSyncSettings>(() => getServerSettings(serverId));
   const [authToken, setAuthToken] = useState(stored.authToken);
   const [autoSync, setAutoSync] = useState(stored.autoSync);
   const [intervalInput, setIntervalInput] = useState(String(stored.intervalMinutes));
@@ -80,11 +85,11 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
   const [syncing, setSyncing] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  // OIDC: client config + current session (signed-in identity).
-  const [oidcConfig, setOidcConfig] = useState<OidcClientConfig>(() => loadOidcConfig());
-  const [oidcIssuerInput, setOidcIssuerInput] = useState(() => loadOidcConfig().issuer);
-  const [oidcClientIdInput, setOidcClientIdInput] = useState(() => loadOidcConfig().clientId);
-  const [session, setSession] = useState<OidcSession | null>(() => loadOidcSession());
+  // OIDC: per-server client config + current session (signed-in identity).
+  const [oidcConfig, setOidcConfig] = useState<OidcClientConfig>(() => loadOidcConfigFor(serverId));
+  const [oidcIssuerInput, setOidcIssuerInput] = useState(() => loadOidcConfigFor(serverId).issuer);
+  const [oidcClientIdInput, setOidcClientIdInput] = useState(() => loadOidcConfigFor(serverId).clientId);
+  const [session, setSession] = useState<OidcSession | null>(() => loadOidcSessionFor(serverId));
   const [signingIn, setSigningIn] = useState(false);
 
   // Sync scope.
@@ -100,13 +105,14 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
   });
 
   const dirty =
-    serverUrl !== stored.serverUrl ||
     authToken !== stored.authToken ||
     autoSync !== stored.autoSync ||
     intervalInput !== String(stored.intervalMinutes) ||
     syncScope !== stored.syncScope ||
     JSON.stringify(syncedCategories) !== JSON.stringify(stored.syncedCategories) ||
-    JSON.stringify(excludedCategories) !== JSON.stringify(stored.excludedCategories);
+    JSON.stringify(excludedCategories) !== JSON.stringify(stored.excludedCategories) ||
+    oidcIssuerInput.trim().replace(/\/+$/, '') !== oidcConfig.issuer ||
+    oidcClientIdInput !== oidcConfig.clientId;
 
   const parsedInterval = useMemo(() => {
     const n = Number(intervalInput);
@@ -115,23 +121,22 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
 
   const currentConfig: StoredSyncSettings = useMemo(
     () => ({
-      serverUrl: serverUrl.trim().replace(/\/+$/, ''),
+      serverUrl: serverId,
       authToken,
       autoSync,
       intervalMinutes: parsedInterval ?? stored.intervalMinutes,
       syncScope,
       syncedCategories,
       excludedCategories,
-      excludedNoteIds: stored.excludedNoteIds,
+      excludedNoteIds: loadExcludedNoteIds(),
       lastSync: stored.lastSync,
     }),
     [
-      serverUrl,
+      serverId,
       authToken,
       autoSync,
       parsedInterval,
       stored.intervalMinutes,
-      stored.excludedNoteIds,
       stored.lastSync,
       syncScope,
       syncedCategories,
@@ -165,12 +170,12 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
     [serverExclusions],
   );
 
-  // Server policy: fetch the discovery document when a server is configured.
+  // Server policy: fetch the discovery document for THIS server.
   // setState happens only inside the async continuation (never synchronously
-  // in the effect body), and a cleared server URL resets the policy to none.
+  // in the effect body); a re-render for a different server resets it.
   useEffect(() => {
     let cancelled = false;
-    const base = stored.serverUrl;
+    const base = serverId;
     const policy = base
       ? fetch(`${base}/.well-known/openid-configuration`)
           .then((res) => (res.ok ? res.json() : null))
@@ -183,25 +188,25 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
     return () => {
       cancelled = true;
     };
-  }, [stored.serverUrl]);
+  }, [serverId]);
 
   /** Persist current fields (also used before a sync so the engine sees them). */
   const persist = (extra?: Partial<StoredSyncSettings>) => {
     const next = { ...currentConfig, ...extra };
-    saveSyncSettings(next);
-    // App-level scheduler follows auto-sync config changes.
+    saveServerSettings(serverId, next);
+    // App-level scheduler follows auto-sync config changes (per server).
     refreshAutoSyncScheduler();
     setStored(next);
   };
 
   const save = () => {
     persist();
-    saveOidcConfig({
+    saveOidcConfigFor(serverId, {
       issuer: oidcIssuerInput.trim().replace(/\/+$/, '') || oidcConfig.issuer,
       clientId: oidcClientIdInput.trim() || oidcConfig.clientId,
       scope: oidcConfig.scope,
     });
-    setOidcConfig(loadOidcConfig());
+    setOidcConfig(loadOidcConfigFor(serverId));
     toast.success('Sync settings saved');
   };
 
@@ -212,7 +217,7 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
     setSyncing(true);
     try {
       const result = await runInFlight({ label: 'Syncing with server', group: 'sync' }, async () =>
-        runSync(),
+        runSync({ serverId }),
       );
       if (result.ok) {
         toast.success(`Sync complete — ${result.summary}`);
@@ -228,60 +233,33 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
       }
     } finally {
       setSyncing(false);
-      setStored(loadSyncSettings());
-      setSession(loadOidcSession());
+      setStored(getServerSettings(serverId));
+      setSession(loadOidcSessionFor(serverId));
     }
   };
 
   const handleTest = async () => {
-    if (!currentConfig.serverUrl) {
-      toast.error('Enter a server URL first');
-      return;
-    }
     persist();
     setTesting(true);
     try {
-      const base = currentConfig.serverUrl;
-      // Same resolution as the sync engine: OIDC session token when signed
-      // in, else the manual bearer token.
-      const token = await resolveAuthToken(currentConfig.authToken);
-      const headers: Record<string, string> = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
-      const response = await fetch(`${base}/api/notes`, { method: 'GET', headers });
-      if (!response.ok) {
-        toast.error(`Server responded ${response.status}`);
-      } else {
-        const text = await response.text();
-        let notes: unknown = null;
-        try {
-          notes = text ? (JSON.parse(text) as unknown) : null;
-        } catch {
-          toast.error('Server responded with invalid JSON');
-          return;
-        }
-        const list = Array.isArray(notes)
-          ? notes
-          : ((notes as { notes?: unknown })?.notes as unknown[] | undefined);
-        if (!Array.isArray(list)) {
-          toast.error('Reached the server, but the response is not a notes manifest');
-          return;
-        }
-        toast.success(`Connection OK — ${list.length} note${list.length !== 1 ? 's' : ''} on server`);
-      }
-    } catch {
-      toast.error('Could not reach the server');
+      // Same resolution as the sync engine: THIS server's OIDC session token
+      // when signed in, else its manual bearer token. Shared with the servers
+      // page so both surfaces probe identically.
+      const { testConnection } = await import('@/lib/syncTest');
+      await testConnection(serverId);
     } finally {
       setTesting(false);
     }
   };
 
   const handleForget = () => {
-    clearSyncSettings();
-    clearOidcSession();
+    // Wipe THIS server's data: settings, tombstones, uid map, remote
+    // categories, notifications, exceptions, OIDC session. Other servers are
+    // untouched; the server record itself stays (re-configure from scratch).
+    clearServerData(serverId);
     refreshAutoSyncScheduler();
-    setStored(loadSyncSettings());
-    setSession(loadOidcSession());
-    setServerUrl('');
+    setStored(getServerSettings(serverId));
+    setSession(loadOidcSessionFor(serverId));
     setAuthToken('');
     setAutoSync(false);
     setIntervalInput('15');
@@ -290,23 +268,22 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
     toast.success('Server connection forgotten');
   };
 
-  // ─── OIDC sign-in / sign-out ─────────────────────────────────────────────
+  // ─── OIDC sign-in / sign-out (scoped to THIS server) ─────────────────────
 
   const handleSignIn = async (prompt?: 'login') => {
     // Persist the (possibly edited) issuer/client id first — login() reads
-    // the stored config.
-    saveOidcConfig({
-      issuer: oidcIssuerInput.trim().replace(/\/+$/, ''),
+    // the stored config for THIS server.
+    const nextConfig = {
+      issuer: oidcIssuerInput.trim().replace(/\/+$/, '') || oidcConfig.issuer,
       clientId: oidcClientIdInput.trim() || oidcConfig.clientId,
       scope: oidcConfig.scope,
-    });
+    };
+    saveOidcConfigFor(serverId, nextConfig);
     // The sync server doubles as the OIDC issuer for the reference setup.
     // Persist the auto-fill immediately: login() navigates away before any
     // other save could run, and the post-callback remount reads storage.
-    if (!serverUrl.trim()) {
-      const issuer = oidcIssuerInput.trim().replace(/\/+$/, '');
-      setServerUrl(issuer);
-      saveSyncSettings({ ...currentConfig, serverUrl: issuer });
+    if (nextConfig.issuer !== serverId && !oidcIssuerInput.trim()) {
+      saveOidcConfigFor(serverId, { ...nextConfig, issuer: serverId });
     }
     setSigningIn(true);
     try {
@@ -316,7 +293,7 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
       // prompt=login forces the IdP to show its login form even when its
       // SSO session cookie is alive — that is how a second identity gets
       // nominated without clearing anything.
-      await login({ returnTo: '/?settings=1', ...(prompt ? { prompt } : {}) });
+      await login(serverId, { returnTo: '/?settings=1', ...(prompt ? { prompt } : {}) });
       // Navigation away happens inside login(); reaching this line means the
       // redirect did not start.
       toast.error('Could not start sign-in — check the issuer URL');
@@ -330,13 +307,13 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
   const handleSignOut = async () => {
     try {
       const { logout } = await import('@/lib/oidcAuth');
-      await logout();
+      await logout(serverId);
       toast.success('Signed out');
     } catch {
       toast.error('Sign-out failed — tokens cleared locally anyway');
-      clearOidcSession();
+      clearOidcSessionFor(serverId);
     }
-    setSession(loadOidcSession());
+    setSession(loadOidcSessionFor(serverId));
   };
 
   const signedInName =
@@ -345,6 +322,9 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
     session?.claims?.email ??
     session?.claims?.sub ??
     '';
+
+  // Display label from the servers list (falls back to the URL).
+  const serverLabel = listServers().find((s) => s.id === serverId)?.label;
 
   const lastSyncLine = stored.lastSync
     ? `${new Date(stored.lastSync.at).toLocaleString()} — ${stored.lastSync.summary}`
@@ -364,6 +344,9 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
               <ChevronLeft size={18} />
             </button>
             <span className="text-sm font-medium text-foreground">Settings</span>
+            <span className="text-sm text-muted-foreground truncate max-w-[30vw]" data-testid="settings-server-name">
+              · {serverLabel ?? serverId}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             {/* Queued keep-or-delete prompts — inline with the header actions. */}
@@ -503,16 +486,17 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
                 for a reference server.
               </p>
 
+              {/* The URL is the server's identity — fixed here; adding a
+                  different server happens on the servers page. */}
               <div className="space-y-2">
                 <Label htmlFor="sync-server-url">Server URL</Label>
                 <Input
                   id="sync-server-url"
                   type="url"
                   inputMode="url"
-                  placeholder="https://sync.example.com"
-                  value={serverUrl}
-                  onChange={(e) => setServerUrl(e.target.value)}
-                  autoComplete="off"
+                  value={serverId}
+                  readOnly
+                  className="text-muted-foreground"
                   spellCheck={false}
                 />
               </div>
@@ -580,7 +564,6 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
                   variant="destructive"
                   size="sm"
                   onClick={handleForget}
-                  disabled={!stored.serverUrl}
                 >
                   <Trash2 size={14} className="mr-1.5" />
                   Forget server

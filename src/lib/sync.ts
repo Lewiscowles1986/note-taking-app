@@ -26,14 +26,15 @@
 
 import { db, detectContentFeatures, type Note } from './db';
 import {
-  loadSyncSettings,
   loadTombstones,
+  loadTombstonesFor,
+  recordSyncResultFor,
   resolveSyncDecision,
-  recordSyncResult,
-  recordTombstone,
-  retainTombstones,
+  recordTombstoneFor,
+  retainTombstonesFor,
   type Tombstone,
 } from './syncSettings';
+import { listServers, getServerSettings, uidMapKey, remoteCategoriesKey } from './syncServers';
 import { resolveAuthToken } from './authToken';
 import {
   enqueueRemoteDeletion,
@@ -43,14 +44,14 @@ import {
 
 // ─── uid mapping (localStorage-backed; keeps the Dexie schema unchanged) ─────
 
-const UID_MAP_KEY = 'notehaven.sync.uidMap';
-const REMOTE_CATEGORIES_KEY = 'notehaven.sync.remoteCategories';
+// One map PER SERVER: a note synced to two servers carries a DIFFERENT uid
+// on each (uids are generated per-push), so the keying is per-server.
 
 type UidMap = Record<string, string>; // noteId (as string) -> uid
 
-function loadUidMap(): UidMap {
+function loadUidMapFor(serverId: string): UidMap {
   try {
-    const raw = localStorage.getItem(UID_MAP_KEY);
+    const raw = localStorage.getItem(uidMapKey(serverId));
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
@@ -64,19 +65,20 @@ function loadUidMap(): UidMap {
   }
 }
 
-function saveUidMap(map: UidMap): void {
-  localStorage.setItem(UID_MAP_KEY, JSON.stringify(map));
+function saveUidMapFor(serverId: string, map: UidMap): void {
+  localStorage.setItem(uidMapKey(serverId), JSON.stringify(map));
 }
 
 /**
- * uid → category of the last payload seen for that uid (localStorage). Lets
- * category-scoped syncs exclude manifest entries WITHOUT fetching their
- * payloads: once a uid is known out-of-scope it is invisible until its
- * category changes (which can only be observed by a pull that is in scope).
+ * uid → category of the last payload seen for that uid (localStorage, per
+ * server). Lets category-scoped syncs exclude manifest entries WITHOUT
+ * fetching their payloads: once a uid is known out-of-scope it is invisible
+ * until its category changes (which can only be observed by a pull that is
+ * in scope).
  */
-function loadRemoteCategories(): Record<string, string> {
+function loadRemoteCategoriesFor(serverId: string): Record<string, string> {
   try {
-    const raw = localStorage.getItem(REMOTE_CATEGORIES_KEY);
+    const raw = localStorage.getItem(remoteCategoriesKey(serverId));
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
@@ -90,25 +92,26 @@ function loadRemoteCategories(): Record<string, string> {
   }
 }
 
-function rememberRemoteCategory(uid: string, category: string): void {
-  const map = loadRemoteCategories();
+function rememberRemoteCategoryFor(serverId: string, uid: string, category: string): void {
+  const map = loadRemoteCategoriesFor(serverId);
   if (map[uid] === category) return;
   map[uid] = category;
-  localStorage.setItem(REMOTE_CATEGORIES_KEY, JSON.stringify(map));
+  localStorage.setItem(remoteCategoriesKey(serverId), JSON.stringify(map));
 }
 
-/** Existing sync uid for a note, if any. */
-export function getUidForNoteId(noteId: number): string | null {
-  return loadUidMap()[String(noteId)] ?? null;
+/** Existing sync uid for a note ON ONE SERVER, if any. */
+export function getUidForNoteId(serverId: string, noteId: number): string | null {
+  return loadUidMapFor(serverId)[String(noteId)] ?? null;
 }
 
 /**
- * Assign (once) and return the sync uid for a note. Uses crypto.randomUUID
- * when available, falling back to timestamp+random — uids only need to be
- * unique, never secret.
+ * Assign (once) and return the sync uid for a note ON ONE SERVER. Uses
+ * crypto.randomUUID when available, falling back to timestamp+random — uids
+ * only need to be unique (per server), never secret. Two servers carry
+ * INDEPENDENT uids for the same local note.
  */
-export function assignUidForNoteId(noteId: number): string {
-  const map = loadUidMap();
+export function assignUidForNoteId(serverId: string, noteId: number): string {
+  const map = loadUidMapFor(serverId);
   const key = String(noteId);
   if (map[key]) return map[key];
   const uid =
@@ -116,40 +119,41 @@ export function assignUidForNoteId(noteId: number): string {
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   map[key] = uid;
-  saveUidMap(map);
+  saveUidMapFor(serverId, map);
   return uid;
 }
 
-function forgetUid(noteId: number): void {
-  const map = loadUidMap();
+function forgetUidFor(serverId: string, noteId: number): void {
+  const map = loadUidMapFor(serverId);
   delete map[String(noteId)];
-  saveUidMap(map);
+  saveUidMapFor(serverId, map);
 }
 
 /**
- * Execute the user's DELETE decision on a queued remote-deletion prompt:
- * remove the local copy (revisions included) and forget the uid mapping.
- * No new tombstone is recorded — the remote side is already tombstoned, so
- * there is nothing left to propagate; any stale local tombstone for the uid
- * is dropped to keep storage tidy. The caller (SyncNotifications) removes the
- * queue entry after this resolves. Imported dynamically by the notification
- * UI so the engine stays out of the eager chunk.
+ * Execute the user's DELETE decision on a queued remote-deletion prompt FOR
+ * ONE SERVER: remove the local copy (revisions included) and forget the uid
+ * mapping in that server's map. No new tombstone is recorded — the remote
+ * side is already tombstoned, so there is nothing left to propagate; any
+ * stale local tombstone for the uid is dropped to keep storage tidy. The
+ * caller (SyncNotifications) removes the queue entry after this resolves.
+ * Imported dynamically by the notification UI so the engine stays out of the
+ * eager chunk.
  */
-export async function deleteNoteForUid(uid: string): Promise<boolean> {
-  const map = loadUidMap();
+export async function deleteNoteForUid(serverId: string, uid: string): Promise<boolean> {
+  const map = loadUidMapFor(serverId);
   const key = Object.keys(map).find((k) => map[k] === uid);
   if (!key) return false;
   const noteId = Number(key);
   await db.revisions.where('noteId').equals(noteId).delete();
   await db.notes.delete(noteId);
-  forgetUid(noteId);
+  forgetUidFor(serverId, noteId);
   return true;
 }
 
 /** Prune mappings pointing at notes that no longer exist (e.g. after a restore). */
-export function pruneUidMap(liveNoteIds: number[]): void {
+export function pruneUidMap(serverId: string, liveNoteIds: number[]): void {
   const live = new Set(liveNoteIds.map(String));
-  const map = loadUidMap();
+  const map = loadUidMapFor(serverId);
   let changed = false;
   for (const key of Object.keys(map)) {
     if (!live.has(key)) {
@@ -157,7 +161,7 @@ export function pruneUidMap(liveNoteIds: number[]): void {
       changed = true;
     }
   }
-  if (changed) saveUidMap(map);
+  if (changed) saveUidMapFor(serverId, map);
 }
 
 // ─── payload shape ───────────────────────────────────────────────────────────
@@ -383,15 +387,16 @@ function authHeaders(token: string, hasBody = false): Record<string, string> {
 
 /**
  * Build the Authorization header for an outgoing request. The token comes
- * from resolveAuthToken (OIDC session when signed in, else the manual bearer
- * token) — the engine itself stays OIDC-agnostic.
+ * from resolveAuthToken (that server's OIDC session when signed in, else that
+ * server's manual bearer token) — the engine itself stays OIDC-agnostic.
  */
 async function bearerHeaders(
+  serverId: string,
   manualToken: string,
   fetchImpl: FetchLike,
   hasBody = false,
 ): Promise<Record<string, string>> {
-  const token = await resolveAuthToken(manualToken, fetchImpl as unknown as typeof fetch);
+  const token = await resolveAuthToken(serverId, manualToken, fetchImpl as unknown as typeof fetch);
   return authHeaders(token, hasBody);
 }
 
@@ -509,12 +514,67 @@ function describe(result: Omit<SyncResult, 'summary' | 'ok'>, queuedDeletions = 
  *    including their deletions — are ignored entirely.
  */
 export async function runSync(options: {
+  /** Which server to sync. Default: ALL configured servers, independently
+   * (each with its own settings, uids, tombstones and tokens). */
+  serverId?: string;
   signal?: AbortSignal;
   fetchImpl?: FetchLike;
   now?: Date;
 } = {}): Promise<SyncResult> {
+  if (options.serverId) return runSyncOne(options.serverId, options);
+  const servers = listServers();
+  if (servers.length === 0) throw new SyncError('No sync server configured');
+  const results = await Promise.all(
+    servers.map((server) => runSyncOne(server.id, options)),
+  );
+  // Aggregate: ops summed; ok = every server ok; errors concatenated with the
+  // server label so a multi-server failure report is actionable.
+  const ok = results.every((r) => r.ok);
+  const errors = results.flatMap((r, i) =>
+    r.errors.length && servers[i].label && servers[i].label !== servers[i].id
+      ? r.errors.map((e) => `[${servers[i].label}] ${e}`)
+      : r.errors,
+  );
+  const summary = results
+    .map((r, i) => {
+      const label = servers[i].label ?? servers[i].id;
+      const named = results.length > 1 && servers[i].label !== servers[i].id ? `${label}: ` : '';
+      return `${named}${r.summary}`;
+    })
+    .join(' · ');
+  return {
+    ok,
+    pushed: results.reduce((n, r) => n + r.pushed, 0),
+    pulled: results.reduce((n, r) => n + r.pulled, 0),
+    deletedLocal: results.reduce((n, r) => n + r.deletedLocal, 0),
+    deletedRemote: results.reduce((n, r) => n + r.deletedRemote, 0),
+    errors,
+    summary,
+  };
+}
+
+/**
+ * Run one full sync round against ONE server. Throws SyncError for fatal
+ * problems (no config, unreachable server, bad manifest); per-op failures
+ * are collected into `errors` and do not abort the remaining operations.
+ *
+ * Policy baked in here (docs/sync.md):
+ *  - Never-delete-local: remote deletions never remove local notes. The
+ *    planner may emit `delete-local` intents; runSync converts them into
+ *    notification-queue entries (keep-or-delete prompts) instead of deleting.
+ *  - Category scope: when the stored scope is 'categories', only notes in the
+ *    chosen categories are pushed or pulled; out-of-scope remote entries —
+ *    including their deletions — are ignored entirely.
+ *  - Everything below is SCOPED TO THE SERVER: settings, uid map,
+ *    tombstones, remote-category cache, tokens, notifications, exceptions.
+ */
+async function runSyncOne(serverId: string, options: {
+  signal?: AbortSignal;
+  fetchImpl?: FetchLike;
+  now?: Date;
+}): Promise<SyncResult> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const settings = loadSyncSettings();
+  const settings = getServerSettings(serverId);
   if (!settings.serverUrl) {
     throw new SyncError('No sync server configured');
   }
@@ -523,10 +583,10 @@ export async function runSync(options: {
   const base = settings.serverUrl;
 
   // Local state: notes + uid mapping (assigning fresh uids to new notes and
-  // pruning mappings for notes that no longer exist).
+  // pruning mappings for notes that no longer exist). Per-server map.
   const notes = await db.notes.toArray();
   const liveIds = notes.map((n) => n.id!);
-  pruneUidMap(liveIds);
+  pruneUidMap(serverId, liveIds);
 
   // Layer 1 — the server's exclusion policy, read from discovery each run.
   const serverExclusions = await fetchServerExclusions(base, fetchImpl, options.signal);
@@ -549,19 +609,19 @@ export async function runSync(options: {
   // into scope syncs normally) but are invisible to this sync round —
   // neither pushed, pulled, nor prompted about.
   const localMetas: LocalNoteMeta[] = notes
-    .filter((n) => decide(n.id!, assignUidForNoteId(n.id!), n.category).decision === 'sync')
+    .filter((n) => decide(n.id!, assignUidForNoteId(serverId, n.id!), n.category).decision === 'sync')
     .map((n) => ({
       noteId: n.id!,
-      uid: assignUidForNoteId(n.id!),
+      uid: assignUidForNoteId(serverId, n.id!),
       title: n.title,
       updatedAt: new Date(n.updatedAt).toISOString(),
       category: n.category,
     }));
-  const tombstones = loadTombstones();
+  const tombstones = loadTombstonesFor(serverId);
 
-  // Authorization: OIDC access token when a session exists (refreshing via
-  // the resolver seam), else the manual bearer token.
-  const manifestHeaders = await bearerHeaders(settings.authToken, fetchImpl);
+  // Authorization: that server's OIDC access token when a session exists
+  // (refreshing via the resolver seam), else that server's manual token.
+  const manifestHeaders = await bearerHeaders(serverId, settings.authToken, fetchImpl);
 
   // Remote manifest.
   const manifestData = await requestJson<unknown>(
@@ -579,7 +639,7 @@ export async function runSync(options: {
   // the category cache and are skipped from the next run on. Uids on the
   // server's deny list are filtered unconditionally — even when their
   // category is not yet known — so their payload is never fetched at all.
-  const remoteCategories = loadRemoteCategories();
+  const remoteCategories = loadRemoteCategoriesFor(serverId);
   const excludedUidSet = new Set(serverExclusions.excludedUids);
   const remoteInScope = remote.filter((r) => {
     if (excludedUidSet.has(r.uid)) return false;
@@ -590,7 +650,7 @@ export async function runSync(options: {
 
   // Local notes by uid for titles/categories in notifications.
   const noteByUid = new Map(localMetas.map((m) => [m.uid, m]));
-  const noteIdByUid = new Map(notes.map((n) => [assignUidForNoteId(n.id!), n]));
+  const noteIdByUid = new Map(notes.map((n) => [assignUidForNoteId(serverId, n.id!), n]));
 
   const plan = planSync(localMetas, remoteInScope, tombstones);
 
@@ -619,7 +679,7 @@ export async function runSync(options: {
           `${base}/api/notes/${encodeURIComponent(op.uid)}`,
           {
             method: 'PUT',
-            headers: await bearerHeaders(settings.authToken, fetchImpl, true),
+            headers: await bearerHeaders(serverId, settings.authToken, fetchImpl, true),
             body: JSON.stringify(payload),
             signal: options.signal,
           },
@@ -630,7 +690,7 @@ export async function runSync(options: {
         const payload = await requestJson<SyncPayload>(
           fetchImpl,
           `${base}/api/notes/${encodeURIComponent(op.uid)}`,
-          { method: 'GET', headers: await bearerHeaders(settings.authToken, fetchImpl), signal: options.signal },
+          { method: 'GET', headers: await bearerHeaders(serverId, settings.authToken, fetchImpl), signal: options.signal },
           'Pulling note',
         );
         // Re-check the decision on the payload: the manifest entry looked
@@ -638,7 +698,7 @@ export async function runSync(options: {
         // note that moved into an excluded/out-of-scope category on another
         // device must not be pulled in.
         const payloadDecision = decide(-1, op.uid, payload.category);
-        rememberRemoteCategory(op.uid, payload.category);
+        rememberRemoteCategoryFor(serverId, op.uid, payload.category);
         if (payloadDecision.decision === 'skip') {
           continue;
         }
@@ -647,9 +707,9 @@ export async function runSync(options: {
           await db.notes.update(op.noteId, { ...note });
         } else {
           const newId = await db.notes.add(note);
-          const map = loadUidMap();
+          const map = loadUidMapFor(serverId);
           map[String(newId)] = op.uid;
-          saveUidMap(map);
+          saveUidMapFor(serverId, map);
         }
         result.pulled++;
       } else if (op.kind === 'delete-local') {
@@ -663,8 +723,9 @@ export async function runSync(options: {
         const excludedNote = meta
           ? decide(meta.noteId, op.uid, meta.category).reason !== 'allowed'
           : !!noteInfo && decide(noteInfo.id!, op.uid, noteInfo.category).reason !== 'allowed';
-        if (!wouldPromptBeSuppressed(op.uid) && !excludedNote) {
+        if (!wouldPromptBeSuppressed(serverId, op.uid) && !excludedNote) {
           enqueueRemoteDeletion({
+            serverId,
             uid: op.uid,
             title: meta?.title ?? noteInfo?.title ?? 'Untitled',
             category: meta?.category ?? noteInfo?.category ?? 'General',
@@ -676,7 +737,7 @@ export async function runSync(options: {
         await requestJson(
           fetchImpl,
           `${base}/api/notes/${encodeURIComponent(op.uid)}`,
-          { method: 'DELETE', headers: await bearerHeaders(settings.authToken, fetchImpl), signal: options.signal },
+          { method: 'DELETE', headers: await bearerHeaders(serverId, settings.authToken, fetchImpl), signal: options.signal },
           'Deleting remote note',
         );
         acknowledgedDeletions.add(op.uid);
@@ -696,11 +757,15 @@ export async function runSync(options: {
     const keep = new Set(
       tombstones.map((t) => t.uid).filter((uid) => !acknowledgedDeletions.has(uid)),
     );
-    retainTombstones(keep);
+    retainTombstonesFor(serverId, keep);
   }
 
   const summary = describe(result, notifiedDeletions);
-  recordSyncResult({ at: (options.now ?? new Date()).toISOString(), ok: result.errors.length === 0, summary });
+  recordSyncResultFor(serverId, {
+    at: (options.now ?? new Date()).toISOString(),
+    ok: result.errors.length === 0,
+    summary,
+  });
 
   return {
     ok: result.errors.length === 0,
@@ -710,13 +775,19 @@ export async function runSync(options: {
 }
 
 /**
- * Auto-sync tick: silently run a sync when a server is configured. Intended
- * for the background interval — never throws.
+ * Auto-sync tick: silently sync EVERY configured server that has a server
+ * URL (each with its own settings/tokens). Intended for the background
+ * interval — never throws. Returns the aggregated result, or null when
+ * nothing is configured.
  */
-export async function runSyncIfConfigured(signal?: AbortSignal): Promise<SyncResult | null> {
+export async function runSyncIfConfigured(serverId?: string, signal?: AbortSignal): Promise<SyncResult | null> {
   try {
-    const { serverUrl } = loadSyncSettings();
-    if (!serverUrl) return null;
+    const servers = listServers();
+    if (serverId) {
+      if (!servers.some((s) => s.id === serverId)) return null;
+      return await runSync({ serverId, signal });
+    }
+    if (servers.length === 0) return null;
     return await runSync({ signal });
   } catch {
     return null;

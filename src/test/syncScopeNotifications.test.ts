@@ -30,8 +30,8 @@ import {
   loadSyncSettings,
   saveSyncSettings,
   clearSyncSettings,
-  recordTombstone,
-  loadTombstones,
+  recordTombstoneFor,
+  loadTombstonesFor,
   isCategoryInScope,
 } from '@/lib/syncSettings';
 import {
@@ -46,6 +46,14 @@ import {
   type SyncNotification,
 } from '@/lib/syncNotifications';
 import { deleteNoteForUid } from '@/lib/sync';
+import { addServer, saveServerSettings } from '@/lib/syncServers';
+
+// All notifications tests run against ONE configured test server.
+const SRV = 'https://sync.test';
+/** Server-scoped wrappers matching the ONE-server shape of these tests. */
+const pending = () => getPendingNotifications(SRV);
+const queue = (info: Omit<Parameters<typeof enqueueRemoteDeletion>[0], 'serverId'>) =>
+  enqueueRemoteDeletion({ ...info, serverId: SRV });
 
 const iso = (ms: number): string => new Date(ms).toISOString();
 const T0 = Date.now();
@@ -137,11 +145,16 @@ function makeFetch(
 }
 
 function configureServer(overrides: Record<string, unknown> = {}): void {
-  saveSyncSettings({
-    serverUrl: 'https://sync.test',
+  addServer(SRV);
+  saveServerSettings(SRV, {
     authToken: 'secret-token',
     autoSync: false,
     intervalMinutes: 15,
+    syncScope: 'all',
+    syncedCategories: [],
+    excludedCategories: [],
+    excludedNoteIds: [],
+    lastSync: null,
     ...overrides,
   });
 }
@@ -187,8 +200,8 @@ describe('category-scoped sync', () => {
     expect(requests.find((r) => r.method === 'PUT')!.body.title).toBe('In scope');
 
     // The out-of-scope note keeps its uid mapping for a later move back in.
-    expect(getUidForNoteId(outId)).not.toBeNull();
-    expect(getUidForNoteId(inId)).not.toBeNull();
+    expect(getUidForNoteId(SRV, outId)).not.toBeNull();
+    expect(getUidForNoteId(SRV, inId)).not.toBeNull();
   });
 
   it('does not PULL (or plan delete-local for) an out-of-scope remote note', async () => {
@@ -237,7 +250,7 @@ describe('category-scoped sync', () => {
     expect(result2.pulled).toBe(0);
     expect(result2.deletedLocal).toBe(0);
     expect(requests2.filter((r) => r.url.includes('/api/notes/out-1'))).toHaveLength(0);
-    expect(getPendingNotifications()).toHaveLength(0); // out of scope → silent
+    expect(pending()).toHaveLength(0); // out of scope → silent
     expect(await getAllNotes()).toHaveLength(1);
   });
 
@@ -257,7 +270,7 @@ describe('category-scoped sync', () => {
   it('a note that moves OUT of scope keeps its copy, is not pushed, not delete-localled', async () => {
     configureServer({ syncScope: 'categories', syncedCategories: ['Work'] });
     const id = await seedNote({ title: 'Was Work', category: 'Personal', updatedAt: new Date(T0) });
-    const uid = assignUidForNoteId(id);
+    const uid = assignUidForNoteId(SRV, id);
     // Remote still has the (older) Work version — planner would push/pull it
     // if the note were in scope.
     const { impl } = makeFetch([
@@ -270,7 +283,7 @@ describe('category-scoped sync', () => {
     expect(result.pushed).toBe(0);
     expect(result.pulled).toBe(0);
     expect(result.deletedLocal).toBe(0);
-    expect(getPendingNotifications()).toHaveLength(0);
+    expect(pending()).toHaveLength(0);
     const note = await db.notes.get(id);
     expect(note).toBeDefined();
     expect(note!.category).toBe('Personal'); // untouched
@@ -280,7 +293,7 @@ describe('category-scoped sync', () => {
     configureServer({ syncScope: 'categories', syncedCategories: ['Work'] });
     const id = await seedNote({ title: 'Now Work', category: 'Work', updatedAt: new Date(T0 + 100) });
     // uid was assigned while the note was out of scope — mapping survives.
-    assignUidForNoteId(id);
+    assignUidForNoteId(SRV, id);
     const { impl, requests } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [] } },
       { match: { method: 'PUT' }, status: 204 },
@@ -293,21 +306,21 @@ describe('category-scoped sync', () => {
   it('ignores remote deletions of OUT-of-scope notes silently (no prompt)', async () => {
     configureServer({ syncScope: 'categories', syncedCategories: ['Work'] });
     const outId = await seedNote({ title: 'Personal note', category: 'Personal' });
-    const uid = assignUidForNoteId(outId);
+    const uid = assignUidForNoteId(SRV, outId);
     const { impl } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [{ uid, updatedAt: iso(T0 + 500), deleted: true }] } },
     ]);
 
     const result = await runSync({ fetchImpl: impl });
     expect(result.deletedLocal).toBe(0);
-    expect(getPendingNotifications()).toHaveLength(0);
+    expect(pending()).toHaveLength(0);
     expect(await db.notes.get(outId)).toBeDefined();
   });
 
   it('queues a prompt for an IN-scope remote deletion and keeps the local note', async () => {
     configureServer({ syncScope: 'categories', syncedCategories: ['Work'] });
     const inId = await seedNote({ title: 'Work note', category: 'Work' });
-    const uid = assignUidForNoteId(inId);
+    const uid = assignUidForNoteId(SRV, inId);
     const { impl } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [{ uid, updatedAt: iso(T0 + 500), deleted: true }] } },
     ]);
@@ -315,9 +328,9 @@ describe('category-scoped sync', () => {
     const result = await runSync({ fetchImpl: impl });
     expect(result.deletedLocal).toBe(0);
     expect(await db.notes.get(inId)).toBeDefined();
-    const pending = getPendingNotifications();
-    expect(pending).toHaveLength(1);
-    expect(pending[0]).toMatchObject({ uid, title: 'Work note', category: 'Work', kind: 'remote-delete' });
+    const items = pending();
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ uid, title: 'Work note', category: 'Work', kind: 'remote-delete' });
   });
 });
 
@@ -327,7 +340,7 @@ describe('never-delete policy', () => {
   it('remote deleted:true + local OLDER → local note STILL PRESENT + queue entry', async () => {
     configureServer();
     const id = await seedNote({ title: 'Server deleted me', updatedAt: new Date(T0) });
-    const uid = assignUidForNoteId(id);
+    const uid = assignUidForNoteId(SRV, id);
     const { impl } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [{ uid, updatedAt: iso(T0 + 500), deleted: true }] } },
     ]);
@@ -338,14 +351,14 @@ describe('never-delete policy', () => {
     const note = await db.notes.get(id);
     expect(note).toBeDefined();
     expect(note!.title).toBe('Server deleted me');
-    expect(getUidForNoteId(id)).toBe(uid); // mapping intact
-    expect(getPendingNotifications()).toHaveLength(1);
+    expect(getUidForNoteId(SRV, id)).toBe(uid); // mapping intact
+    expect(pending()).toHaveLength(1);
   });
 
   it('remote deletion with local NEWER still resurrects (push) — no prompt', async () => {
     configureServer();
     const id = await seedNote({ title: 'Edited after deletion', updatedAt: new Date(T0 + 5000) });
-    const uid = assignUidForNoteId(id);
+    const uid = assignUidForNoteId(SRV, id);
     const { impl, requests } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [{ uid, updatedAt: iso(T0 + 500), deleted: true }] } },
       { match: { method: 'PUT' }, status: 204 },
@@ -354,12 +367,12 @@ describe('never-delete policy', () => {
     const result = await runSync({ fetchImpl: impl });
     expect(result.pushed).toBe(1);
     expect(requests.some((r) => r.method === 'PUT')).toBe(true);
-    expect(getPendingNotifications()).toHaveLength(0);
+    expect(pending()).toHaveLength(0);
   });
 
   it('local user deletions STILL propagate as remote tombstones (unchanged)', async () => {
     configureServer();
-    recordTombstone('user-deleted', new Date(T0 + 400), new Date(T0));
+    recordTombstoneFor(SRV, 'user-deleted', new Date(T0 + 400), new Date(T0));
     const { impl, requests } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [{ uid: 'user-deleted', updatedAt: iso(T0) }] } },
       { match: { method: 'DELETE' }, status: 204 },
@@ -368,21 +381,21 @@ describe('never-delete policy', () => {
     const result = await runSync({ fetchImpl: impl });
     expect(result.deletedRemote).toBe(1);
     expect(requests.find((r) => r.method === 'DELETE')!.url).toBe('https://sync.test/api/notes/user-deleted');
-    expect(loadTombstones()).toHaveLength(0);
-    expect(getPendingNotifications()).toHaveLength(0);
+    expect(loadTombstonesFor(SRV)).toHaveLength(0);
+    expect(pending()).toHaveLength(0);
   });
 
   it('a stale local tombstone (local deleted first) consumes as delete-remote — no prompt', async () => {
     configureServer();
     // Local deleted the note; server copy is OLDER than the deletion.
-    recordTombstone('stale-uid', new Date(T0 + 400), new Date(T0));
+    recordTombstoneFor(SRV, 'stale-uid', new Date(T0 + 400), new Date(T0));
     const { impl, requests } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [{ uid: 'stale-uid', updatedAt: iso(T0) }] } },
       { match: { method: 'DELETE' }, status: 204 },
     ]);
     const result = await runSync({ fetchImpl: impl });
     expect(result.deletedRemote).toBe(1);
-    expect(getPendingNotifications()).toHaveLength(0);
+    expect(pending()).toHaveLength(0);
   });
 
   it('the plan may still emit delete-local intents — planner stays pure and backward-compatible', () => {
@@ -401,45 +414,46 @@ describe('never-delete policy', () => {
 describe('syncNotifications queue', () => {
   it('enqueues with stable ids and readable fields', () => {
     const entry = enqueueRemoteDeletion({
+      serverId: SRV,
       uid: 'uid-1',
       title: 'My note',
       category: 'Work',
       deletedAt: iso(T0 + 500),
     });
     expect(entry).not.toBeNull();
-    expect(entry!.id).toBe('remote-delete:uid-1');
-    expect(getPendingNotifications()).toHaveLength(1);
-    expect(isQueued('uid-1')).toBe(true);
+    expect(entry!.id).toBe(`${SRV}:remote-delete:uid-1`);
+    expect(pending()).toHaveLength(1);
+    expect(isQueued(SRV, 'uid-1')).toBe(true);
   });
 
   it('dedupes: no double-queue for the same uid', () => {
-    enqueueRemoteDeletion({ uid: 'uid-1', title: 'A', category: 'C', deletedAt: iso(T0) });
-    const again = enqueueRemoteDeletion({ uid: 'uid-1', title: 'A', category: 'C', deletedAt: iso(T0 + 1) });
+    enqueueRemoteDeletion({ serverId: SRV, uid: 'uid-1', title: 'A', category: 'C', deletedAt: iso(T0) });
+    const again = enqueueRemoteDeletion({ serverId: SRV, uid: 'uid-1', title: 'A', category: 'C', deletedAt: iso(T0 + 1) });
     expect(again).toBeNull();
-    expect(getPendingNotifications()).toHaveLength(1);
+    expect(pending()).toHaveLength(1);
   });
 
   it('never enqueues for a uid with a permanent exception', () => {
-    addKeepException('kept-uid');
-    const entry = enqueueRemoteDeletion({ uid: 'kept-uid', title: 'X', category: 'C', deletedAt: iso(T0) });
+    addKeepException(SRV, 'kept-uid');
+    const entry = enqueueRemoteDeletion({ serverId: SRV, uid: 'kept-uid', title: 'X', category: 'C', deletedAt: iso(T0) });
     expect(entry).toBeNull();
-    expect(getPendingNotifications()).toHaveLength(0);
-    expect(wouldPromptBeSuppressed('kept-uid')).toBe(true);
+    expect(pending()).toHaveLength(0);
+    expect(wouldPromptBeSuppressed(SRV, 'kept-uid')).toBe(true);
   });
 
   it('survives a page reload (localStorage persistence)', () => {
-    enqueueRemoteDeletion({ uid: 'uid-1', title: 'A', category: 'C', deletedAt: iso(T0) });
+    enqueueRemoteDeletion({ serverId: SRV, uid: 'uid-1', title: 'A', category: 'C', deletedAt: iso(T0) });
     // Simulate reload: read again from storage (same API, new call).
-    const pending = getPendingNotifications();
-    expect(pending).toHaveLength(1);
-    expect(pending[0].uid).toBe('uid-1');
+    const reloaded = pending();
+    expect(reloaded).toHaveLength(1);
+    expect(reloaded[0].uid).toBe('uid-1');
   });
 
   it('tolerates corrupt storage', () => {
     localStorage.setItem('notehaven.sync.notifications', '{not json');
-    expect(getPendingNotifications()).toEqual([]);
+    expect(pending()).toEqual([]);
     localStorage.setItem('notehaven.sync.keepExceptions', '[1,2]');
-    expect(hasKeepException('x')).toBe(false);
+    expect(hasKeepException(SRV, 'x')).toBe(false);
   });
 });
 
@@ -449,17 +463,17 @@ describe('resolveNotification', () => {
   it('KEEP → permanent exception, queue emptied, local note untouched, never re-prompted', async () => {
     configureServer();
     const id = await seedNote({ title: 'Kept note', updatedAt: new Date(T0) });
-    const uid = assignUidForNoteId(id);
+    const uid = assignUidForNoteId(SRV, id);
     const { impl } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [{ uid, updatedAt: iso(T0 + 500), deleted: true }] } },
     ]);
     await runSync({ fetchImpl: impl });
-    expect(getPendingNotifications()).toHaveLength(1);
+    expect(pending()).toHaveLength(1);
 
-    await resolveNotification(`remote-delete:${uid}`, 'keep');
+    await resolveNotification(`${SRV}:remote-delete:${uid}`, 'keep');
 
-    expect(getPendingNotifications()).toHaveLength(0);
-    expect(hasKeepException(uid)).toBe(true);
+    expect(pending()).toHaveLength(0);
+    expect(hasKeepException(SRV, uid)).toBe(true);
     expect(await db.notes.get(id)).toBeDefined(); // untouched
 
     // Next sync with the same remote tombstone: no re-prompt, no delete.
@@ -467,26 +481,26 @@ describe('resolveNotification', () => {
       { match: { method: 'GET' }, json: { notes: [{ uid, updatedAt: iso(T0 + 500), deleted: true }] } },
     ]);
     await runSync({ fetchImpl: impl2 });
-    expect(getPendingNotifications()).toHaveLength(0);
+    expect(pending()).toHaveLength(0);
     expect(await db.notes.get(id)).toBeDefined();
   });
 
   it('DELETE → local note removed, no re-prompt on next sync', async () => {
     configureServer();
     const id = await seedNote({ title: 'Delete me', updatedAt: new Date(T0) });
-    const uid = assignUidForNoteId(id);
+    const uid = assignUidForNoteId(SRV, id);
     const { impl } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [{ uid, updatedAt: iso(T0 + 500), deleted: true }] } },
     ]);
     await runSync({ fetchImpl: impl });
 
-    await resolveNotification(`remote-delete:${uid}`, 'delete');
+    await resolveNotification(`${SRV}:remote-delete:${uid}`, 'delete');
 
     expect(await db.notes.get(id)).toBeUndefined(); // gone at the user's command
-    expect(getUidForNoteId(id)).toBeNull(); // mapping forgotten
-    expect(getPendingNotifications()).toHaveLength(0);
+    expect(getUidForNoteId(SRV, id)).toBeNull(); // mapping forgotten
+    expect(pending()).toHaveLength(0);
     // No exception was created (delete is a one-time decision).
-    expect(hasKeepException(uid)).toBe(false);
+    expect(hasKeepException(SRV, uid)).toBe(false);
 
     // Next sync sees the same tombstone: note is gone locally, uid unmapped —
     // nothing to prompt about (remote-only deleted entries are ignored).
@@ -494,18 +508,18 @@ describe('resolveNotification', () => {
       { match: { method: 'GET' }, json: { notes: [{ uid, updatedAt: iso(T0 + 500), deleted: true }] } },
     ]);
     await runSync({ fetchImpl: impl2 });
-    expect(getPendingNotifications()).toHaveLength(0);
+    expect(pending()).toHaveLength(0);
   });
 
   it('KEEP + remote resurrection → the note pulls normally (exception ≠ pull suppression)', async () => {
     configureServer();
     const id = await seedNote({ title: 'Kept then resurrected', updatedAt: new Date(T0) });
-    const uid = assignUidForNoteId(id);
+    const uid = assignUidForNoteId(SRV, id);
     const { impl } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [{ uid, updatedAt: iso(T0 + 500), deleted: true }] } },
     ]);
     await runSync({ fetchImpl: impl });
-    await resolveNotification(`remote-delete:${uid}`, 'keep');
+    await resolveNotification(`${SRV}:remote-delete:${uid}`, 'keep');
 
     // Server resurrects (PUT again, deleted flag cleared) with a NEWER update.
     const { impl: impl2 } = makeFetch([
@@ -522,34 +536,35 @@ describe('resolveNotification', () => {
   });
 
   it('DELETE on a note that no longer exists locally is a no-op that still clears the queue', async () => {
-    enqueueRemoteDeletion({ uid: 'ghost-uid', title: 'Ghost', category: 'C', deletedAt: iso(T0) });
-    await resolveNotification('remote-delete:ghost-uid', 'delete');
-    expect(getPendingNotifications()).toHaveLength(0);
+    configureServer(); // the entry must live in a CONFIGURED server's queue
+    enqueueRemoteDeletion({ serverId: SRV, uid: 'ghost-uid', title: 'Ghost', category: 'C', deletedAt: iso(T0) });
+    await resolveNotification(`${SRV}:remote-delete:ghost-uid`, 'delete');
+    expect(pending()).toHaveLength(0);
   });
 
   it('deleteNoteForUid removes revisions and the uid mapping', async () => {
     const id = await seedNote({ title: 'With revisions' });
-    const uid = assignUidForNoteId(id);
+    const uid = assignUidForNoteId(SRV, id);
     await db.revisions.add({ noteId: id, title: 'old', content: '', tags: [], category: 'General', savedAt: new Date() });
-    expect(await deleteNoteForUid(uid)).toBe(true);
+    expect(await deleteNoteForUid(SRV, uid)).toBe(true);
     expect(await db.notes.get(id)).toBeUndefined();
-    expect(getUidForNoteId(id)).toBeNull();
+    expect(getUidForNoteId(SRV, id)).toBeNull();
     expect(await db.revisions.where('noteId').equals(id).count()).toBe(0);
   });
 
   it('unknown ids and empty resolves are safe', async () => {
-    await resolveNotification('remote-delete:missing', 'keep');
-    expect(getKeepExceptionUids()).toEqual([]);
-    await resolveNotification('remote-delete:x', 'delete');
-    expect(getPendingNotifications()).toHaveLength(0);
+    await resolveNotification(`${SRV}:remote-delete:missing`, 'keep');
+    expect(getKeepExceptionUids(SRV)).toEqual([]);
+    await resolveNotification(`${SRV}:remote-delete:x`, 'delete');
+    expect(pending()).toHaveLength(0);
   });
 
   it('exception timestamps are recorded per uid', () => {
-    addKeepException('a');
-    addKeepException('b');
-    expect(getKeepExceptionUids()).toEqual(['a', 'b']);
-    expect(hasKeepException('a')).toBe(true);
-    expect(hasKeepException('c')).toBe(false);
+    addKeepException(SRV, 'a');
+    addKeepException(SRV, 'b');
+    expect(getKeepExceptionUids(SRV)).toEqual(['a', 'b']);
+    expect(hasKeepException(SRV, 'a')).toBe(true);
+    expect(hasKeepException(SRV, 'c')).toBe(false);
   });
 });
 
