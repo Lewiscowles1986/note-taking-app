@@ -26,11 +26,9 @@
 
 import { db, detectContentFeatures, type Note } from './db';
 import {
-  loadTombstones,
   loadTombstonesFor,
   recordSyncResultFor,
   resolveSyncDecision,
-  recordTombstoneFor,
   retainTombstonesFor,
   type Tombstone,
 } from './syncSettings';
@@ -501,9 +499,13 @@ function describe(result: Omit<SyncResult, 'summary' | 'ok'>, queuedDeletions = 
 }
 
 /**
- * Run one full sync round. Throws SyncError for fatal problems (no config,
- * unreachable server, bad manifest); per-op failures are collected into
- * `errors` and do not abort the remaining operations.
+ * Run one full sync round across ALL configured servers (or ONE, when
+ * `serverId` is given). Servers fail independently: one that dies fatally
+ * (unreachable base, bad manifest, abort) folds into the aggregate as a
+ * `[label] message` error with `ok: false` while the other servers' counts
+ * and summary lines survive. Only 'no server configured' throws; per-op
+ * failures are collected into `errors` and do not abort the remaining
+ * operations.
  *
  * Policy baked in here (docs/sync.md):
  *  - Never-delete-local: remote deletions never remove local notes. The
@@ -524,30 +526,44 @@ export async function runSync(options: {
   if (options.serverId) return runSyncOne(options.serverId, options);
   const servers = listServers();
   if (servers.length === 0) throw new SyncError('No sync server configured');
-  const results = await Promise.all(
+  const settled = await Promise.allSettled(
     servers.map((server) => runSyncOne(server.id, options)),
   );
-  // Aggregate: ops summed; ok = every server ok; errors concatenated with the
-  // server label so a multi-server failure report is actionable.
-  const ok = results.every((r) => r.ok);
-  const errors = results.flatMap((r, i) =>
-    r.errors.length && servers[i].label && servers[i].label !== servers[i].id
-      ? r.errors.map((e) => `[${servers[i].label}] ${e}`)
-      : r.errors,
-  );
-  const summary = results
-    .map((r, i) => {
-      const label = servers[i].label ?? servers[i].id;
-      const named = results.length > 1 && servers[i].label !== servers[i].id ? `${label}: ` : '';
-      return `${named}${r.summary}`;
+  // Aggregate: survivors' ops are summed and keep their labelled summary
+  // lines; a REJECTED server (unreachable base, bad manifest, abort) folds in
+  // as a `[label] message` error instead of losing every other server's
+  // completed work the way Promise.all did.
+  const labelFor = (i: number): string => servers[i].label ?? servers[i].id;
+  const reasonText = (reason: unknown): string =>
+    reason instanceof Error ? reason.message : String(reason);
+  const okResults: { result: SyncResult; i: number }[] = [];
+  const rejected: { reason: unknown; i: number }[] = [];
+  settled.forEach((outcome, i) => {
+    if (outcome.status === 'fulfilled') okResults.push({ result: outcome.value, i });
+    else rejected.push({ reason: outcome.reason, i });
+  });
+  const ok = rejected.length === 0 && okResults.every(({ result }) => result.ok);
+  const errors = [
+    ...okResults.flatMap(({ result, i }) =>
+      result.errors.length && servers[i].label && servers[i].label !== servers[i].id
+        ? result.errors.map((e) => `[${servers[i].label}] ${e}`)
+        : result.errors,
+    ),
+    ...rejected.map(({ reason, i }) => `[${labelFor(i)}] ${reasonText(reason)}`),
+  ];
+  const summary = settled
+    .map((outcome, i) => {
+      const label = labelFor(i);
+      const named = settled.length > 1 && servers[i].label !== servers[i].id ? `${label}: ` : '';
+      return `${named}${outcome.status === 'fulfilled' ? outcome.value.summary : reasonText(outcome.reason)}`;
     })
     .join(' · ');
   return {
     ok,
-    pushed: results.reduce((n, r) => n + r.pushed, 0),
-    pulled: results.reduce((n, r) => n + r.pulled, 0),
-    deletedLocal: results.reduce((n, r) => n + r.deletedLocal, 0),
-    deletedRemote: results.reduce((n, r) => n + r.deletedRemote, 0),
+    pushed: okResults.reduce((n, { result }) => n + result.pushed, 0),
+    pulled: okResults.reduce((n, { result }) => n + result.pulled, 0),
+    deletedLocal: okResults.reduce((n, { result }) => n + result.deletedLocal, 0),
+    deletedRemote: okResults.reduce((n, { result }) => n + result.deletedRemote, 0),
     errors,
     summary,
   };
@@ -568,7 +584,7 @@ export async function runSync(options: {
  *  - Everything below is SCOPED TO THE SERVER: settings, uid map,
  *    tombstones, remote-category cache, tokens, notifications, exceptions.
  */
-async function runSyncOne(serverId: string, options: {
+async function runSyncOneBody(serverId: string, options: {
   signal?: AbortSignal;
   fetchImpl?: FetchLike;
   now?: Date;
@@ -772,6 +788,30 @@ async function runSyncOne(serverId: string, options: {
     ...result,
     summary,
   };
+}
+
+/**
+ * Fatal-failure wrapper around runSyncOneBody. The body records a successful
+ * (or per-op-failed) lastSync itself, but a fatal throw — unreachable base,
+ * bad manifest, abort — used to skip that entirely, leaving the servers-page
+ * row at a lying 'Never synced'. Record a failed lastSync first, then
+ * rethrow so callers keep their error handling.
+ */
+async function runSyncOne(serverId: string, options: {
+  signal?: AbortSignal;
+  fetchImpl?: FetchLike;
+  now?: Date;
+}): Promise<SyncResult> {
+  try {
+    return await runSyncOneBody(serverId, options);
+  } catch (e) {
+    recordSyncResultFor(serverId, {
+      at: (options.now ?? new Date()).toISOString(),
+      ok: false,
+      summary: e instanceof Error ? e.message : String(e),
+    });
+    throw e;
+  }
 }
 
 /**

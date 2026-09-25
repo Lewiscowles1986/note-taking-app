@@ -1,8 +1,10 @@
 # Sync protocol — `note-haven` REST JSON API
 
-The app's Settings page (gear icon in the header) connects to a sync server to
-keep notes replicated across devices. This document specifies the wire protocol
-so anyone can implement a compatible server in an afternoon.
+The app's gear icon in the header opens the **Sync servers** page, where each
+configured server connects to a sync server to keep notes replicated across
+devices (each server's detailed settings live on its own sub-page). This
+document specifies the wire protocol so anyone can implement a compatible
+server in an afternoon.
 
 > **Reference server:** this repository ships a multi-user reference
 > implementation with a built-in OIDC provider in [`server/`](../server/) — see
@@ -193,8 +195,8 @@ heuristic; a server must treat every field as optional in both directions.
 
 ## Category scope (what to sync)
 
-Settings offers two scopes, stored in the settings blob
-(`syncScope`, `syncedCategories` in `notehaven.sync.settings`):
+Settings offers two scopes, stored in that server's settings blob
+(`syncScope`, `syncedCategories` in `notehaven.sync.server.<id>`):
 
 - **All notes** (`syncScope: "all"`) — every note syncs in both directions.
 - **Selected categories** (`syncScope: "categories"`) — only notes whose
@@ -207,7 +209,7 @@ Semantics under a category scope:
 - **Pull:** a remote entry whose category is known (from the previous payload
   or the pull that just revealed it) and out of scope is skipped entirely —
   not fetched again, not stored, never planned as a delete-local. The uid →
-  category cache lives in localStorage under `notehaven.sync.remoteCategories`.
+  category cache lives in localStorage under `notehaven.sync.remoteCategories.<id>`.
   The authoritative check happens on the payload itself (the manifest carries
   no category), so a note that another device moved out of scope is never
   pulled in.
@@ -338,10 +340,10 @@ app.listen(8787);
   `…notifications.<id>`, `…keepExceptions.<id>`, `…oidc.<id>`. The list of
   configured servers itself lives in `notehaven.sync.servers`. See
   [servers.md](servers.md).
-- The legacy single-server keys (`notehaven.sync.settings`,
-  `…tombstones`, …) are read ONCE by the one-time migration and then never
-  written again; they are deliberately NOT deleted (a buggy migration must
-  never destroy the user's only copy of the configuration).
+- The legacy single-server keys (the old unsuffixed `notehaven.sync.*` blobs —
+  settings, tombstones, …) are read ONCE by the one-time migration and then
+  never written again; they are deliberately NOT deleted (a buggy migration
+  must never destroy the user's only copy of the configuration).
 - Deletion tombstones (90-day TTL, capped at 500) live per server.
 - The note-id → uid mapping lives per server — a note synced to two servers
   carries a DIFFERENT uid on each.

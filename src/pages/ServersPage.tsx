@@ -34,7 +34,7 @@ import { loadOidcSessionFor, type OidcSession } from '@/lib/oidcStorage';
 import SyncNotifications from '@/components/SyncNotifications';
 
 interface ServersPageProps {
-  /** Back to the settings page (which shows this server's details). */
+  /** Back to the main notes view (Index's servers mode off). */
   onBack: () => void;
   /** Close BOTH pages — back to the main notes view. */
   onClose: () => void;
@@ -48,10 +48,10 @@ interface ServersPageProps {
  * Servers page — the list of configured sync servers, each syncing
  * independently with its own settings, identity and sync cadence.
  *
- * Navigation model: Index opens this page from the gear button. "Back"
- * (left chevron) returns to the per-server settings of the server you came
- * from (or notes when there is none — not reachable today); "Close" (right)
- * closes BOTH pages and returns to the notes view.
+ * Navigation model: Index opens this page from the gear button — the gear IS
+ * the settings entry, so this is the top-level settings surface. "Back"
+ * (left chevron) returns to the NOTES view (Index just leaves servers mode);
+ * "Close" (right) closes BOTH pages and returns to the notes view.
  */
 export default function ServersPage({ onBack, onClose, onOpenServerSettings, onSynced }: ServersPageProps) {
   // Servers + their settings + sessions, re-read on demand (storage events
@@ -203,7 +203,7 @@ export default function ServersPage({ onBack, onClose, onOpenServerSettings, onS
             <button
               onClick={onBack}
               className="p-2.5 min-w-11 min-h-11 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground transition-colors sm:min-w-min sm:min-h-min sm:p-1.5"
-              title="Back to settings"
+              title="Back to notes"
             >
               <ChevronLeft size={18} />
             </button>

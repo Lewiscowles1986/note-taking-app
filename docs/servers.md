@@ -31,7 +31,9 @@ Reference ≈ 2 min.* Wire protocol details (shared by every server):
   Everything that server owns on this device is wiped: its settings,
   tombstones, uid map, notification queue, Keep exceptions and sign-in. Other
   servers are untouched. Removing ALL servers is allowed (the app simply
-  stops syncing).
+  stops syncing). A server's URL is its identity, so correcting a typo'd URL
+  means Remove + re-add: that loses the server's sign-in session, lastSync
+  record and uid map, and its notes stay local and re-sync from scratch.
 
 ### Sign in per server
 
@@ -47,7 +49,11 @@ touches server B's tokens, and each server keeps its own signed-in identity
   summary.
 - **Automatic sync** is configured per server in that server's **Settings** —
   each server has its own interval, and servers with auto-sync off simply
-  don't tick.
+  don't tick. Each server runs on its own timer, so one hung server cannot
+  block the others — though its own tick has no per-server timeout (the
+  browser's fetch timeout applies). If a sync attempt fails fatally (server
+  unreachable), the row records a failed lastSync — ⚠ + timestamp + error —
+  rather than staying at "Never synced".
 
 ### Re-configure one server
 
@@ -86,7 +92,11 @@ different times:
 run — the old configuration becomes the first server slot, with its
 tombstones, uid map, queue and sign-in carried over. Nothing is re-entered,
 nothing is lost, and the legacy storage keys are kept (unread) as a safety
-net.
+net. A corrupt legacy blob migrates nothing, and the done-marker is still
+set, so the broken legacy keys are simply never read again; a legacy OIDC
+blob without a server URL (signed in, never configured) is dropped. Because
+the marker is written once, hand-clearing the servers list later will not
+re-trigger the migration.
 
 ## Reference — storage keys on this device
 

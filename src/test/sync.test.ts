@@ -549,33 +549,42 @@ describe('runSync', () => {
     expect(getServerSettings('https://sync.test').lastSync?.ok).toBe(false);
   });
 
-  it('wraps network failures into SyncError with context', async () => {
+  it('folds a fatal network failure into ok:false and records a failed lastSync', async () => {
     configureServer();
     const { impl } = makeFetch([{ match: { method: 'GET' }, networkError: true }]);
-    await expect(runSync({ fetchImpl: impl })).rejects.toThrow(/network error/);
+    const result = await runSync({ fetchImpl: impl });
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toMatch(/network error/);
+    const lastSync = getServerSettings('https://sync.test').lastSync;
+    expect(lastSync?.ok).toBe(false);
+    expect(lastSync?.summary).toMatch(/network error/);
   });
 
-  it('wraps non-2xx manifest responses into SyncError', async () => {
+  it('folds a fatal non-2xx manifest response into ok:false', async () => {
     configureServer();
     const { impl } = makeFetch([{ match: { method: 'GET' }, status: 401 }]);
-    await expect(runSync({ fetchImpl: impl })).rejects.toThrow(/401/);
+    const result = await runSync({ fetchImpl: impl });
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toMatch(/401/);
   });
 
-  it('wraps invalid JSON bodies into SyncError', async () => {
+  it('folds a fatal invalid-JSON body into ok:false', async () => {
     configureServer();
     const { impl } = makeFetch([{ match: { method: 'GET' }, text: 'not json' }]);
-    await expect(runSync({ fetchImpl: impl })).rejects.toThrow(/invalid JSON/);
+    const result = await runSync({ fetchImpl: impl });
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toMatch(/invalid JSON/);
   });
 
-  it('honors an already-aborted signal without touching the network', async () => {
+  it('honors an already-aborted signal without touching the network (folded, not rethrown)', async () => {
     configureServer();
     const { impl, requests } = makeFetch([]);
     const controller = new AbortController();
     controller.abort();
-    // DOMException message is "Aborted", name is "AbortError" — assert the name.
-    await expect(runSync({ fetchImpl: impl, signal: controller.signal })).rejects.toMatchObject({
-      name: 'AbortError',
-    });
+    // DOMException message is "Aborted" — folded into ok:false, nothing fetched.
+    const result = await runSync({ fetchImpl: impl, signal: controller.signal });
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toContain('Aborted');
     expect(requests).toHaveLength(0);
   });
 
@@ -758,6 +767,49 @@ describe('runSync', () => {
     expect(getServerSettings('https://beta.test').lastSync).toBeNull();
     expect(getUidForNoteId('https://alpha.test', id)).toBeTruthy();
     expect(getUidForNoteId('https://beta.test', id)).toBeNull();
+  });
+
+  it('TWO servers, one dead: survivors keep their counts, the rejection folds into ok:false', async () => {
+    configureServer('https://alpha.test', { authToken: 'tok-a' });
+    configureServer('https://beta.test', { authToken: 'tok-b' });
+    const id = await seedNote({ title: 'Survivor', updatedAt: new Date(T0) });
+    const { impl, requests } = makeFetch([
+      { match: { method: 'GET', urlIncludes: 'alpha.test' }, json: { notes: [] } },
+      // beta is dead: discovery AND manifest fail with a network error.
+      { match: { method: 'GET', urlIncludes: 'beta.test' }, networkError: true },
+      { match: { method: 'PUT' }, status: 204 },
+    ]);
+
+    const result = await runSync({ fetchImpl: impl });
+
+    expect(result.ok).toBe(false);
+    // Beta's rejection folded in as a labelled line (aggregate not lost).
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].startsWith('[https://beta.test]')).toBe(true);
+    expect(result.errors[0]).toMatch(/network error/);
+    // Alpha's work is preserved and counted.
+    expect(result.pushed).toBe(1);
+    expect(requests.filter((r) => r.url.includes('alpha.test') && r.method === 'PUT')).toHaveLength(1);
+    expect(getUidForNoteId('https://alpha.test', id)).toBeTruthy();
+    // Per-server lastSync: alpha ok, beta failed with the error in its summary.
+    expect(getServerSettings('https://alpha.test').lastSync?.ok).toBe(true);
+    expect(getServerSettings('https://beta.test').lastSync?.ok).toBe(false);
+    expect(getServerSettings('https://beta.test').lastSync?.summary).toMatch(/network error/);
+    // The combined summary still carries BOTH servers' lines (alpha's count
+    // and beta's fatal error), joined by ' · '.
+    expect(result.summary).toContain('1 pushed');
+    expect(result.summary).toMatch(/network error/);
+    expect(result.summary).toContain(' · ');
+  });
+
+  it('a fatal sync failure records a failed lastSync, then rethrows (single-server path)', async () => {
+    configureServer();
+    const { impl } = makeFetch([{ match: { method: 'GET' }, networkError: true }]);
+    await expect(runSync({ serverId: 'https://sync.test', fetchImpl: impl })).rejects.toThrow(/network error/);
+    const lastSync = getServerSettings('https://sync.test').lastSync;
+    expect(lastSync?.ok).toBe(false);
+    expect(lastSync?.summary).toMatch(/network error/);
+    expect(Number.isFinite(Date.parse(lastSync!.at))).toBe(true);
   });
 });
 

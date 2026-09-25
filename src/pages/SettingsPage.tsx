@@ -34,7 +34,7 @@ import {
 import type { StoredSyncSettings } from '@/lib/syncSettings';
 import type { SyncScope } from '@/lib/syncSettings';
 import { parseDiscoveryExclusions, type ServerExclusions } from '@/lib/sync';
-import { refreshAutoSyncScheduler } from '@/lib/autoSyncScheduler';
+import { refreshAutoSyncScheduler } from '@/lib/autoSyncSchedulerControl';
 import { runSync, SyncError } from '@/lib/sync';
 import { runInFlight } from '@/lib/inFlight';
 import {

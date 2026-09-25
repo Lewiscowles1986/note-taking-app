@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Loader2, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { completeLogin, OidcError } from '@/lib/oidcAuth';
-import { refreshAutoSyncScheduler } from '@/lib/autoSyncScheduler';
+import { refreshAutoSyncScheduler } from '@/lib/autoSyncSchedulerControl';
 
 /**
  * OAuth redirect landing page for the /auth/callback route.

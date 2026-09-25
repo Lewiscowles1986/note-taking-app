@@ -124,7 +124,7 @@ describe('ServersPage', () => {
     });
   });
 
-  it('Close calls onClose (both pages) and Back calls onBack (settings)', () => {
+  it('Close calls onClose (both pages) and Back calls onBack (notes)', () => {
     setup();
     const calls: string[] = [];
     render(
@@ -134,7 +134,7 @@ describe('ServersPage', () => {
         onOpenServerSettings={() => undefined}
       />,
     );
-    fireEvent.click(screen.getByTitle('Back to settings'));
+    fireEvent.click(screen.getByTitle('Back to notes'));
     fireEvent.click(screen.getByTitle('Close both pages'));
     expect(calls).toEqual(['back', 'close']);
   });

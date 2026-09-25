@@ -10,7 +10,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
-import AutoSyncScheduler, { refreshAutoSyncScheduler } from '@/lib/autoSyncScheduler';
+import AutoSyncScheduler from '@/lib/autoSyncScheduler';
+import { refreshAutoSyncScheduler } from '@/lib/autoSyncSchedulerControl';
 import { addServer, saveServerSettings, getServerSettings, tombstonesKey, uidMapKey } from '@/lib/syncServers';
 import { recordDeletion, withTombstone, loadRawTombstones } from '@/lib/syncDeletion';
 
