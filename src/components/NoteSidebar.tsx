@@ -11,6 +11,8 @@ import {
   FileUp,
   ChevronDown,
   ChevronRight,
+  CloudOff,
+  Lock,
   X,
 } from 'lucide-react';
 import { exportToHtml, exportToPdf, exportToZip, exportDatabase } from '@/lib/export';
@@ -35,6 +37,12 @@ interface NoteSidebarProps {
   onFilterTag: (t: string | null) => void;
   onFilterCategory: (c: string | null) => void;
   onRefresh: () => void;
+  /** Local note ids excluded from sync (the device's deny list). */
+  excludedNoteIds?: number[];
+  /** Categories the sync server refuses to store (server policy, read-only). */
+  serverExcludedCategories?: string[];
+  /** Toggle a note's per-device sync exclusion. */
+  onToggleSyncExcluded?: (note: Note) => void;
   /** Extra classes merged onto the root. On mobile pass full-width/height overrides. */
   className?: string;
 }
@@ -55,6 +63,9 @@ export default function NoteSidebar({
   onFilterTag,
   onFilterCategory,
   onRefresh,
+  excludedNoteIds = [],
+  serverExcludedCategories = [],
+  onToggleSyncExcluded,
   className,
 }: NoteSidebarProps) {
   const [showTags, setShowTags] = useState(false);
@@ -323,6 +334,26 @@ export default function NoteSidebar({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     {note.pinned && <Pin size={12} className="text-primary shrink-0" />}
+                    {excludedNoteIds.includes(note.id) && (
+                      <span
+                        data-testid={`sync-excluded-badge-${note.id}`}
+                        title="Excluded from sync — this note stays on this device"
+                        className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground shrink-0"
+                      >
+                        <CloudOff size={10} aria-hidden />
+                        excluded
+                      </span>
+                    )}
+                    {serverExcludedCategories.includes(note.category) && (
+                      <span
+                        data-testid={`sync-server-denied-badge-${note.id}`}
+                        title="Excluded by server policy"
+                        className="inline-flex items-center gap-0.5 text-[10px] text-red-600 dark:text-red-400 shrink-0"
+                      >
+                        <Lock size={10} aria-hidden />
+                        server-denied
+                      </span>
+                    )}
                     <span className="font-medium text-sm text-sidebar-foreground truncate">
                       {note.title}
                     </span>
@@ -345,6 +376,23 @@ export default function NoteSidebar({
                   </div>
                 </div>
                 <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 shrink-0 transition-opacity">
+                  {onToggleSyncExcluded && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleSyncExcluded(note);
+                      }}
+                      className="p-2 min-w-11 min-h-11 flex items-center justify-center rounded hover:bg-sidebar-accent sm:min-w-min sm:min-h-min sm:p-1"
+                      title={excludedNoteIds.includes(note.id) ? 'Include in sync' : 'Exclude from sync'}
+                      aria-label={excludedNoteIds.includes(note.id) ? 'Include in sync' : 'Exclude from sync'}
+                      data-testid={`sync-exclude-toggle-${note.id}`}
+                    >
+                      <CloudOff
+                        size={12}
+                        className={excludedNoteIds.includes(note.id) ? 'text-amber-600' : 'text-muted-foreground'}
+                      />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

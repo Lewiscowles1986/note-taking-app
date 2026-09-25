@@ -83,6 +83,7 @@ jobs:
           VITE_PREVIEW: "true"
           VITE_PREVIEW_LABEL: ${{ steps.cfg.outputs.branch }}
           VITE_STORAGE_NAMESPACE: preview-${{ steps.cfg.outputs.slug }}
+          VITE_DEPLOYED_REF: ${{ github.sha }}
         run: npm run build
 
       - name: Deploy preview to preview-builds/<branch>
@@ -144,6 +145,10 @@ jobs:
         env:
           GITHUB_PAGES_BASE: ${{ steps.cfg.outputs.main_base }}
           PAGES_ASSET_BASE_URL: ${{ steps.cfg.outputs.site_url }}/
+          # Docs links in the built app pin to this revision: the tag when
+          # deploying a release, the commit SHA otherwise — evergreen docs for
+          # the deployed software.
+          VITE_DEPLOYED_REF: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
         run: npm run build
 
       - name: Deploy main to root

@@ -7,20 +7,26 @@
  * tombstone bookkeeping (so their deletions propagate IF they later sync),
  * at a cost of a few hundred bytes instead of the whole engine.
  *
- * Storage keys mirror the engine's (sync.ts). Kept in sync by convention —
- * see docs/sync.md, "Storage layout on the client".
+ * Multi-server model: ONE note syncs to ALL configured servers (fan-out) —
+ * each server keeps its own uidMap (noteId → uid) and its own tombstone
+ * list. A deletion records a tombstone per server where the note has a uid.
+ *
+ * It imports syncServers.ts, which is dependency-free too (localStorage
+ * only), so the eager-chunk budget stays intact.
+ *
+ * Storage keys mirror the engine's (sync.ts / syncServers.ts). Kept in sync
+ * by convention — see docs/sync.md, "Storage layout on the client".
  */
 
-const UID_MAP_KEY = 'notehaven.sync.uidMap';
-const TOMBSTONES_KEY = 'notehaven.sync.tombstones';
+import { listServers, tombstonesKey, uidMapKey } from './syncServers';
 
 interface RawUidMap {
   [noteId: string]: string;
 }
 
-function loadUidMap(): RawUidMap {
+function loadUidMapFor(serverId: string): RawUidMap {
   try {
-    const raw = localStorage.getItem(UID_MAP_KEY);
+    const raw = localStorage.getItem(uidMapKey(serverId));
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
@@ -54,10 +60,10 @@ export function withTombstone(
   return next.slice(-maxTombstones);
 }
 
-/** Read the stored tombstone list defensively; [] when absent or corrupt. */
-export function loadRawTombstones(): DeletionInfo[] {
+/** Read one server's stored tombstone list defensively; [] when absent/corrupt. */
+export function loadRawTombstones(serverId: string): DeletionInfo[] {
   try {
-    const raw = localStorage.getItem(TOMBSTONES_KEY);
+    const raw = localStorage.getItem(tombstonesKey(serverId));
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -76,7 +82,9 @@ export function loadRawTombstones(): DeletionInfo[] {
 /**
  * Record a note deletion for the next sync, synchronously, with no imports
  * from the sync engine. Safe for never-synced notes (no uid → nothing to do
- * beyond forgetting any mapping).
+ * beyond forgetting any mapping). FANS OUT: a tombstone is recorded for
+ * EVERY configured server where the note has a uid mapping — a note lives
+ * on every server that accepted it, so its deletion propagates to each.
  *
  * NOTE: intentionally does NOT enforce the 90-day tombstone TTL here —
  * pruning is the engine's job on load, and this module must not encode
@@ -84,23 +92,30 @@ export function loadRawTombstones(): DeletionInfo[] {
  */
 export function recordDeletion(noteId: number, noteUpdatedAt: Date): void {
   try {
-    const uidMap = loadUidMap();
+    const deletedAt = new Date().toISOString();
+    const noteUpdatedAtIso = noteUpdatedAt.toISOString();
     const key = String(noteId);
-    const uid = uidMap[key];
-    if (uid) {
-      const next = withTombstone(loadRawTombstones(), {
-        uid,
-        deletedAt: new Date().toISOString(),
-        noteUpdatedAt: noteUpdatedAt.toISOString(),
-      });
-      localStorage.setItem(TOMBSTONES_KEY, JSON.stringify(next));
-      delete uidMap[key];
-      localStorage.setItem(UID_MAP_KEY, JSON.stringify(uidMap));
-    } else {
-      // Never synced: drop any stale mapping defensively (no tombstone —
-      // the server never had the note, so there is nothing to propagate).
-      delete uidMap[key];
-      localStorage.setItem(UID_MAP_KEY, JSON.stringify(uidMap));
+    for (const server of listServers()) {
+      const uidMap = loadUidMapFor(server.id);
+      const uid = uidMap[key];
+      if (uid) {
+        const next = withTombstone(loadRawTombstones(server.id), {
+          uid,
+          deletedAt,
+          noteUpdatedAt: noteUpdatedAtIso,
+        });
+        localStorage.setItem(tombstonesKey(server.id), JSON.stringify(next));
+        delete uidMap[key];
+        localStorage.setItem(uidMapKey(server.id), JSON.stringify(uidMap));
+      } else {
+        // Never synced to this server: drop any stale mapping defensively
+        // (no tombstone — that server never had the note, so there is
+        // nothing to propagate).
+        if (key in uidMap) {
+          delete uidMap[key];
+          localStorage.setItem(uidMapKey(server.id), JSON.stringify(uidMap));
+        }
+      }
     }
   } catch {
     // Storage unavailable/unwritable — deletion proceeds regardless; the

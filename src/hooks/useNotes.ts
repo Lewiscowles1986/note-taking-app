@@ -11,6 +11,7 @@ import {
   getAllCategories,
 } from '@/lib/db';
 import { recordDeletion } from '@/lib/syncDeletion';
+import { SYNC_NOTIFICATIONS_EVENT } from '@/lib/syncNotifications';
 
 export function useNotes() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -49,6 +50,15 @@ export function useNotes() {
 
   useEffect(() => {
     refresh();
+  }, [refresh]);
+
+  // Keep the list in sync when the sync engine mutates the store outside a
+  // render-triggering path — resolving a keep-or-delete prompt with Delete
+  // removes the note directly in IndexedDB (src/lib/syncNotifications.ts).
+  useEffect(() => {
+    const onQueueChange = () => void refresh();
+    window.addEventListener(SYNC_NOTIFICATIONS_EVENT, onQueueChange);
+    return () => window.removeEventListener(SYNC_NOTIFICATIONS_EVENT, onQueueChange);
   }, [refresh]);
 
   const activeNote = notes.find((n) => n.id === activeNoteId) ?? null;

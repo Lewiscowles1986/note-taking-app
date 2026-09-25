@@ -23,13 +23,13 @@ import {
   type RemoteNoteMeta,
 } from '@/lib/sync';
 import {
-  loadSyncSettings,
-  saveSyncSettings,
-  clearSyncSettings,
-  loadTombstones,
-  recordTombstone,
-  type Tombstone,
-} from '@/lib/syncSettings';
+  getServerSettings,
+  saveServerSettings,
+  listServers,
+  addServer,
+} from '@/lib/syncServers';
+import { recordTombstoneFor, loadTombstonesFor } from '@/lib/syncSettings';
+import { getPendingNotifications } from '@/lib/syncNotifications';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -140,9 +140,21 @@ function makeFetch(handlers: Array<{
   return { impl: impl as unknown as typeof fetch, requests };
 }
 
-/** Configure sync settings to point at a fake server with a token. */
-function configureServer(): void {
-  saveSyncSettings({ serverUrl: 'https://sync.test', authToken: 'secret-token', autoSync: false, intervalMinutes: 15 });
+/** Configure ONE test server (id = URL) with a token. Returns the server id. */
+function configureServer(url = 'https://sync.test', overrides: Record<string, unknown> = {}): string {
+  addServer(url);
+  saveServerSettings(url, {
+    authToken: 'secret-token',
+    autoSync: false,
+    intervalMinutes: 15,
+    syncScope: 'all',
+    syncedCategories: [],
+    excludedCategories: [],
+    excludedNoteIds: [],
+    lastSync: null,
+    ...overrides,
+  });
+  return url;
 }
 
 beforeEach(async () => {
@@ -326,26 +338,38 @@ describe('parseManifest', () => {
 
 // ─── uid mapping ─────────────────────────────────────────────────────────────
 
-describe('uid mapping', () => {
-  it('assigns once and returns the same uid', () => {
-    const first = assignUidForNoteId(42);
-    expect(assignUidForNoteId(42)).toBe(first);
-    expect(getUidForNoteId(42)).toBe(first);
+describe('uid mapping (per server)', () => {
+  it('assigns once and returns the same uid — PER SERVER', () => {
+    addServer('https://a.dev');
+    addServer('https://b.dev');
+    const first = assignUidForNoteId('https://a.dev', 42);
+    expect(assignUidForNoteId('https://a.dev', 42)).toBe(first);
+    expect(getUidForNoteId('https://a.dev', 42)).toBe(first);
   });
 
-  it('prunes mappings for notes that no longer exist', () => {
-    assignUidForNoteId(1);
-    assignUidForNoteId(2);
-    pruneUidMap([2]);
-    expect(getUidForNoteId(1)).toBeNull();
-    expect(getUidForNoteId(2)).not.toBeNull();
+  it('the same note gets DIFFERENT uids on different servers', () => {
+    addServer('https://a.dev');
+    addServer('https://b.dev');
+    const uidA = assignUidForNoteId('https://a.dev', 42);
+    const uidB = assignUidForNoteId('https://b.dev', 42);
+    expect(uidA).not.toBe(uidB);
+    expect(getUidForNoteId('https://b.dev', 42)).toBe(uidB);
+  });
+
+  it('prunes mappings for notes that no longer exist (per server)', () => {
+    addServer('https://a.dev');
+    assignUidForNoteId('https://a.dev', 1);
+    assignUidForNoteId('https://a.dev', 2);
+    pruneUidMap('https://a.dev', [2]);
+    expect(getUidForNoteId('https://a.dev', 1)).toBeNull();
+    expect(getUidForNoteId('https://a.dev', 2)).not.toBeNull();
   });
 });
 
 // ─── runSync (orchestrator) ──────────────────────────────────────────────────
 
 describe('runSync', () => {
-  it('is callable with no arguments (settings page path)', async () => {
+  it('is callable with no arguments (all-servers path)', async () => {
     // Regression: the settings page calls runSync() bare; the options
     // parameter must default to {} instead of throwing on undefined.
     await expect(runSync()).rejects.toThrow(SyncError);
@@ -368,11 +392,11 @@ describe('runSync', () => {
     expect(result.ok).toBe(true);
     expect(result.pushed).toBe(1);
     const put = requests.find((r) => r.method === 'PUT')!;
-    expect(put.url).toBe(`https://sync.test/api/notes/${getUidForNoteId(id)}`);
+    expect(put.url).toBe(`https://sync.test/api/notes/${getUidForNoteId('https://sync.test', id)}`);
     expect(put.headers.authorization).toBe('Bearer secret-token');
     expect(put.body.title).toBe('Local only');
-    // Outcome recorded for the settings page status line.
-    expect(loadSyncSettings().lastSync?.ok).toBe(true);
+    // Outcome recorded for the servers page status line.
+    expect(getServerSettings('https://sync.test').lastSync?.ok).toBe(true);
   });
 
   it('pulls a remote-only note into the database and maps its uid', async () => {
@@ -404,13 +428,13 @@ describe('runSync', () => {
     expect(notes[0].title).toBe('From server');
     expect(notes[0].tags).toEqual(['synced']);
     expect(notes[0].updatedAt.getTime()).toBe(T0);
-    expect(getUidForNoteId(notes[0].id!)).toBe('remote-1');
+    expect(getUidForNoteId('https://sync.test', notes[0].id!)).toBe('remote-1');
   });
 
   it('pulls an update over an older local copy of the same uid', async () => {
     configureServer();
     const id = await seedNote({ title: 'Older local', updatedAt: new Date(T0) });
-    const uid = assignUidForNoteId(id);
+    const uid = assignUidForNoteId('https://sync.test', id);
     const { impl } = makeFetch([
       { match: { method: 'GET', urlIncludes: '/api/notes' }, json: { notes: [remote(uid, T0 + 999)] } },
       {
@@ -440,7 +464,7 @@ describe('runSync', () => {
   it('pushes an update over an older remote copy', async () => {
     configureServer();
     const id = await seedNote({ title: 'Newer local', updatedAt: new Date(T0 + 999) });
-    const uid = assignUidForNoteId(id);
+    const uid = assignUidForNoteId('https://sync.test', id);
     const { impl, requests } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [remote(uid, T0)] } },
       { match: { method: 'PUT' }, status: 204 },
@@ -451,22 +475,35 @@ describe('runSync', () => {
     expect(requests.find((r) => r.method === 'PUT')!.body.title).toBe('Newer local');
   });
 
-  it('deletes the local note for a remote tombstone', async () => {
+  it('NEVER deletes the local note for a remote tombstone — queues a prompt instead', async () => {
     configureServer();
     const id = await seedNote({ title: 'Doomed', updatedAt: new Date(T0) });
-    const uid = assignUidForNoteId(id);
+    const uid = assignUidForNoteId('https://sync.test', id);
     const { impl } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [remote(uid, T0 + 500, true)] } },
     ]);
 
     const result = await runSync({ fetchImpl: impl });
-    expect(result.deletedLocal).toBe(1);
-    expect(await db.notes.get(id)).toBeUndefined();
+    // Nothing was removed locally…
+    expect(result.deletedLocal).toBe(0);
+    const stillThere = await db.notes.get(id);
+    expect(stillThere).toBeDefined();
+    expect(stillThere!.title).toBe('Doomed');
+    // …and the deletion is queued for the user's keep-or-delete choice.
+    expect(getPendingNotifications('https://sync.test')).toHaveLength(1);
+    expect(getPendingNotifications('https://sync.test')[0]).toMatchObject({
+      serverId: 'https://sync.test',
+      uid,
+      title: 'Doomed',
+      kind: 'remote-delete',
+    });
+    // The user's own deletions still propagate: no local tombstone was recorded.
+    expect(loadTombstonesFor('https://sync.test')).toHaveLength(0);
   });
 
   it('propagates a local deletion to the server and clears the tombstone', async () => {
     configureServer();
-    recordTombstone('gone-uid', new Date(T0 + 400), new Date(T0));
+    recordTombstoneFor('https://sync.test', 'gone-uid', new Date(T0 + 400), new Date(T0));
     const { impl, requests } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [remote('gone-uid', T0)] } },
       { match: { method: 'DELETE' }, status: 204 },
@@ -475,13 +512,13 @@ describe('runSync', () => {
     const result = await runSync({ fetchImpl: impl });
     expect(result.deletedRemote).toBe(1);
     expect(requests.find((r) => r.method === 'DELETE')!.url).toBe('https://sync.test/api/notes/gone-uid');
-    expect(loadTombstones()).toHaveLength(0);
-    expect(loadSyncSettings().lastSync?.ok).toBe(true);
+    expect(loadTombstonesFor('https://sync.test')).toHaveLength(0);
+    expect(getServerSettings('https://sync.test').lastSync?.ok).toBe(true);
   });
 
   it('keeps the tombstone when the server delete fails, and reports partial failure', async () => {
     configureServer();
-    recordTombstone('gone-uid', new Date(T0 + 400), new Date(T0));
+    recordTombstoneFor('https://sync.test', 'gone-uid', new Date(T0 + 400), new Date(T0));
     const { impl } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [remote('gone-uid', T0)] } },
       { match: { method: 'DELETE' }, status: 500 },
@@ -490,15 +527,15 @@ describe('runSync', () => {
     const result = await runSync({ fetchImpl: impl });
     expect(result.ok).toBe(false);
     expect(result.errors).toHaveLength(1);
-    expect(loadTombstones()).toHaveLength(1);
+    expect(loadTombstonesFor('https://sync.test')).toHaveLength(1);
   });
 
   it('collects per-op errors and keeps going, surfacing a failed lastSync', async () => {
     configureServer();
     const okId = await seedNote({ title: 'Will push fine', updatedAt: new Date(T0) });
-    assignUidForNoteId(okId);
+    assignUidForNoteId('https://sync.test', okId);
     const badId = await seedNote({ title: 'Will fail', updatedAt: new Date(T0) });
-    const badUid = assignUidForNoteId(badId);
+    const badUid = assignUidForNoteId('https://sync.test', badId);
     const { impl } = makeFetch([
       { match: { method: 'GET' }, json: { notes: [remote(badUid, T0 - 500)] } },
       { match: { method: 'PUT', urlIncludes: badUid }, status: 500 },
@@ -509,37 +546,270 @@ describe('runSync', () => {
     expect(result.ok).toBe(false);
     expect(result.pushed).toBe(1);
     expect(result.errors).toHaveLength(1);
-    expect(loadSyncSettings().lastSync?.ok).toBe(false);
+    expect(getServerSettings('https://sync.test').lastSync?.ok).toBe(false);
   });
 
-  it('wraps network failures into SyncError with context', async () => {
+  it('folds a fatal network failure into ok:false and records a failed lastSync', async () => {
     configureServer();
     const { impl } = makeFetch([{ match: { method: 'GET' }, networkError: true }]);
-    await expect(runSync({ fetchImpl: impl })).rejects.toThrow(/network error/);
+    const result = await runSync({ fetchImpl: impl });
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toMatch(/network error/);
+    const lastSync = getServerSettings('https://sync.test').lastSync;
+    expect(lastSync?.ok).toBe(false);
+    expect(lastSync?.summary).toMatch(/network error/);
   });
 
-  it('wraps non-2xx manifest responses into SyncError', async () => {
+  it('folds a fatal non-2xx manifest response into ok:false', async () => {
     configureServer();
     const { impl } = makeFetch([{ match: { method: 'GET' }, status: 401 }]);
-    await expect(runSync({ fetchImpl: impl })).rejects.toThrow(/401/);
+    const result = await runSync({ fetchImpl: impl });
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toMatch(/401/);
   });
 
-  it('wraps invalid JSON bodies into SyncError', async () => {
+  it('folds a fatal invalid-JSON body into ok:false', async () => {
     configureServer();
     const { impl } = makeFetch([{ match: { method: 'GET' }, text: 'not json' }]);
-    await expect(runSync({ fetchImpl: impl })).rejects.toThrow(/invalid JSON/);
+    const result = await runSync({ fetchImpl: impl });
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toMatch(/invalid JSON/);
   });
 
-  it('honors an already-aborted signal without touching the network', async () => {
+  it('honors an already-aborted signal without touching the network (folded, not rethrown)', async () => {
     configureServer();
     const { impl, requests } = makeFetch([]);
     const controller = new AbortController();
     controller.abort();
-    // DOMException message is "Aborted", name is "AbortError" — assert the name.
-    await expect(runSync({ fetchImpl: impl, signal: controller.signal })).rejects.toMatchObject({
-      name: 'AbortError',
-    });
+    // DOMException message is "Aborted" — folded into ok:false, nothing fetched.
+    const result = await runSync({ fetchImpl: impl, signal: controller.signal });
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toContain('Aborted');
     expect(requests).toHaveLength(0);
+  });
+
+  it('scope widening repatriates an out-of-scope remote note (uidMap + category cache retained)', async () => {
+    configureServer('https://sync.test', { syncScope: 'categories', syncedCategories: ['Work'] });
+    const payload = {
+      uid: 'remote-out-of-scope',
+      title: 'Personal note',
+      content: 'private body',
+      tags: [],
+      category: 'Personal', // NOT in scope
+      attachments: [],
+      createdAt: iso(T0 - 1000),
+      updatedAt: iso(T0),
+      editDates: ['2026-01-01'],
+      pinned: false,
+      encrypted: null,
+    };
+
+    // Round 1: scope = [Work]. The note is fetched once (unknown uid), found
+    // out-of-scope on its payload, cached, and NOT stored.
+    const round1 = makeFetch([
+      { match: { method: 'GET', urlIncludes: '/api/notes' }, json: { notes: [remote('remote-out-of-scope', T0)] } },
+      { match: { method: 'GET', urlIncludes: '/api/notes/remote-out-of-scope' }, json: payload },
+    ]);
+    const r1 = await runSync({ fetchImpl: round1.impl });
+    expect(r1.ok).toBe(true);
+    expect(r1.pulled).toBe(0);
+    expect(await getAllNotes()).toHaveLength(0);
+    // The out-of-scope category is cached for the uid (per-server key).
+    expect(JSON.parse(localStorage.getItem('notehaven.sync.remoteCategories.https://sync.test')!)).toMatchObject({
+      'remote-out-of-scope': 'Personal',
+    });
+
+    // Round 2 (still [Work]): the cached category short-circuits the pull —
+    // the note payload is not even fetched again.
+    const round2 = makeFetch([
+      { match: { method: 'GET', urlIncludes: '/api/notes' }, json: { notes: [remote('remote-out-of-scope', T0)] } },
+      { match: { method: 'GET', urlIncludes: '/api/notes/remote-out-of-scope' }, json: payload },
+    ]);
+    const r2 = await runSync({ fetchImpl: round2.impl });
+    expect(r2.pulled).toBe(0);
+    expect(round2.requests.some((r) => r.url.includes('/api/notes/remote-out-of-scope'))).toBe(false);
+
+    // Round 3: the user WIDENS the scope to include Personal. The note must
+    // now be pulled in (uidMap retention is not even needed for a remote-only
+    // note — the category cache must NOT pin it out-of-scope forever).
+    saveServerSettings('https://sync.test', {
+      ...getServerSettings('https://sync.test'),
+      syncScope: 'categories',
+      syncedCategories: ['Work', 'Personal'],
+    });
+    const round3 = makeFetch([
+      { match: { method: 'GET', urlIncludes: '/api/notes' }, json: { notes: [remote('remote-out-of-scope', T0)] } },
+      { match: { method: 'GET', urlIncludes: '/api/notes/remote-out-of-scope' }, json: payload },
+    ]);
+    const r3 = await runSync({ fetchImpl: round3.impl });
+    expect(r3.ok).toBe(true);
+    expect(r3.pulled).toBe(1);
+    const notes = await getAllNotes();
+    expect(notes).toHaveLength(1);
+    expect(notes[0].title).toBe('Personal note');
+    expect(notes[0].category).toBe('Personal');
+    expect(getUidForNoteId('https://sync.test', notes[0].id!)).toBe('remote-out-of-scope');
+  });
+
+  it('a local note edited while out of scope pushes once the scope includes its category again (uidMap retained)', async () => {
+    configureServer('https://sync.test', { syncScope: 'categories', syncedCategories: ['Work'] });
+    const id = await seedNote({ title: 'Moved note', category: 'Personal', updatedAt: new Date(T0) });
+
+    // Round 1: out of scope → never pushed, but keeps its uid mapping.
+    const round1 = makeFetch([{ match: { method: 'GET' }, json: { notes: [] } }]);
+    const r1 = await runSync({ fetchImpl: round1.impl });
+    expect(r1.pushed).toBe(0);
+    expect(getUidForNoteId('https://sync.test', id)).toBeTruthy();
+
+    // Round 2: scope widened → the SAME uid pushes (mapping was retained).
+    saveServerSettings('https://sync.test', {
+      ...getServerSettings('https://sync.test'),
+      syncScope: 'categories',
+      syncedCategories: ['Work', 'Personal'],
+    });
+    const round2 = makeFetch([
+      { match: { method: 'GET' }, json: { notes: [] } },
+      { match: { method: 'PUT' }, status: 204 },
+    ]);
+    const r2 = await runSync({ fetchImpl: round2.impl });
+    expect(r2.pushed).toBe(1);
+    const put = round2.requests.find((r) => r.method === 'PUT')!;
+    expect(put.url).toBe(`https://sync.test/api/notes/${getUidForNoteId('https://sync.test', id)}`);
+  });
+
+  it('TWO servers: the same note syncs to BOTH with independent uids, tombstones and notifications', async () => {
+    configureServer('https://alpha.test', { authToken: 'tok-a' });
+    configureServer('https://beta.test', { authToken: 'tok-b' });
+    const id = await seedNote({ title: 'Both servers', updatedAt: new Date(T0) });
+    const { impl, requests } = makeFetch([
+      { match: { method: 'GET', urlIncludes: 'alpha.test' }, json: { notes: [] } },
+      { match: { method: 'GET', urlIncludes: 'beta.test' }, json: { notes: [] } },
+      { match: { method: 'PUT' }, status: 204 },
+    ]);
+
+    const result = await runSync({ fetchImpl: impl });
+    expect(result.ok).toBe(true);
+    // One note pushed to EACH server (aggregate sums both).
+    expect(result.pushed).toBe(2);
+    expect(requests.filter((r) => r.method === 'PUT')).toHaveLength(2);
+    expect(requests.filter((r) => r.url.includes('alpha.test') && r.method === 'PUT')).toHaveLength(1);
+    expect(requests.filter((r) => r.url.includes('beta.test') && r.method === 'PUT')).toHaveLength(1);
+    expect(requests.filter((r) => r.url.includes('alpha.test') && r.method === 'PUT')[0].body.title).toBe('Both servers');
+
+    // Independent uid maps: different uids on each server.
+    const uidA = getUidForNoteId('https://alpha.test', id);
+    const uidB = getUidForNoteId('https://beta.test', id);
+    expect(uidA).toBeTruthy();
+    expect(uidB).toBeTruthy();
+    expect(uidA).not.toBe(uidB);
+
+    // Per-server lastSync recorded independently.
+    expect(getServerSettings('https://alpha.test').lastSync?.ok).toBe(true);
+    expect(getServerSettings('https://beta.test').lastSync?.ok).toBe(true);
+  });
+
+  it('TWO servers: a tombstone on server A does NOT affect server B', async () => {
+    configureServer('https://alpha.test');
+    configureServer('https://beta.test');
+    // Tombstone recorded only on alpha.
+    recordTombstoneFor('https://alpha.test', 'gone-uid', new Date(T0 + 400), new Date(T0));
+    const { impl } = makeFetch([
+      { match: { method: 'GET', urlIncludes: 'alpha.test' }, json: { notes: [remote('gone-uid', T0)] } },
+      { match: { method: 'GET', urlIncludes: 'beta.test' }, json: { notes: [] } },
+      { match: { method: 'DELETE' }, status: 204 },
+    ]);
+
+    const result = await runSync({ fetchImpl: impl });
+    expect(result.ok).toBe(true);
+    // Only alpha propagated the deletion.
+    expect(result.deletedRemote).toBe(1);
+    expect(loadTombstonesFor('https://alpha.test')).toHaveLength(0);
+    expect(getServerSettings('https://alpha.test').lastSync?.summary).toContain('deleted on server');
+    // Beta saw an empty manifest and stayed untouched.
+    expect(getServerSettings('https://beta.test').lastSync?.summary).toBe('already up to date');
+  });
+
+  it('TWO servers: a remote deletion queues a prompt attributed to the right server', async () => {
+    configureServer('https://alpha.test');
+    configureServer('https://beta.test');
+    const id = await seedNote({ title: 'Doomed on beta', updatedAt: new Date(T0) });
+    const uidB = assignUidForNoteId('https://beta.test', id);
+    const { impl } = makeFetch([
+      { match: { method: 'GET', urlIncludes: 'alpha.test' }, json: { notes: [] } },
+      { match: { method: 'GET', urlIncludes: 'beta.test' }, json: { notes: [remote(uidB, T0 + 500, true)] } },
+    ]);
+
+    const result = await runSync({ fetchImpl: impl });
+    expect(result.deletedLocal).toBe(0); // never-delete
+    // ONE prompt, attributed to beta.
+    const alphaQueue = getPendingNotifications('https://alpha.test');
+    const betaQueue = getPendingNotifications('https://beta.test');
+    expect(alphaQueue).toHaveLength(0);
+    expect(betaQueue).toHaveLength(1);
+    expect(betaQueue[0]).toMatchObject({ serverId: 'https://beta.test', uid: uidB, title: 'Doomed on beta' });
+    // The entry id carries the server (dedupe + resolution stay per server).
+    expect(betaQueue[0].id.startsWith('https://beta.test:remote-delete:')).toBe(true);
+    expect(await db.notes.get(id)).toBeDefined(); // never-delete held
+  });
+
+  it('runSync({serverId}) syncs ONLY that server', async () => {
+    configureServer('https://alpha.test');
+    configureServer('https://beta.test');
+    const id = await seedNote({ title: 'One only', updatedAt: new Date(T0) });
+    const { impl, requests } = makeFetch([
+      { match: { method: 'GET', urlIncludes: 'alpha.test' }, json: { notes: [] } },
+      { match: { method: 'PUT' }, status: 204 },
+    ]);
+
+    const result = await runSync({ serverId: 'https://alpha.test', fetchImpl: impl });
+    expect(result.pushed).toBe(1);
+    expect(requests.some((r) => r.url.includes('beta.test'))).toBe(false);
+    expect(getServerSettings('https://beta.test').lastSync).toBeNull();
+    expect(getUidForNoteId('https://alpha.test', id)).toBeTruthy();
+    expect(getUidForNoteId('https://beta.test', id)).toBeNull();
+  });
+
+  it('TWO servers, one dead: survivors keep their counts, the rejection folds into ok:false', async () => {
+    configureServer('https://alpha.test', { authToken: 'tok-a' });
+    configureServer('https://beta.test', { authToken: 'tok-b' });
+    const id = await seedNote({ title: 'Survivor', updatedAt: new Date(T0) });
+    const { impl, requests } = makeFetch([
+      { match: { method: 'GET', urlIncludes: 'alpha.test' }, json: { notes: [] } },
+      // beta is dead: discovery AND manifest fail with a network error.
+      { match: { method: 'GET', urlIncludes: 'beta.test' }, networkError: true },
+      { match: { method: 'PUT' }, status: 204 },
+    ]);
+
+    const result = await runSync({ fetchImpl: impl });
+
+    expect(result.ok).toBe(false);
+    // Beta's rejection folded in as a labelled line (aggregate not lost).
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].startsWith('[https://beta.test]')).toBe(true);
+    expect(result.errors[0]).toMatch(/network error/);
+    // Alpha's work is preserved and counted.
+    expect(result.pushed).toBe(1);
+    expect(requests.filter((r) => r.url.includes('alpha.test') && r.method === 'PUT')).toHaveLength(1);
+    expect(getUidForNoteId('https://alpha.test', id)).toBeTruthy();
+    // Per-server lastSync: alpha ok, beta failed with the error in its summary.
+    expect(getServerSettings('https://alpha.test').lastSync?.ok).toBe(true);
+    expect(getServerSettings('https://beta.test').lastSync?.ok).toBe(false);
+    expect(getServerSettings('https://beta.test').lastSync?.summary).toMatch(/network error/);
+    // The combined summary still carries BOTH servers' lines (alpha's count
+    // and beta's fatal error), joined by ' · '.
+    expect(result.summary).toContain('1 pushed');
+    expect(result.summary).toMatch(/network error/);
+    expect(result.summary).toContain(' · ');
+  });
+
+  it('a fatal sync failure records a failed lastSync, then rethrows (single-server path)', async () => {
+    configureServer();
+    const { impl } = makeFetch([{ match: { method: 'GET' }, networkError: true }]);
+    await expect(runSync({ serverId: 'https://sync.test', fetchImpl: impl })).rejects.toThrow(/network error/);
+    const lastSync = getServerSettings('https://sync.test').lastSync;
+    expect(lastSync?.ok).toBe(false);
+    expect(lastSync?.summary).toMatch(/network error/);
+    expect(Number.isFinite(Date.parse(lastSync!.at))).toBe(true);
   });
 });
 

@@ -418,4 +418,94 @@ describe('NoteSidebar component', () => {
     expect(screen.queryByRole('button', { name: 'work' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Inbox' })).toBeNull();
   });
+
+  describe('sync exclusion affordances', () => {
+    it('shows a muted "excluded" badge on excluded notes and no badge on others', () => {
+      render(
+        <NoteSidebar
+          {...makeProps({
+            notes: [makeNote({ id: 1, title: 'Excluded note' }), makeNote({ id: 2, title: 'Normal note' })],
+            excludedNoteIds: [1],
+            onToggleSyncExcluded: vi.fn(),
+          })}
+        />,
+      );
+      expect(screen.getByTestId('sync-excluded-badge-1')).toBeTruthy();
+      expect(screen.queryByTestId('sync-excluded-badge-2')).toBeNull();
+    });
+
+    it('shows a distinct "server-denied" badge for a note in a server-denied category', () => {
+      render(
+        <NoteSidebar
+          {...makeProps({
+            notes: [makeNote({ id: 1, title: 'Policy note', category: 'Private' }), makeNote({ id: 2, title: 'Free note' })],
+            serverExcludedCategories: ['Private'],
+          })}
+        />,
+      );
+      const badge = screen.getByTestId('sync-server-denied-badge-1');
+      expect(badge).toBeTruthy();
+      // Distinct affordance: lock glyph, different color, server-policy tooltip.
+      expect(badge.getAttribute('title')).toBe('Excluded by server policy');
+      expect(badge.className).toContain('text-red-600');
+      expect(within(badge).getByText('server-denied')).toBeTruthy();
+      // No badge at all on a note whose category is allowed.
+      expect(screen.queryByTestId('sync-server-denied-badge-2')).toBeNull();
+      // The client "excluded" badge is NOT shown for a mere server deny.
+      expect(screen.queryByTestId('sync-excluded-badge-1')).toBeNull();
+    });
+
+    it('client-excluded badge is unchanged by the server-denied badge and both are distinct', () => {
+      render(
+        <NoteSidebar
+          {...makeProps({
+            notes: [
+              makeNote({ id: 1, title: 'Client denied', category: 'Private' }),
+              makeNote({ id: 2, title: 'Both reasons' }),
+              makeNote({ id: 3, title: 'Neither' }),
+            ],
+            excludedNoteIds: [1, 2],
+            serverExcludedCategories: ['Private'],
+          })}
+        />,
+      );
+      // Note 1: client deny on a server-denied category → BOTH badges, each distinct.
+      const clientBadge = screen.getByTestId('sync-excluded-badge-1');
+      expect(clientBadge.getAttribute('title')).toBe('Excluded from sync — this note stays on this device');
+      expect(within(clientBadge).getByText('excluded')).toBeTruthy();
+      const serverBadge1 = screen.getByTestId('sync-server-denied-badge-1');
+      expect(serverBadge1.getAttribute('title')).toBe('Excluded by server policy');
+      expect(within(serverBadge1).getByText('server-denied')).toBeTruthy();
+      // The two badges are different testids — the client badge alone never
+      // doubles as the server one and vice versa.
+      expect(clientBadge).not.toBe(serverBadge1);
+      // Note 3: neither deny applies → no badge at all.
+      expect(screen.queryByTestId('sync-excluded-badge-3')).toBeNull();
+      expect(screen.queryByTestId('sync-server-denied-badge-3')).toBeNull();
+    });
+
+    it('toggle button flips its label/aria state and calls onToggleSyncExcluded with the note', () => {
+      const onToggle = vi.fn();
+      const note = makeNote({ id: 5, title: 'Toggle me' });
+      const view = render(
+        <NoteSidebar {...makeProps({ notes: [note], excludedNoteIds: [], onToggleSyncExcluded: onToggle })} />,
+      );
+      const toggle = screen.getByTestId('sync-exclude-toggle-5');
+      expect(toggle.getAttribute('title')).toBe('Exclude from sync');
+      fireEvent.click(toggle);
+      expect(onToggle).toHaveBeenCalledWith(note);
+      view.unmount();
+
+      const excludedView = render(
+        <NoteSidebar {...makeProps({ notes: [note], excludedNoteIds: [5], onToggleSyncExcluded: onToggle })} />,
+      );
+      expect(screen.getByTestId('sync-exclude-toggle-5').getAttribute('title')).toBe('Include in sync');
+      excludedView.unmount();
+    });
+
+    it('hides the toggle affordance when no handler is wired (prop-driven optional)', () => {
+      render(<NoteSidebar {...makeProps({ notes: [makeNote({ id: 1, title: 'No handler' })] })} />);
+      expect(screen.queryByTestId('sync-exclude-toggle-1')).toBeNull();
+    });
+  });
 });

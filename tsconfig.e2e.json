@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "strict": true,
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true
+  },
+  "include": ["e2e/**/*.ts", "playwright-fixture.ts"]
+}

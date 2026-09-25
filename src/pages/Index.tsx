@@ -1,4 +1,4 @@
-import { useState, useCallback, lazy, Suspense } from 'react';
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { useNotes } from '@/hooks/useNotes';
 import { useEncryption } from '@/hooks/useEncryption';
 import NoteSidebar from '@/components/NoteSidebar';
@@ -11,11 +11,16 @@ import { useIsMobile } from '@/hooks/use-mobile';
 const NoteViewer = lazy(() => import('@/components/NoteViewer'));
 import NoteMetaBar from '@/components/NoteMetaBar';
 import CalendarView from '@/components/CalendarView';
+import SyncNotifications from '@/components/SyncNotifications';
 import EncryptionDialog from '@/components/EncryptionDialog';
 // Settings pulls in the sync engine but not the markdown pipeline; keep it
 // out of the critical path like the other secondary surfaces.
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
+// Servers list — the entry point for all sync configuration (multi-server).
+const ServersPage = lazy(() => import('@/pages/ServersPage'));
 import type { Note } from '@/lib/db';
+import { loadExcludedNoteIds, saveExcludedNoteIds, listServers, getServerSettings } from '@/lib/syncServers';
+import { parseDiscoveryExclusions } from '@/lib/sync';
 import type { StoredKeyPair } from '@/lib/crypto';
 import { runInFlight } from '@/lib/inFlight';
 import { Eye, Pencil, PanelLeftClose, PanelLeftOpen, Calendar, Settings, Lock, ChevronLeft } from 'lucide-react';
@@ -47,7 +52,11 @@ export default function Index() {
   const [mode, setMode] = useState<'edit' | 'view'>('edit');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [calendarMode, setCalendarMode] = useState(false);
-  const [settingsMode, setSettingsMode] = useState(false);
+  /** Gear button → servers page (the sync entry point). */
+  const [serversMode, setServersMode] = useState(false);
+  /** Per-server settings, opened FROM the servers page (null = closed).
+   * Back from settings returns to the servers page. */
+  const [settingsServerId, setSettingsServerId] = useState<string | null>(null);
   const [encryptionDialogOpen, setEncryptionDialogOpen] = useState(false);
 
   // Decrypted content cache: noteId -> plaintext (in memory only)
@@ -83,6 +92,46 @@ export default function Index() {
       saveNote(note.id, { pinned: !note.pinned });
     }
   };
+
+  // Per-device sync exclusion for a single note (deny list in localStorage —
+  // the Dexie schema is never touched for sync configuration). DEVICE-WIDE:
+  // a note exclusion is a statement about the note on this device, not about
+  // a server — it applies to every configured sync server.
+  const [excludedNoteIds, setExcludedNoteIds] = useState<number[]>(() => loadExcludedNoteIds());
+  const handleToggleSyncExcluded = useCallback((note: Note) => {
+    if (!note.id) return;
+    setExcludedNoteIds((prev) => {
+      const next = prev.includes(note.id)
+        ? prev.filter((id) => id !== note.id)
+        : [...prev, note.id];
+      saveExcludedNoteIds(next);
+      return next;
+    });
+  }, []);
+
+  // Server-side category deny lists, from each configured server's discovery
+  // document — same best-effort read the settings page does. Drives the
+  // sidebar's distinct "server-denied" badge. The badge shows the UNION over
+  // all configured servers: if ANY server denies a category, the note is
+  // flagged (each server still enforces its own policy at sync time).
+  const [serverExcludedCategories, setServerExcludedCategories] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all(
+      listServers().map((server) =>
+        fetch(`${server.id}/.well-known/openid-configuration`)
+          .then((res) => (res.ok ? res.json() : null))
+          .catch(() => null)
+          .then((doc) => (doc ? parseDiscoveryExclusions(doc).excludedCategories : [])),
+      ),
+    ).then((lists) => {
+      if (cancelled) return;
+      setServerExcludedCategories(Array.from(new Set(lists.flat())));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [serversMode, settingsServerId]);
 
   // Selecting a note from the list: desktop keeps the sidebar open, mobile
   // closes the top sheet so the note opens full-screen.
@@ -195,7 +244,8 @@ export default function Index() {
   const displayNote = getDisplayNote();
   const isLocked = activeNote?.encrypted && !decryptedCache[activeNote.id!];
 
-  if (settingsMode) {
+  // Per-server settings, opened FROM the servers page. Back returns there.
+  if (settingsServerId) {
     return (
       <Suspense
         fallback={
@@ -204,7 +254,34 @@ export default function Index() {
           </div>
         }
       >
-        <SettingsPage onBack={() => setSettingsMode(false)} onSynced={refresh} />
+        <SettingsPage
+          serverId={settingsServerId}
+          onBack={() => setSettingsServerId(null)}
+          onSynced={refresh}
+        />
+      </Suspense>
+    );
+  }
+
+  if (serversMode) {
+    return (
+      <Suspense
+        fallback={
+          <div className="flex h-dvh items-center justify-center bg-background">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+          </div>
+        }
+      >
+        <ServersPage
+          onBack={() => setServersMode(false)}
+          onClose={() => {
+            // Close BOTH pages: back to the main notes view.
+            setServersMode(false);
+            setSettingsServerId(null);
+          }}
+          onOpenServerSettings={(id) => setSettingsServerId(id)}
+          onSynced={refresh}
+        />
       </Suspense>
     );
   }
@@ -272,6 +349,9 @@ export default function Index() {
               onFilterTag={setFilterTag}
               onFilterCategory={setFilterCategory}
               onRefresh={refresh}
+              excludedNoteIds={excludedNoteIds}
+              serverExcludedCategories={serverExcludedCategories}
+              onToggleSyncExcluded={handleToggleSyncExcluded}
               className="w-full max-h-[80dvh] pt-[env(safe-area-inset-top)]"
             />
           </SheetContent>
@@ -294,6 +374,9 @@ export default function Index() {
             onFilterTag={setFilterTag}
             onFilterCategory={setFilterCategory}
             onRefresh={refresh}
+            excludedNoteIds={excludedNoteIds}
+            serverExcludedCategories={serverExcludedCategories}
+            onToggleSyncExcluded={handleToggleSyncExcluded}
           />
         )
       )}
@@ -333,6 +416,9 @@ export default function Index() {
           </div>
 
           <div className="flex items-center gap-2 pr-[env(safe-area-inset-right)]">
+            {/* Queued keep-or-delete prompts — inline with the other header
+                actions rather than a bar of its own. */}
+            <SyncNotifications />
             <button
               onClick={() => setCalendarMode(true)}
               className="p-2.5 min-w-11 min-h-11 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground transition-colors sm:min-w-min sm:min-h-min sm:p-1.5"
@@ -341,7 +427,7 @@ export default function Index() {
               <Calendar size={18} />
             </button>
             <button
-              onClick={() => setSettingsMode(true)}
+              onClick={() => setServersMode(true)}
               className="p-2.5 min-w-11 min-h-11 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground transition-colors sm:min-w-min sm:min-h-min sm:p-1.5"
               title="Settings"
             >
