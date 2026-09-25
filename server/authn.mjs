@@ -7,7 +7,13 @@ import { randomBytes, scryptSync, timingSafeEqual, createHmac } from 'node:crypt
 import { HttpError, escapeHtml, serializeCookie } from './http-utils.mjs';
 
 export const SESSION_COOKIE = 'nh_session';
-export const SESSION_TTL_SECONDS = 7 * 24 * 3600;
+// IdP SSO session lifetime. This is the "stay signed in at the IdP" window
+// (how long /authorize skips the login form) — NOT the API token lifetime:
+// access tokens stay stateless JWTs (1 h) and refresh tokens rotate for 30 d
+// regardless. A day is the reference compromise: re-entering the password
+// daily for a sync app is reasonable, and prompt=login always bypasses the
+// window when a user wants to nominate different credentials.
+export const SESSION_TTL_SECONDS = 24 * 3600;
 
 // scrypt defaults (N=16384, r=8, p=1) with a 16-byte random salt per user.
 export function hashPassword(password, salt = randomBytes(16).toString('hex')) {

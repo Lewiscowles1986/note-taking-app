@@ -161,6 +161,12 @@ export function generateCodeVerifier(): string {
 export interface LoginOptions {
   /** Where to navigate after a successful round-trip. Default: "/". */
   returnTo?: string;
+  /**
+   * OIDC prompt parameter. 'login' forces the IdP to re-authenticate even
+   * when an SSO session exists — used by "Use a different account" so the
+   * user can nominate different credentials without clearing cookies.
+   */
+  prompt?: 'login' | 'none';
   fetchImpl?: typeof fetch;
 }
 
@@ -204,6 +210,9 @@ export async function login(options: LoginOptions = {}): Promise<void> {
   url.searchParams.set('nonce', nonce);
   url.searchParams.set('code_challenge', challenge);
   url.searchParams.set('code_challenge_method', 'S256');
+  if (options.prompt) {
+    url.searchParams.set('prompt', options.prompt);
+  }
 
   window.location.assign(url.toString());
 }

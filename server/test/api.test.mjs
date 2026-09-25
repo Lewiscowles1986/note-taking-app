@@ -448,6 +448,57 @@ describe('authorize endpoint (HTML flow)', () => {
     assert.match(res.body, /redirect_uri/);
   });
 
+  test('prompt=login forces the login page even with a live SSO session (OIDC Core §3.1.2.1); without it the session fast-path skips login', async () => {
+    const verifier = 'p'.repeat(64);
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
+    const findCookie = (res, name) => {
+      // set-cookie is an ARRAY when multiple cookies are set; String() would
+      // comma-join it and break startsWith matching — split on both.
+      const list = Array.isArray(res.headers['set-cookie'])
+        ? res.headers['set-cookie']
+        : [String(res.headers['set-cookie'] ?? '')];
+      for (const header of list) {
+        const hit = header.split(';').find((c) => c.trim().startsWith(`${name}=`));
+        if (hit) return hit.trim();
+      }
+      return '';
+    };
+    const authorize = (cookie, prompt) => request('GET', `/authorize?client_id=note-haven-pkce&redirect_uri=${encodeURIComponent(DEV_CLIENT.redirect_uris[0])}&response_type=code&scope=openid&state=st-plt&nonce=n-plt&code_challenge=${challenge}&code_challenge_method=S256${prompt ? `&prompt=${prompt}` : ''}`, { headers: cookie ? { cookie } : {} });
+
+    // Establish an SSO session: login page → submit → session cookie.
+    const first = await authorize(null);
+    assert.equal(first.status, 200);
+    const pendingCookie = findCookie(first, 'nh_pending');
+    assert.ok(pendingCookie, 'login page sets the nh_pending flow cookie');
+    // Session cookie arrives on the successful submit.
+    const submit = (cookie, identifier, password = 'correct-horse-battery-staples') => request('POST', '/authorize/submit', { body: `username=${encodeURIComponent(identifier)}&password=${encodeURIComponent(password)}`, raw: true, headers: { 'content-type': 'application/x-www-form-urlencoded', ...(cookie ? { cookie } : {}) } });
+    const good = await submit(pendingCookie, 'alice');
+    assert.match(good.body, /http-equiv="refresh"/);
+    const sessionCookie = findCookie(good, 'nh_session');
+    assert.ok(sessionCookie, 'successful login sets the SSO session cookie');
+
+    // WITH a live session and NO prompt → instant 302 code (SSO fast path).
+    const sso = await authorize(sessionCookie);
+    assert.equal(sso.status, 302, 'SSO fast-path must mint a code without the login page');
+
+    // WITH a live session and prompt=login → login page (200), NOT a code.
+    const forced = await authorize(sessionCookie, 'login');
+    assert.equal(forced.status, 200, 'prompt=login must re-authenticate');
+    assert.match(forced.body, /Sign in to authorise/);
+    // A forced re-login with DIFFERENT credentials mints a code for THAT user.
+    const pending2 = findCookie(forced, 'nh_pending');
+    const asBob = await submit(pending2, 'bob@example.com', 'correct-horse-staple');
+    assert.match(asBob.body, /http-equiv="refresh"/);
+    const match = asBob.body.match(/content="0;url=([^"]+)"/);
+    assert.ok(match, 'forced re-login must hand off with a fresh code');
+    // The handoff code belongs to bob (different identity than the SSO session).
+    const location = new URL(match[1].replace(/&amp;/g, '&'));
+    const tokenRes = await request('POST', '/token', { body: `grant_type=authorization_code&code=${location.searchParams.get('code')}&redirect_uri=${encodeURIComponent(DEV_CLIENT.redirect_uris[0])}&code_verifier=${verifier}&client_id=note-haven-pkce`, raw: true, headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+    assert.equal(tokenRes.status, 200);
+    const claims = JSON.parse(Buffer.from(tokenRes.json.id_token.split('.')[1], 'base64url').toString('utf8'));
+    assert.equal(claims.preferred_username, 'bob', 'prompt=login allows nominating a different identity');
+  });
+
   test('full login submit → 200 handoff page with code + state (NOT a 302: Chromium applies form-action to the POST response, blocking cross-origin redirects); bad password → re-rendered form with a FRESH pending cookie', async () => {
     const verifier = 'v'.repeat(64);
     const challenge = createHash('sha256').update(verifier).digest('base64url');

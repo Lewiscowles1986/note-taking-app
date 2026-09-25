@@ -252,7 +252,7 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
 
   // ─── OIDC sign-in / sign-out ─────────────────────────────────────────────
 
-  const handleSignIn = async () => {
+  const handleSignIn = async (prompt?: 'login') => {
     // Persist the (possibly edited) issuer/client id first — login() reads
     // the stored config.
     saveOidcConfig({
@@ -273,7 +273,10 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
       // Lazy import keeps the crypto/JWKS machinery out of the settings
       // chunk until a sign-in is actually requested.
       const { login } = await import('@/lib/oidcAuth');
-      await login({ returnTo: '/?settings=1' });
+      // prompt=login forces the IdP to show its login form even when its
+      // SSO session cookie is alive — that is how a second identity gets
+      // nominated without clearing anything.
+      await login({ returnTo: '/?settings=1', ...(prompt ? { prompt } : {}) });
       // Navigation away happens inside login(); reaching this line means the
       // redirect did not start.
       toast.error('Could not start sign-in — check the issuer URL');
@@ -403,20 +406,36 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
                       />
                     </div>
                   </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => void handleSignIn()}
-                    disabled={signingIn}
-                    data-testid="oidc-sign-in"
-                  >
-                    {signingIn ? (
-                      <Loader2 size={14} className="animate-spin mr-1.5" />
-                    ) : (
-                      <LogIn size={14} className="mr-1.5" />
-                    )}
-                    Sign in with Note Haven server
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => void handleSignIn()}
+                      disabled={signingIn}
+                      data-testid="oidc-sign-in"
+                    >
+                      {signingIn ? (
+                        <Loader2 size={14} className="animate-spin mr-1.5" />
+                      ) : (
+                        <LogIn size={14} className="mr-1.5" />
+                      )}
+                      Sign in with Note Haven server
+                    </Button>
+                    {/* OIDC prompt=login: the IdP re-authenticates even with a
+                        live SSO session, so a second identity can be nominated
+                        without clearing cookies or restarting the browser. */}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void handleSignIn('login')}
+                      disabled={signingIn}
+                      data-testid="oidc-sign-in-different"
+                    >
+                      <UserRound size={14} className="mr-1.5" />
+                      Use a different account
+                    </Button>
+                  </div>
                 </div>
               )}
             </section>
@@ -430,8 +449,11 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
               <p className="text-xs text-muted-foreground">
                 Notes sync with a REST JSON server over{' '}
                 <code className="bg-muted px-1 rounded">/api/notes</code> — see{' '}
+                {/* Pinned to the exact revision this build came from (set at
+                    build time via VITE_DEPLOYED_REF; 'main' fallback in dev)
+                    so the docs always describe the deployed software. */}
                 <a
-                  href="https://github.com/lewiscowles/note-taking-app/blob/main/docs/sync.md"
+                  href={`https://github.com/lewiscowles/note-taking-app/blob/${__DEPLOYED_REF__}/docs/sync.md`}
                   className="underline hover:text-foreground"
                   target="_blank"
                   rel="noreferrer"

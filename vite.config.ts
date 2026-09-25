@@ -14,11 +14,21 @@ const assetBaseUrl = pagesBase ? `${pagesBase}/` : "";
 // Used to tailor the service worker's navigation-fallback rules per build type.
 const previewBuild = process.env.VITE_PREVIEW === "true";
 
+// Pin documentation links to the exact deployed revision so the docs a user
+// reads always describe the software they are running. The Pages workflow
+// supplies the ref: a tag name when the deploy is a release, otherwise the
+// commit SHA (both work as GitHub URLs). Unset (local dev) → fall back to
+// "main", which tracks the moving branch rather than the built code.
+const deployedRef = process.env.VITE_DEPLOYED_REF || "main";
+
 // https://vitejs.dev/config/
 export default defineConfig(() => ({
   // Default to "/" for local dev; the Pages deploy workflow overrides this
   // with the repo subpath (e.g. /note-taking-app/) so assets resolve correctly.
   base: process.env.GITHUB_PAGES_BASE || "/",
+  define: {
+    __DEPLOYED_REF__: JSON.stringify(deployedRef),
+  },
   server: {
     host: "::",
     port: 8080,

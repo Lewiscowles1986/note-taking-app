@@ -31,6 +31,8 @@ export function discoveryDocument(issuer) {
     token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic', 'none'],
     id_token_signing_alg_values_supported: ['RS256'],
     claims_supported: ['sub', 'preferred_username', 'name', 'email', 'amr', ...NOTES_CLAIMS],
+    // OIDC Core §15.5.2: advertise the prompt values the IdP understands.
+    prompt_values_supported: ['login', 'none'],
   };
 }
 
@@ -136,9 +138,18 @@ export class OidcService {
       return fail('invalid_request', 'code_challenge must be base64url of a SHA-256 digest (43–128 chars)');
     }
 
-    // Already logged in? Skip straight to code issuance.
+    // OIDC Core §3.1.2.1 prompt values. Only 'login' is honoured; unknown
+    // values are ignored rather than rejected (spec: unsupported options
+    // SHOULD be ignored, MUST NOT error). prompt=login means the IdP MUST
+    // NOT skip the login UI even if an SSO session exists — this is how a
+    // user nominates DIFFERENT credentials mid-session.
+    const promptValues = new Set(String(query.get('prompt') ?? '').split(' ').filter(Boolean));
+    const forceLogin = promptValues.has('login');
+
+    // Already logged in? Skip straight to code issuance — UNLESS the client
+    // explicitly forced re-authentication with prompt=login.
     const cookies = req.parsedCookies ?? {};
-    const session = this.sessions.verify(cookies[SESSION_COOKIE]);
+    const session = forceLogin ? null : this.sessions.verify(cookies[SESSION_COOKIE]);
     if (session) {
       return this.issueCodeAndRedirect(req, res, {
         client, redirectUri, scope: requested, state, nonce, codeChallenge, sub: session.sub,
@@ -166,6 +177,10 @@ export class OidcService {
       nonce: nonce ?? '',
       code_challenge: codeChallenge,
       code_challenge_method: codeChallengeMethod,
+      // Remember whether re-authentication was forced so the POST (which
+      // may still ride an old nh_session cookie) doesn't silently resurrect
+      // the fast-path semantics the client asked to bypass.
+      prompt_login: forceLogin,
       expiresAt: Date.now() + this.config.authorizationCodeTtlSeconds * 1000,
     };
     if (this.pendingAuthorizations.size >= 1000) {
