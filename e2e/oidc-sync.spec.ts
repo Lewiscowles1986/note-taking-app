@@ -163,9 +163,9 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   await oidcLogin(page1);
   await step(page1, 'client-1-signed-in');
 
-  // The server was added on the servers page before sign-in (runOidcLoginSteps),
-  // so its settings exist; the per-server "Sync now" button lives on that row.
-  await page1.getByTitle('Settings').click();
+  // oidcLogin ends on the per-server settings page; its 'Back' returns to the
+  // servers list where the per-row 'Sync now' lives.
+  await page1.getByTitle('Back to notes').click();
   await expect(page1.getByTestId(`server-row-${SERVER}`)).toBeVisible();
 
   // ── Sync now (per-server row): pushes the local note to the server. ──────
@@ -200,7 +200,9 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   await oidcLogin(page2);
   // Exactly one pull is NOT guaranteed (alice may carry notes from earlier
   // E2E runs), so assert on OUR note appearing rather than the summary count.
-  await page2.getByTitle('Settings').click();
+  // oidcLogin ends on the per-server settings page — its 'Back' opens the
+  // servers list.
+  await page2.getByTitle('Back to notes').click();
   await page2.getByTestId(`server-sync-${SERVER}`).click();
   await expect(page2.getByText(/Sync complete|already up to date/)).toBeVisible({ timeout: 20000 });
   await page2.getByTitle('Close both pages').click();
@@ -209,12 +211,12 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   // ── Delete the note SERVER-SIDE (as the user, via the API). ─────────────
   await step(page1, 'server-side-delete');
   // Grab an access token for the API from client 2's per-server OIDC blob.
-  const oidcBlob = JSON.parse((await page2.evaluate(() => localStorage.getItem('notehaven.sync.oidc.' + SERVER))) ?? '{}');
+  const oidcBlob = JSON.parse((await page2.evaluate((s) => localStorage.getItem('notehaven.sync.oidc.' + s), SERVER)) ?? '{}');
   const token = oidcBlob.session.accessToken as string;
 
   // Find the uid from client 1's per-server uidMap (the note was pushed there).
   const uidMap1 = JSON.parse(
-    (await page1.evaluate(() => localStorage.getItem('notehaven.sync.uidMap.' + SERVER))) ?? '{}',
+    (await page1.evaluate((s) => localStorage.getItem('notehaven.sync.uidMap.' + s), SERVER)) ?? '{}',
   );
   const uid = Object.values(uidMap1)[0] as string;
   expect(uid).toBeTruthy();
@@ -257,7 +259,7 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
   await expect(page1.getByTestId('sync-notifications-count')).toHaveCount(0);
 
   const exceptions = JSON.parse(
-    (await page1.evaluate(() => localStorage.getItem('notehaven.sync.keepExceptions.' + SERVER))) ?? '{}',
+    (await page1.evaluate((s) => localStorage.getItem('notehaven.sync.keepExceptions.' + s), SERVER)) ?? '{}',
   );
   expect(Object.keys(exceptions)).toContain(uid);
 
@@ -271,6 +273,7 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
 
   // ── Client 2 (no exceptions): same deletion → Delete removes it locally. ──
   await step(page1, 'client-2-delete');
+  // page2 was closed to notes after its earlier sync — reopen the servers page.
   await page2.getByTitle('Settings').click();
   await page2.getByTestId(`server-sync-${SERVER}`).click();
   await expect(page2.getByTestId('sync-notifications-count')).toHaveText('1');
@@ -295,7 +298,7 @@ test('OIDC sign-in + cross-device sync + server deletion → keep on client 1, d
 
   // Client 2 keeps its own (empty) exception set — decisions are per client.
   const exceptions2 = JSON.parse(
-    (await page2.evaluate(() => localStorage.getItem('notehaven.sync.keepExceptions.' + SERVER))) ?? '{}',
+    (await page2.evaluate((s) => localStorage.getItem('notehaven.sync.keepExceptions.' + s), SERVER)) ?? '{}',
   );
   expect(Object.keys(exceptions2)).not.toContain(uid);
 
