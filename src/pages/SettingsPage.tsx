@@ -636,6 +636,12 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
                     const gone = !dbCategories.includes(category);
                     const checked = syncedCategories.includes(category);
                     const serverDenied = serverDeniedCategories.has(category);
+                    // Server deny blocks ADDING a category to the allow-list,
+                    // never REMOVING it: the checkbox stays enabled so a
+                    // stale pre-existing entry can always be unchecked, and
+                    // the onCheckedChange guard below is what refuses the
+                    // check direction (a disabled checkbox could never fire
+                    // the removal).
                     return (
                       <label
                         key={category}
@@ -644,9 +650,11 @@ export default function SettingsPage({ onBack, onSynced }: SettingsPageProps) {
                       >
                         <Checkbox
                           checked={checked}
-                          disabled={serverDenied}
                           onCheckedChange={(v) => {
-                            if (serverDenied) return;
+                            // Deny only the ADD direction (v === true) on a
+                            // server-denied category; unchecking (removal)
+                            // must always be possible.
+                            if (serverDenied && v === true) return;
                             setSyncedCategories((prev) =>
                               v === true
                                 ? Array.from(new Set([...prev, category]))

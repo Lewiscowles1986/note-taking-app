@@ -576,11 +576,13 @@ export async function runSync(options: {
   // a uid whose stored category is known client-denied/server-denied/out-of-
   // scope is invisible to this round WITHOUT fetching its payload. Unknown
   // uids are fetched once; if their payload turns out excluded they land in
-  // the category cache and are skipped from the next run on. Excluded uids
-  // (server deny list) are filtered even when cached, since the server never
-  // lists them in the manifest anyway.
+  // the category cache and are skipped from the next run on. Uids on the
+  // server's deny list are filtered unconditionally — even when their
+  // category is not yet known — so their payload is never fetched at all.
   const remoteCategories = loadRemoteCategories();
+  const excludedUidSet = new Set(serverExclusions.excludedUids);
   const remoteInScope = remote.filter((r) => {
+    if (excludedUidSet.has(r.uid)) return false;
     const known = remoteCategories[r.uid];
     if (known === undefined) return true;
     return decide(-1, r.uid, known).decision === 'sync';

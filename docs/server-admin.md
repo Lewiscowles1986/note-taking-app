@@ -63,7 +63,7 @@ Rules:
 |---|---|
 | `PUT /api/notes/{uid}` | `403 {"error":"excluded","error_description":"category \"X\" is excluded on this server"}` (uid deny: analogous message) |
 | `GET /api/notes` (manifest) | Excluded uids are **omitted entirely** — not even their tombstones are listed |
-| `GET /api/notes/{uid}` | Excluded uids never exist for new clients (they can only exist if synced *before* the policy was set) |
+| `GET /api/notes/{uid}` | Excluded uids never exist for new clients (they can only exist if synced *before* the policy was set) — a pre-existing excluded record still serves via direct GET (documented behavior) |
 | `DELETE /api/notes/{uid}` | **Allowed.** Exclusions govern content sync, not lifecycle bookkeeping |
 
 Discovery (`/.well-known/openid-configuration`) advertises the policy so
@@ -113,6 +113,8 @@ docker run -p 8080:8080 \
   -v note-haven-data:/data \
   note-haven-sync
 ```
+
+(image name illustrative — use the image your deployment builds/publishes)
 
 docker-compose:
 

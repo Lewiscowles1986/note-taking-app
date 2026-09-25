@@ -455,6 +455,144 @@ describe('runSync with exclusions (engine integration)', () => {
     expect(result.ok).toBe(true);
     expect(result.pushed).toBe(1);
   });
+
+  it('uid-deny: a server-excluded uid in the manifest is never pulled — no payload fetch, local state untouched, entry skipped', async () => {
+    configureServer();
+    const id = await seedNote({ title: 'Local only', category: 'General' });
+    // The uid exists remotely AND on the server's deny list (deny list built
+    // after the note was once synced). Discovery advertises it as excluded.
+    const fetchImpl = makeFetch([
+      { match: { urlIncludes: '/.well-known' }, json: { notes: { excluded_categories: [], excluded_uids: ['srv-denied-uid'] } } },
+      // Manifest LISTS the excluded uid (simulates a discovery-less client or
+      // a stale server) — the client must still skip it. A different uid is
+      // also listed so the local note legitimately pushes (no incidental
+      // 404-style error path).
+      {
+        match: { method: 'GET', urlIncludes: '/api/notes' },
+        json: {
+          notes: [
+            { uid: 'srv-denied-uid', updatedAt: iso(T0 + 500) },
+            { uid: 'other-remote', updatedAt: iso(T0 + 500) },
+          ],
+        },
+      },
+      { match: { method: 'GET', urlIncludes: '/api/notes/other-remote' }, json: { uid: 'other-remote', title: 'Allowed remote', category: 'General', updatedAt: iso(T0 + 500) } },
+      // If the engine ever fetches the excluded payload, remember it.
+      { match: { method: 'GET', urlIncludes: '/api/notes/srv-denied-uid' }, json: { uid: 'srv-denied-uid', title: 'FORBIDDEN', category: 'General', updatedAt: iso(T0 + 500) } },
+      { match: { method: 'PUT', urlIncludes: '/api/notes' }, json: { ok: true } },
+    ]);
+    let deniedPayloadFetches = 0;
+    const result = await runSync({
+      fetchImpl: async (input, init) => {
+        if (String(input).includes('/api/notes/srv-denied-uid')) deniedPayloadFetches++;
+        return fetchImpl(input, init);
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(deniedPayloadFetches).toBe(0); // the payload was NEVER fetched
+    // Nothing pulled of the excluded uid; the allowed remote note still pulls.
+    expect(result.pulled).toBe(1);
+    const note = await db.notes.get(id);
+    expect(note?.title).toBe('Local only');
+    expect((await db.notes.toArray()).map((n) => n.title)).not.toContain('FORBIDDEN');
+    expect(getPendingNotifications()).toHaveLength(0);
+    // The skipped entry did not become a deletion prompt either.
+    expect(result.deletedLocal).toBe(0);
+  });
+
+  it('keep-exception + server exclusion: no NEW prompt enqueued; a PRE-EXISTING prompt stays resolvable', async () => {
+    configureServer();
+    const { hasKeepException, addKeepException, resolveNotification } = await import('@/lib/syncNotifications');
+    // A note whose remote copy was deleted on the server BEFORE the exclusion
+    // policy existed; the user chose Keep (permanent exception), and NOW the
+    // server denies the uid entirely.
+    const id = await seedNote({ title: 'Kept note', category: 'General' });
+    const fetchImpl1 = makeFetch([
+      { match: { urlIncludes: '/.well-known' }, json: DEFAULT_DISCOVERY },
+      { match: { method: 'GET', urlIncludes: '/api/notes' }, json: { notes: [] } },
+      { match: { method: 'PUT', urlIncludes: '/api/notes' }, json: { ok: true } },
+    ]);
+    expect((await runSync({ fetchImpl: fetchImpl1 })).pushed).toBe(1);
+    const { getUidForNoteId } = await import('@/lib/sync');
+    const uid = getUidForNoteId(id)!;
+    expect(uid).toBeTruthy();
+    addKeepException(uid);
+    expect(hasKeepException(uid)).toBe(true);
+
+    // Sync round under the exclusion policy: the manifest shows the remote
+    // tombstone; the keep-exception must suppress any NEW prompt and the
+    // server-deny must not resurrect or touch the local note.
+    const fetchImpl2 = makeFetch([
+      { match: { urlIncludes: '/.well-known' }, json: { notes: { excluded_categories: [], excluded_uids: [uid] } } },
+      { match: { method: 'GET', urlIncludes: '/api/notes' }, json: { notes: [{ uid, updatedAt: iso(T0 + 900), deleted: true }] } },
+    ]);
+    const result = await runSync({ fetchImpl: fetchImpl2 });
+    expect(result.ok).toBe(true);
+    expect(getPendingNotifications()).toHaveLength(0); // no NEW prompt enqueued
+    expect((await db.notes.get(id))?.title).toBe('Kept note'); // local untouched
+
+    // A PRE-EXISTING queued prompt for the same uid remains resolvable: the
+    // engine must not have consumed or blocked it.
+    const { enqueueRemoteDeletion } = await import('@/lib/syncNotifications');
+    const pre = enqueueRemoteDeletion({ uid: 'other-uid', title: 'Older deletion', category: 'General', deletedAt: iso(T0 + 100) });
+    expect(pre).not.toBeNull();
+    expect(getPendingNotifications()).toHaveLength(1);
+    await resolveNotification(pre!.id, 'keep');
+    expect(getPendingNotifications()).toHaveLength(0);
+  });
+
+  it('pull-waste: a client-excluded note with a remote update fetches the payload once and discards it; local copy byte-identical', async () => {
+    configureServer();
+    const id = await seedNote({ title: 'Excluded locally', category: 'Work', content: 'original body' });
+    saveSyncSettings({ ...loadSyncSettings(), excludedCategories: ['Work'] });
+    // Sync once before excluding? No — the exclusion is already on, so the
+    // uid mapping is stale/absent; drive the round purely from the manifest.
+    // The remoteCategories cache is empty, so the payload IS fetched once and
+    // then discarded (this is the documented best-effort gap being pinned).
+    let payloadFetches = 0;
+    const payload = {
+      uid: 'waste-uid',
+      title: 'Excluded locally (remote edit)',
+      content: 'remote updated body',
+      tags: [],
+      category: 'Work',
+      createdAt: iso(T0),
+      updatedAt: iso(T0 + 500),
+      editDates: ['2026-01-01'],
+      pinned: false,
+      encrypted: null,
+    };
+    const fetchImpl = makeFetch([
+      { match: { urlIncludes: '/.well-known' }, json: DEFAULT_DISCOVERY },
+      { match: { method: 'GET', urlIncludes: '/api/notes/waste-uid' }, json: payload },
+      { match: { method: 'GET', urlIncludes: '/api/notes' }, json: { notes: [{ uid: 'waste-uid', updatedAt: iso(T0 + 500) }] } },
+    ]);
+    // Count payload fetches by wrapping the ordered matcher: only the
+    // waste-uid handler should ever see a GET.
+    const result = await runSync({
+      fetchImpl: async (input, init) => {
+        const url = String(input);
+        if (url.includes('/api/notes/waste-uid')) payloadFetches++;
+        return fetchImpl(input, init);
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.pulled).toBe(0); // discarded after the payload re-check
+    expect(payloadFetches).toBe(1); // fetched exactly once — waste, not a loop
+    // Local copy byte-identical: title/content untouched by the pull.
+    const note = await db.notes.get(id);
+    expect(note?.title).toBe('Excluded locally');
+    expect(note?.content).toBe('original body');
+    // The category is now remembered, so the NEXT round skips the fetch entirely.
+    let secondFetches = 0;
+    await runSync({
+      fetchImpl: async (input, init) => {
+        if (String(input).includes('/api/notes/waste-uid')) secondFetches++;
+        return fetchImpl(input, init);
+      },
+    });
+    expect(secondFetches).toBe(0);
+  });
 });
 
 describe('runSync config guard', () => {

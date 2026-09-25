@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronRight,
   CloudOff,
+  Lock,
   X,
 } from 'lucide-react';
 import { exportToHtml, exportToPdf, exportToZip, exportDatabase } from '@/lib/export';
@@ -38,6 +39,8 @@ interface NoteSidebarProps {
   onRefresh: () => void;
   /** Local note ids excluded from sync (the device's deny list). */
   excludedNoteIds?: number[];
+  /** Categories the sync server refuses to store (server policy, read-only). */
+  serverExcludedCategories?: string[];
   /** Toggle a note's per-device sync exclusion. */
   onToggleSyncExcluded?: (note: Note) => void;
   /** Extra classes merged onto the root. On mobile pass full-width/height overrides. */
@@ -61,6 +64,7 @@ export default function NoteSidebar({
   onFilterCategory,
   onRefresh,
   excludedNoteIds = [],
+  serverExcludedCategories = [],
   onToggleSyncExcluded,
   className,
 }: NoteSidebarProps) {
@@ -338,6 +342,16 @@ export default function NoteSidebar({
                       >
                         <CloudOff size={10} aria-hidden />
                         excluded
+                      </span>
+                    )}
+                    {serverExcludedCategories.includes(note.category) && (
+                      <span
+                        data-testid={`sync-server-denied-badge-${note.id}`}
+                        title="Excluded by server policy"
+                        className="inline-flex items-center gap-0.5 text-[10px] text-red-600 dark:text-red-400 shrink-0"
+                      >
+                        <Lock size={10} aria-hidden />
+                        server-denied
                       </span>
                     )}
                     <span className="font-medium text-sm text-sidebar-foreground truncate">

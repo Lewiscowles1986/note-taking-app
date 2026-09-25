@@ -44,6 +44,8 @@ a chip with an **×** to undo.
 In the note list (sidebar), find the note, hover to reveal the row actions,
 and click the **cloud-off icon** ("Exclude from sync"). The note gains a
 muted **excluded** badge. Click the icon again ("Include in sync") to undo.
+If you excluded a note after a deletion prompt appeared, that prompt stays
+and you can still resolve it; exclusion only prevents new prompts.
 
 ### Un-exclude (~15 sec)
 
@@ -54,13 +56,16 @@ muted **excluded** badge. Click the icon again ("Include in sync") to undo.
 The note starts syncing again at the next sync round — nothing is re-uploaded
 from scratch; ordinary merging continues where it left off.
 
+Excluding a note freezes its server copy at the pre-exclusion version —
+other devices keep the old version until you un-exclude the note or the
+server admin deletes it.
+
 ### What if my server admin denies a category? (read-only for you)
 
 Some categories may be **denied by your server** — the settings page shows a
 lock icon and "Denied by server policy" next to them, and they cannot be
 selected for syncing. You don't configure this; if it seems wrong, contact
 your server admin (see [server-admin.md](server-admin.md)).
-
 ## Explanation — why deny wins: the precedence model (~2 min)
 
 Three layers decide whether a note syncs. They are checked in order, and the
@@ -87,11 +92,18 @@ Why this shape? Each layer answers to a different authority:
   not be undone by a broader selection you made casually.
 - **Sync scope** (you): the "All notes / Selected categories only" choice.
 
-The model **fails closed**: if a layer cannot answer (say, the server is
-temporarily unreachable), the note simply does not sync until it can — it is
-never pushed "just in case". The one exception is lifecycle bookkeeping:
-deleting a note locally always propagates to the server, even for excluded
-notes, so your deletions are never stranded.
+One honesty note about the **server deny** layer: the app reads the
+server's policy from its discovery document at the start of each sync round,
+and that read is **best-effort**. If the server (or just the discovery
+endpoint) is unreachable or the policy cannot be read, the run proceeds with
+an **empty deny list** — the server itself is the enforcement backstop and
+still refuses an excluded upload with `403 excluded` at that moment. The
+practical gap: a note that is already stored on the server (it was synced
+before the policy was set) may be **pulled** that round, since nothing on
+either side denies the download. The one deliberate exception to "the server
+has the last word" is lifecycle bookkeeping: deleting a note locally always
+propagates to the server, even for excluded notes, so your deletions are
+never stranded.
 
 What exclusions are *not*: a delete button. Nothing is ever removed from your
 device by an exclusion — notes keep their sync identity, so un-excluding
@@ -109,6 +121,7 @@ later resumes cleanly.
 | **Exclude from sync** (note) | client deny | user | Sidebar row action | Per-device note deny-list (`excludedNoteIds`) |
 | **excluded** badge | — | — | Sidebar | Shows a note is on the device deny-list |
 | 🔒 **Denied by server policy** | — | — | Settings | Server-denied category (cannot be allow-listed) |
+| 🔒 **server-denied** badge | — | — | Sidebar | Note's category is denied by the server — shown but never synced |
 
 Related: [sync.md](sync.md) — the sync protocol and merge semantics ·
 [server-admin.md](server-admin.md) — running and configuring the server.

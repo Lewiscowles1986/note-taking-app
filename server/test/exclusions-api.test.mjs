@@ -20,6 +20,8 @@ const EXCLUSIONS = { excludedCategories: ['Private', 'Legal'], excludedUids: ['d
 let server;
 let baseUrl;
 let aliceToken;
+let aliceStore;
+let aliceSub;
 
 function issueFor(oidcSvc, username, scope = 'openid offline_access notes.sync') {
   const user = oidcSvc.store.findUserByUsername(username);
@@ -86,6 +88,8 @@ before(async () => {
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   baseUrl = `http://127.0.0.1:${server.address().port}`;
+  aliceSub = oidc.store.findUserByUsername('alice').sub;
+  aliceStore = oidc.store.notesFor(aliceSub);
   aliceToken = issueFor(oidc, 'alice').access_token;
 });
 
@@ -137,6 +141,33 @@ describe('exclusion enforcement over HTTP', () => {
     assert.equal(uids.includes('denied-uid'), false, 'excluded uid must never be listed');
     assert.equal(uids.includes('uid-priv'), false, 'note never accepted (403) must not exist');
     assert.deepEqual(uids, ['uid-ok']);
+  });
+
+  test('GET of a pre-existing excluded record still serves 200 with the payload (documented behavior)', async () => {
+    // Simulate the pre-exclusion state: the record was stored BEFORE the
+    // policy existed, so seed the store directly (a PUT now would 403).
+    // The uid IS on the deny list ('denied-uid' from EXCLUSIONS).
+    aliceStore.set('denied-uid', {
+      uid: 'denied-uid',
+      deleted: false,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      storedAt: '2026-01-01T00:00:00.000Z',
+      payload: {
+        uid: 'denied-uid',
+        title: 'Pre-policy note',
+        category: 'Travel',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    // The manifest STILL hides it...
+    const manifest = await request('GET', '/api/notes', { headers: auth() });
+    assert.equal(manifest.json.notes.some((n) => n.uid === 'denied-uid'), false);
+    // ...but a direct GET of the pre-existing record serves the payload.
+    const get = await request('GET', '/api/notes/denied-uid', { headers: auth() });
+    assert.equal(get.status, 200);
+    assert.equal(get.json.uid, 'denied-uid');
+    assert.equal(get.json.title, 'Pre-policy note');
+    assert.equal(get.json.category, 'Travel');
   });
 
   test('DELETE for an excluded uid still works (exclusions govern content, not lifecycle)', async () => {

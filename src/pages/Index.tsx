@@ -1,4 +1,4 @@
-import { useState, useCallback, lazy, Suspense } from 'react';
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { useNotes } from '@/hooks/useNotes';
 import { useEncryption } from '@/hooks/useEncryption';
 import NoteSidebar from '@/components/NoteSidebar';
@@ -17,7 +17,8 @@ import EncryptionDialog from '@/components/EncryptionDialog';
 // out of the critical path like the other secondary surfaces.
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 import type { Note } from '@/lib/db';
-import { loadSyncSettings, saveSyncSettings } from '@/lib/syncSettings';
+import { loadSyncSettings, saveSyncSettings, type SyncSettings } from '@/lib/syncSettings';
+import { parseDiscoveryExclusions } from '@/lib/sync';
 import type { StoredKeyPair } from '@/lib/crypto';
 import { runInFlight } from '@/lib/inFlight';
 import { Eye, Pencil, PanelLeftClose, PanelLeftOpen, Calendar, Settings, Lock, ChevronLeft } from 'lucide-react';
@@ -99,6 +100,31 @@ export default function Index() {
       return next;
     });
   }, []);
+
+  // Server-side category deny list, from the discovery document — same
+  // best-effort read the settings page does. Drives the sidebar's distinct
+  // "server-denied" badge. Empty when no server is configured/unreachable.
+  const [serverExcludedCategories, setServerExcludedCategories] = useState<string[]>([]);
+  const [syncSettings, setSyncSettings] = useState<SyncSettings>(() => loadSyncSettings());
+  useEffect(() => {
+    let cancelled = false;
+    const base = loadSyncSettings().serverUrl;
+    const policy = base
+      ? fetch(`${base}/.well-known/openid-configuration`)
+          .then((res) => (res.ok ? res.json() : null))
+          .catch(() => null)
+      : Promise.resolve(null);
+    // Both setStates happen only inside the async continuation (never
+    // synchronously in the effect body — keeps the lint baseline intact).
+    void policy.then((doc) => {
+      if (cancelled) return;
+      setSyncSettings(loadSyncSettings());
+      setServerExcludedCategories(doc ? parseDiscoveryExclusions(doc).excludedCategories : []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsMode]);
 
   // Selecting a note from the list: desktop keeps the sidebar open, mobile
   // closes the top sheet so the note opens full-screen.
@@ -289,6 +315,7 @@ export default function Index() {
               onFilterCategory={setFilterCategory}
               onRefresh={refresh}
               excludedNoteIds={excludedNoteIds}
+              serverExcludedCategories={serverExcludedCategories}
               onToggleSyncExcluded={handleToggleSyncExcluded}
               className="w-full max-h-[80dvh] pt-[env(safe-area-inset-top)]"
             />
@@ -313,6 +340,7 @@ export default function Index() {
             onFilterCategory={setFilterCategory}
             onRefresh={refresh}
             excludedNoteIds={excludedNoteIds}
+            serverExcludedCategories={serverExcludedCategories}
             onToggleSyncExcluded={handleToggleSyncExcluded}
           />
         )
