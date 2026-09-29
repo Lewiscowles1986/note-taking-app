@@ -35,7 +35,10 @@ function startScheduler(): void {
     const tick = () => {
       // Dynamic import: the engine (and its ~15 KB) only downloads for users
       // who opted into a server. runSyncIfConfigured never throws.
-      void import('./sync').then(({ runSyncIfConfigured }) => runSyncIfConfigured(serverId));
+      // Aliased specifier (not './sync') so the VITE_NO_SYNC build can swap
+      // this module for a stub via the same alias table as every other
+      // consumer — identical resolution in real builds.
+      void import('@/lib/sync').then(({ runSyncIfConfigured }) => runSyncIfConfigured(serverId));
     };
 
     timer = window.setInterval(tick, minutes * 60_000);
