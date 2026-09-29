@@ -40,6 +40,15 @@ import {
   wouldPromptBeSuppressed,
 } from './syncNotifications';
 
+// parseDiscoveryExclusions lives in a dependency-free leaf module so Index.tsx
+// (eager) can use it WITHOUT importing the engine. Re-exported here so the
+// lazy sync surface keeps one import path.
+export {
+  parseDiscoveryExclusions,
+  type ServerExclusions,
+} from './discoveryExclusions';
+import { parseDiscoveryExclusions, NO_EXCLUSIONS, type ServerExclusions } from './discoveryExclusions';
+
 // ─── uid mapping (localStorage-backed; keeps the Dexie schema unchanged) ─────
 
 // One map PER SERVER: a note synced to two servers carries a DIFFERENT uid
@@ -398,30 +407,12 @@ async function bearerHeaders(
   return authHeaders(token, hasBody);
 }
 
-/** Exclusion lists advertised by a server in its discovery document. */
-export interface ServerExclusions {
-  excludedCategories: string[];
-  excludedUids: string[];
-}
-
-const NO_EXCLUSIONS: ServerExclusions = { excludedCategories: [], excludedUids: [] };
-
 /**
- * Extract `notes.excluded_categories` / `notes.excluded_uids` from a discovery
- * document. Tolerates absent/invalid shapes (older servers, wrong types) by
- * returning empty lists — the server still enforces its own policy on PUT.
+ * Read the server's exclusion policy from its discovery document. Best-effort:
+ * an unreachable/undecipherable discovery endpoint yields empty lists so sync
+ * proceeds — the server still enforces its own policy with 403 on PUT.
+ * Parsing itself lives in ./discoveryExclusions (leaf module).
  */
-export function parseDiscoveryExclusions(data: unknown): ServerExclusions {
-  const notes = (data as { notes?: unknown } | null)?.notes;
-  if (!notes || typeof notes !== 'object' || Array.isArray(notes)) return { ...NO_EXCLUSIONS };
-  const toList = (value: unknown): string[] =>
-    Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.length > 0) : [];
-  return {
-    excludedCategories: toList((notes as { excluded_categories?: unknown }).excluded_categories),
-    excludedUids: toList((notes as { excluded_uids?: unknown }).excluded_uids),
-  };
-}
-
 async function requestJson<T>(
   fetchImpl: FetchLike,
   url: string,
@@ -448,11 +439,6 @@ async function requestJson<T>(
   }
 }
 
-/**
- * Read the server's exclusion policy from its discovery document. Best-effort:
- * an unreachable/undecipherable discovery endpoint yields empty lists so sync
- * proceeds — the server still enforces its own policy with 403 on PUT.
- */
 export async function fetchServerExclusions(
   base: string,
   fetchImpl: FetchLike,

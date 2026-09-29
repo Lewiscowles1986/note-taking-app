@@ -20,7 +20,9 @@ const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const ServersPage = lazy(() => import('@/pages/ServersPage'));
 import type { Note } from '@/lib/db';
 import { loadExcludedNoteIds, saveExcludedNoteIds, listServers, getServerSettings } from '@/lib/syncServers';
-import { parseDiscoveryExclusions } from '@/lib/sync';
+// From a dependency-free LEAF module, not the sync engine — importing this
+// from '@/lib/sync' would pull the whole engine into the eager chunk.
+import { parseDiscoveryExclusions } from '@/lib/discoveryExclusions';
 import type { StoredKeyPair } from '@/lib/crypto';
 import { runInFlight } from '@/lib/inFlight';
 import { Eye, Pencil, PanelLeftClose, PanelLeftOpen, Calendar, Settings, Lock, ChevronLeft } from 'lucide-react';
