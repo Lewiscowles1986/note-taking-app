@@ -21,6 +21,20 @@ const previewBuild = process.env.VITE_PREVIEW === "true";
 // "main", which tracks the moving branch rather than the built code.
 const deployedRef = process.env.VITE_DEPLOYED_REF || "main";
 
+// VITE_NO_SYNC=1 swaps the sync/OIDC modules for dependency-free stubs
+// (src/build-stubs/*) so a build can prove how many bytes the sync feature
+// costs. Production never sets it. The alias keys match EXACTLY (plus
+// subpaths) what consumers import; order matters — stub keys must come
+// before the bare "@" catch-all so they win.
+const noSyncBuild = process.env.VITE_NO_SYNC === "1";
+const NO_SYNC_ALIASES: Record<string, string> = {
+  "@/lib/sync": path.resolve(__dirname, "./src/build-stubs/sync.ts"),
+  "@/lib/syncDeletion": path.resolve(__dirname, "./src/build-stubs/syncDeletion.ts"),
+  "@/lib/syncNotifications": path.resolve(__dirname, "./src/build-stubs/syncNotifications.ts"),
+  "@/lib/authToken": path.resolve(__dirname, "./src/build-stubs/authToken.ts"),
+  "@/lib/oidcAuth": path.resolve(__dirname, "./src/build-stubs/oidcAuth.ts"),
+};
+
 // https://vitejs.dev/config/
 export default defineConfig(() => ({
   // Default to "/" for local dev; the Pages deploy workflow overrides this
@@ -96,6 +110,9 @@ export default defineConfig(() => ({
   ],
   resolve: {
     alias: {
+      // Stub aliases FIRST (no-sync builds): the bare "@" catch-all below
+      // would otherwise swallow "@/lib/sync" before the stub match.
+      ...(noSyncBuild ? NO_SYNC_ALIASES : {}),
       "@": path.resolve(__dirname, "./src"),
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
