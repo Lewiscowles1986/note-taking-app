@@ -123,9 +123,34 @@ async function openServerSettings(page: Page): Promise<void> {
   await page.getByTestId(`server-settings-${SERVER}`).click();
 }
 
-/** Configure + save the connection through the UI (this server's settings). */
+/**
+ * Leave the per-server settings page and land back on the NOTES list. The
+ * multi-server flow nests two levels (settings → servers page → notes), so
+ * "Back to notes" has to be followed twice: the settings page's back returns
+ * to the servers page, and the servers page's back returns to the notes.
+ */
+async function backToNotes(page: Page): Promise<void> {
+  await page.getByTitle('Back to notes').click();
+  await page.getByTitle('Back to notes').click();
+}
+
+/**
+ * Configure + save the connection through the UI (this server's settings).
+ *
+ * The manual token lives in the "Advanced" collapsible (collapsed by default),
+ * so open it before filling. Save is disabled until the form is dirty, which a
+ * bare click on an unedited form never reaches — so set a field first, and when
+ * `token` is empty fall back to toggling auto-sync instead.
+ */
 async function configureServer(page: Page, token = ''): Promise<void> {
-  if (token) await page.getByLabel('Access token (optional)').fill(token);
+  if (token) {
+    await page.getByTestId('sync-advanced-toggle').click();
+    await page.getByLabel('Access token (optional)').fill(token);
+  } else {
+    const autoSync = page.getByRole('switch', { name: 'Automatic sync' });
+    await autoSync.click();
+    await expect(autoSync).toBeChecked();
+  }
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Sync settings saved')).toBeVisible();
 }
@@ -136,7 +161,7 @@ test('settings page opens from the header and persists configuration', async ({ 
   await debugBreak(page, 'app loaded — inspect before opening settings');
 
   await openServerSettings(page);
-  await expect(page.getByText('Sync server')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sync server' })).toBeVisible();
   await step(page, 'settings-open');
 
   await configureServer(page, 'e2e-token');
@@ -145,8 +170,7 @@ test('settings page opens from the header and persists configuration', async ({ 
   // gear → servers → this server's settings (the multi-server path).
   await page.reload();
   await openServerSettings(page);
-  await expect(page.getByTestId(`server-settings-${SERVER}`)).toBeVisible();
-  await page.getByTestId(`server-settings-${SERVER}`).click();
+  await page.getByTestId('sync-advanced-toggle').click();
   await expect(page.getByLabel('Access token (optional)')).toHaveValue('e2e-token');
   await step(page, 'settings-persisted');
 });
@@ -211,7 +235,7 @@ test('sync pulls a server-only note into the note list', async ({ page }) => {
   await step(page, 'synced-pull');
 
   // Back to notes: the pulled note is in the list.
-  await page.getByTitle('Back to notes').click();
+  await backToNotes(page);
   await expect(page.getByText('FromServer', { exact: true })).toBeVisible();
   await step(page, 'pulled-note-in-list');
 });
@@ -230,7 +254,7 @@ test('deleting a local note deletes it on the server at the next sync', async ({
   expect(server.puts).toHaveLength(1);
 
   // Delete it back in notes view (hover reveals the trash button).
-  await page.getByTitle('Back to notes').click();
+  await backToNotes(page);
   const doomedItem = page.locator('div.group', { hasText: 'Doomed' });
   await doomedItem.hover();
   await doomedItem.getByRole('button', { name: 'Delete' }).click();

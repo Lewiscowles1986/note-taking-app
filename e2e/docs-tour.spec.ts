@@ -166,7 +166,9 @@ test('captures sync settings', async ({ page }) => {
   await page.getByTestId('add-server-url').fill('https://sync.example.test');
   await page.getByTestId('add-server-button').evaluate((el: HTMLElement) => el.click());
   await page.getByTestId('server-settings-https://sync.example.test').evaluate((el: HTMLElement) => el.click());
-  await expect(page.getByText('Sync server')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sync server' })).toBeVisible();
+  // The manual token sits in the collapsed "Advanced" section — open it first.
+  await page.getByTestId('sync-advanced-toggle').evaluate((el: HTMLElement) => el.click());
   await page.getByLabel('Access token (optional)').fill('demo-token');
   await page.getByRole('button', { name: 'Test connection' }).evaluate((el: HTMLElement) => el.click());
   await expect(page.getByText(/Connection OK/)).toBeVisible();

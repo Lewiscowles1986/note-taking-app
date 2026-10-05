@@ -48,7 +48,10 @@ async function seedAndEncrypt(
   await page.getByPlaceholder('Min 8 characters').fill(password);
   await page.getByPlaceholder('Confirm password').fill(password);
   await page.getByRole('button', { name: 'Encrypt Note' }).click();
-  await expect(page.getByText('Note encrypted')).toBeVisible();
+  // PBKDF2 + AES-CBC derivation can outlast the shared 5s expect timeout on a
+  // loaded CI runner (the arm64 scheduled job timed out on this line), so allow
+  // headroom here — every caller inherits it.
+  await expect(page.getByText('Note encrypted')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole('heading', { name: 'Note is Encrypted' })).toBeVisible();
 }
 
@@ -78,6 +81,7 @@ test('encrypts a note with a password and locks it', async ({ page }) => {
 });
 
 test('rejects the wrong password on unlock', async ({ page }) => {
+  test.setTimeout(120_000);
   await seedAndEncrypt(page, 'Secret', '# Secret\n\nTop secret body', PASSWORD);
   await debugBreak(page, 'note encrypted — inspect before wrong-password unlock');
 
@@ -90,8 +94,12 @@ test('rejects the wrong password on unlock', async ({ page }) => {
   // an EMPTY message, and EncryptionDialog renders its error banner only when
   // `error` is truthy — so a wrong password produces NO visible error message.
   // The note must still be locked, which is the behavior we assert here.
-  // The dialog stays open (handleDecrypt does not close on error).
-  await expect(page.getByRole('button', { name: 'Decrypt Note' })).toBeVisible();
+  // The dialog stays open (handleDecrypt does not close on error). The decrypt
+  // attempt (PBKDF2 + AES-CBC) runs even on a wrong password and re-enables the
+  // button when it settles; the shared 5s expect timeout can expire before that
+  // settles under parallel CI load, so give it the same 20s headroom used by
+  // the sibling password tests below.
+  await expect(page.getByRole('button', { name: 'Decrypt Note' })).toBeVisible({ timeout: 20_000 });
   await step(page, 'wrong-password');
 
   // Close the dialog: the note is still locked.
@@ -101,6 +109,7 @@ test('rejects the wrong password on unlock', async ({ page }) => {
 });
 
 test('unlocks and decrypts with the correct password', async ({ page }) => {
+  test.setTimeout(120_000);
   await seedAndEncrypt(page, 'Secret', '# Secret\n\nTop secret body', PASSWORD);
   await debugBreak(page, 'note encrypted — inspect before correct-password unlock');
 
@@ -108,8 +117,11 @@ test('unlocks and decrypts with the correct password', async ({ page }) => {
   await page.getByPlaceholder('Enter password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Decrypt Note' }).click();
 
-  // handleDecrypt saves plaintext and clears the encrypted flag.
-  await expect(page.getByText('Note decrypted')).toBeVisible();
+  // handleDecrypt saves plaintext and clears the encrypted flag. The PBKDF2 +
+  // AES-CBC round trip can outlast the shared 5s expect timeout under parallel
+  // CI load (the dialog is still "Decrypting…" at timeout), so allow 20s — the
+  // same allowance the sibling decrypt tests use.
+  await expect(page.getByText('Note decrypted')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole('heading', { name: 'Note is Encrypted' })).toBeHidden();
   await expect(page.locator('svg.lucide-lock')).toHaveCount(0);
   await expect(editor(page)).toHaveValue(/# Secret\n\nTop secret body/);
