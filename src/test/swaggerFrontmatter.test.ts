@@ -124,4 +124,14 @@ describe('parseSwaggerFrontmatter', () => {
     expect(meta.servers).toEqual(['https://api.dev']);
     expect(specText).toBe('spec');
   });
+
+  it('currently re-parses the body as header when two markers are adjacent', () => {
+    // Pre-refactor behaviour, pinned deliberately. The old recursive rebuild
+    // treats the opening marker as the closer, so `host: h` is parsed into meta
+    // AND left in specText — the same content counted twice.
+    // The non-recursive rewrite intentionally changes this to meta === {}.
+    const { meta, specText } = parseSwaggerFrontmatter('---\n---\nhost: h\n---');
+    expect(meta).toEqual({ host: 'h' });
+    expect(specText).toBe('host: h\n---');
+  });
 });

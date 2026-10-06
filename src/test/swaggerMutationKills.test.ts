@@ -757,13 +757,24 @@ describe('mutation kills: parser termination', () => {
   });
 
   it('terminates on a list item with an empty nested block', () => {
-    // parseSimpleYaml requires a top-level mapping, so a document rooted at a
-    // list is rejected outright. The point of this case is that it returns
-    // (rather than looping) when a list item's nested block is empty.
-    expect(() => parseSimpleYaml('- a:\n- b: 2')).toThrow(/must start with a mapping/);
+    // Rooted at a mapping so parseSimpleYaml's top-level-mapping guard does not
+    // fire first — this is what exercises the list branch's own advance.
+    expect(parseSimpleYaml('root:\n  - a:\n  - b: 2')).toEqual({ root: [{ a: null }, { b: 2 }] });
   });
 
   it('terminates on an unbalanced flow bracket', () => {
     expect(parseSimpleYaml('a: [1, [2')).toEqual({ a: '[1, [2' });
+  });
+
+  it('resumes at the right line after a nested mapping block', () => {
+    // The sibling line after the nested block only parses if the skip-ahead
+    // index lands exactly on it.
+    expect(parseSimpleYaml('a:\n  b:\n    c: 1\nd: 2')).toEqual({ a: { b: { c: 1 } }, d: 2 });
+  });
+
+  it('resumes at the right line after a list block scalar', () => {
+    // `- |` takes the list branch's block-scalar path; the sibling item only
+    // parses if that path advances correctly.
+    expect(parseSimpleYaml('a:\n  - |\n    line\n  - 2')).toEqual({ a: ['line', 2] });
   });
 });
