@@ -110,16 +110,18 @@ interface YamlLine {
 }
 
 function stripComment(line: string): string {
-  // Remove trailing comments, but not inside quotes.
+  // Remove trailing comments, but not inside quotes. Accumulating the prefix
+  // keeps `out` identical to `line.slice(0, i)` without an index to mutate.
   let inSingle = false;
   let inDouble = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
+  let out = '';
+  for (const ch of line) {
     if (ch === "'" && !inDouble) inSingle = !inSingle;
     else if (ch === '"' && !inSingle) inDouble = !inDouble;
     else if (ch === '#' && !inSingle && !inDouble) {
-      if (i === 0 || /\s/.test(line[i - 1])) return line.slice(0, i);
+      if (out === '' || /\s$/.test(out)) return out;
     }
+    out += ch;
   }
   return line;
 }
