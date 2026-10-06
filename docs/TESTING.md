@@ -91,7 +91,7 @@ mutants your tests kill. It is installed (`@stryker-mutator/core` +
 `@stryker-mutator/vitest-runner`) and configured in `stryker.config.json`:
 
 ```bash
-npx stryker run   # ~10 min in-container at concurrency 4; not for CI by default
+npx stryker run   # full src/lib scope; ~28 min on CI, sharded in CI — see below
 ```
 
 > **TypeScript 7 caveat (2026-09):** Stryker 10 needs the classic TS compiler
@@ -127,6 +127,20 @@ npx stryker run   # ~10 min in-container at concurrency 4; not for CI by default
     instrumented copy of every file named in `mutate`, so excluding this
     glob-only module keeps it verbatim; the tests still exercise it.
 - HTML report: `reports/mutation/mutation.html` (gitignored).
+- **Sharded in CI.** Mutation is the long pole (~28 min of a 45 min budget) and
+  it parallelises by file, so `test-quality.yml` runs a 5-way matrix that each
+  mutate a disjoint `--mutate` subset (grouped in
+  [`.github/stryker-shards.json`](../.github/stryker-shards.json)) and then
+  merges the reports. Each shard still runs the *whole* test suite in its
+  initial dry run, so coverage analysis stays correct; shard membership only
+  changes which mutants get generated and tested. To reproduce one shard
+  locally:
+  ```bash
+  npx stryker run --mutate "$(jq -r '.shards[0]' .github/stryker-shards.json)"
+  ```
+  Merge shard reports with `node scripts/merge-mutation-reports.mjs <outDir> <shard.json>...`,
+  which also regenerates the single-file HTML report (the per-shard HTML is
+  partial).
 
 Per-module scores from that run:
 

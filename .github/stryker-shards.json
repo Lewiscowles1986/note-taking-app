@@ -1,0 +1,10 @@
+{
+  "$comment": "Shard definitions for the Stryker matrix in .github/workflows/test-quality.yml. Read by that workflow (`toJSON(fromJSON(...))`) and never by Stryker itself, so it stays out of stryker.config.json (which warns on unknown keys). Balanced longest-processing-time-first by per-file mutant count (via @stryker-mutator/instrumenter) so the shards finish together; regenerate this file if src/lib changes materially.",
+  "shards": [
+    "src/lib/authToken.ts,src/lib/autoSyncSchedulerControl.ts,src/lib/db.ts,src/lib/phpRunner.ts,src/lib/swaggerSpec.ts",
+    "src/lib/codeRunners.ts,src/lib/inFlight.ts,src/lib/languages.ts,src/lib/oidcStorage.ts,src/lib/pythonRunner.ts,src/lib/sync.ts",
+    "src/lib/callouts.ts,src/lib/crypto.ts,src/lib/export.ts,src/lib/imageProcessor.ts,src/lib/jsRunner.ts,src/lib/oidcAuth.ts",
+    "src/lib/codeBlockFrontmatter.ts,src/lib/discoveryExclusions.ts,src/lib/import.ts,src/lib/rubyRunner.ts,src/lib/swaggerFrontmatter.ts,src/lib/syncDeletion.ts,src/lib/utils.ts",
+    "src/lib/exportView.ts,src/lib/htmlOutput.ts,src/lib/languageList.ts,src/lib/syncNotifications.ts,src/lib/syncServers.ts,src/lib/syncSettings.ts,src/lib/syncTest.ts,src/lib/wasmAssets.ts"
+  ]
+}
