@@ -27,10 +27,15 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-# One page publish per PR / per main push at a time; cancel stale runs.
+# One publish at a time. Main and every PR preview all push to the same
+# `gh-pages` branch (previews into preview-builds/<slug>/), so they must share
+# one concurrency group. Scoping the group per ref let a main deploy race a
+# preview deploy and lose its push with "gh-pages -> gh-pages (fetch first)",
+# which failed the main deploy and left the site stale. cancel-in-progress
+# stays false so a queued run is never cancelled mid-publish.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: github-pages-publish
+  cancel-in-progress: false
 
 permissions:
   contents: write
