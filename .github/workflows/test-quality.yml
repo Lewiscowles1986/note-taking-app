@@ -38,11 +38,11 @@ permissions:
 
 concurrency:
   group: test-quality-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   mutation:
-    name: Mutation shard ${{ matrix.shard }} of 16
+    name: Mutation shard ${{ matrix.shard }} of 20
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -50,7 +50,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     steps:
       - uses: actions/checkout@v7
 
