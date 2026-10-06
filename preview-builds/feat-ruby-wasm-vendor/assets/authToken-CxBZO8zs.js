@@ -1,0 +1,2 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/oidcAuth-pFGDRZ-Y.js","assets/oidcStorage-8hU2y1xA.js"])))=>i.map(i=>d[i]);
+import{_ as e}from"./index-BRWf6303.js";import{loadOidcSessionFor as n}from"./oidcStorage-8hU2y1xA.js";let t=null;async function r(){return t||(t=await e(()=>import("./oidcAuth-pFGDRZ-Y.js"),__vite__mapDeps([0,1]))),t}async function _(o,i,s){var c;if(!n(o))return i;try{return await(await r()).getValidAccessToken(o,s)}catch{return((c=n(o))==null?void 0:c.accessToken)??i}}export{_ as r};
