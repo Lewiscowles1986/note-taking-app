@@ -746,3 +746,24 @@ describe('mutation kills: parse validation guards', () => {
     expect(parsed).toEqual({ a: { b: { c: 'deep' } } });
   });
 });
+
+describe('mutation kills: parser termination', () => {
+  it('terminates on a block scalar at end of input', () => {
+    expect(parseSimpleYaml('a: |\n  line')).toEqual({ a: 'line' });
+  });
+
+  it('terminates on a nested mapping at end of input', () => {
+    expect(parseSimpleYaml('a:\n  b:\n    c: 1')).toEqual({ a: { b: { c: 1 } } });
+  });
+
+  it('terminates on a list item with an empty nested block', () => {
+    // parseSimpleYaml requires a top-level mapping, so a document rooted at a
+    // list is rejected outright. The point of this case is that it returns
+    // (rather than looping) when a list item's nested block is empty.
+    expect(() => parseSimpleYaml('- a:\n- b: 2')).toThrow(/must start with a mapping/);
+  });
+
+  it('terminates on an unbalanced flow bracket', () => {
+    expect(parseSimpleYaml('a: [1, [2')).toEqual({ a: '[1, [2' });
+  });
+});
