@@ -6,6 +6,7 @@ import {
   checkRubyVersionAvailable,
   getAvailableRubyVersions,
   createRubyRunner,
+  stripRubyTimerNoise,
 } from '@/lib/rubyRunner';
 import { getRunnerVersions, getRunnerAvailability } from '@/lib/codeRunners';
 
@@ -50,5 +51,27 @@ describe('Ruby version availability', () => {
     const avail = await getAvailableRubyVersions();
     expect(avail).toEqual([...RUBY_VERSIONS]);
     globalThis.fetch = original;
+  });
+});
+
+describe('Ruby timer-thread noise', () => {
+  it('drops the Emscripten timer-thread line from both yarv wordings', () => {
+    expect(stripRubyTimerNoise('<main>: warning: pthread_create failed for timer: Not supported, scheduling broken')).toBe('');
+    expect(stripRubyTimerNoise('[FATAL] Failed to create timer thread: Not supported')).toBe('');
+  });
+
+  it('keeps genuine stderr, and genuine lines mixed with the noise', () => {
+    expect(stripRubyTimerNoise('genuine problem')).toBe('genuine problem');
+    expect(
+      stripRubyTimerNoise(
+        '<main>: warning: pthread_create failed for timer: Not supported\ngenuine problem',
+      ),
+    ).toBe('genuine problem');
+  });
+
+  it('does not drop a program line that merely mentions the timer', () => {
+    expect(stripRubyTimerNoise('about pthread_create failed for timer')).toBe(
+      'about pthread_create failed for timer',
+    );
   });
 });

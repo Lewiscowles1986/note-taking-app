@@ -73,6 +73,22 @@ async function directoryFor(version: string): Promise<string> {
 
 type RubyOutput = (stream: 'stdout' | 'stderr', text: string) => void;
 
+/**
+ * Emscripten cannot create a native timer thread, so the yarv builds 2.2-2.5
+ * write a timer-thread message to stderr on every run (2.2 says "[FATAL] Failed
+ * to create timer thread", 2.3-2.5 say "pthread_create failed for timer").
+ * Ruby carries on either way and the exit status still reports a real failure,
+ * so this one line is dropped rather than shown as an error.
+ */
+const TIMER_NOISE = /^(?:\[FATAL\] )?(?:<main>: warning: )?(?:pthread_create failed for timer|Failed to create timer thread)/;
+
+export function stripRubyTimerNoise(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => line && !TIMER_NOISE.test(line.trim()))
+    .join('\n');
+}
+
 interface RubyVM {
   eval(code: string): { toString(): string };
 }
@@ -137,11 +153,13 @@ export function createRubyRunner() {
     const output: string[] = [];
     const send: RubyOutput = (stream, text) => {
       if (!text) return;
-      // stderr is not failure: the yarv-port builds (2.3-2.5) print a benign
-      // "pthread_create failed for timer" warning there on every run, and a
-      // Ruby program can still write to it and exit 0. Label it as a warning
-      // rather than an error; a run that actually fails rejects below.
-      output.push(stream === 'stderr' ? `[stderr] ${text}` : text);
+      if (stream === 'stderr') {
+        const kept = stripRubyTimerNoise(text);
+        if (!kept) return;
+        output.push(`[stderr] ${kept}`);
+        return;
+      }
+      output.push(text);
     };
 
     if (typeof adapter.runCommand === 'function') {
