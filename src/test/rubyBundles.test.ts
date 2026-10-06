@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
@@ -31,6 +31,17 @@ describe('vendored Ruby bundles', () => {
       }
     });
   }
+
+  it('keeps the generated catalog in step with the vendored directories', () => {
+    const index = JSON.parse(readFileSync(join(PUBLIC_DIR, 'index.json'), 'utf8'));
+    const onDisk = readdirSync(PUBLIC_DIR)
+      .filter((name) => name.startsWith('build-'))
+      .map((name) => name.slice('build-'.length))
+      .sort();
+    const catalogued = index.bundles.map((b: { directory: string }) => b.directory).sort();
+    expect(catalogued).toEqual(onDisk);
+    expect(index.latest).toBe(index.bundles[index.bundles.length - 1].version);
+  });
 
   it('keeps the vendored set within the repo size budget', () => {
     let bytes = 0;

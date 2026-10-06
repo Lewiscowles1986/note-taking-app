@@ -10,14 +10,18 @@
  */
 
 import { registerVersionedRunner, setRunnerAvailability } from './codeRunners';
-import { loadAsset, loadVendorManifest } from './wasmAssets';
+import { loadAsset, loadVendorManifest, loadWasmIndex, type WasmIndex } from './wasmAssets';
 
 export interface RubyBundle {
   version: string;
   directory: string;
 }
 
-/** Bundles vendored under public/ruby-wasm/, generated from each build manifest. */
+/**
+ * Fallback list for when the generated catalog cannot be fetched (offline
+ * first load, or a stale deployment). The catalog is authoritative; this only
+ * keeps the selector usable when it is unavailable.
+ */
 export const RUBY_BUNDLES: RubyBundle[] = [
   { version: '1.0-971225', directory: '1.0-971225' },
   { version: '1.1d1', directory: '1.1d1' },
@@ -52,8 +56,17 @@ export const REQUIRED_RUBY_VERSIONS = [DEFAULT_RUBY_VERSION] as const;
 
 export type RubyVersion = string;
 
-function directoryFor(version: string): string {
-  return RUBY_BUNDLES.find((b) => b.version === version)?.directory ?? version;
+let catalog: WasmIndex | null = null;
+
+async function directoryFor(version: string): Promise<string> {
+  if (!catalog) {
+    try {
+      catalog = await loadWasmIndex('ruby');
+    } catch {
+      catalog = { schema: 1, language: 'ruby', latest: DEFAULT_RUBY_VERSION, bundles: RUBY_BUNDLES };
+    }
+  }
+  return catalog.bundles.find((b) => b.version === version)?.directory ?? version;
 }
 
 type RubyOutput = (stream: 'stdout' | 'stderr', text: string) => void;
@@ -72,17 +85,31 @@ let availabilityCache: string[] | null = null;
 export async function checkRubyVersionAvailable(version: string): Promise<boolean> {
   const base = import.meta.env.BASE_URL || '/';
   try {
-    const res = await fetch(`${base}ruby-wasm/build-${directoryFor(version)}/vendor.json`, { method: 'HEAD' });
+    const res = await fetch(`${base}ruby-wasm/build-${await directoryFor(version)}/vendor.json`, {
+      method: 'HEAD',
+    });
     return res.ok;
   } catch {
     return true;
   }
 }
 
+/**
+ * The versions the code block offers. Prefers the generated catalog so a newly
+ * vendored bundle appears without a code change; falls back to the bundled list
+ * if the catalog cannot be read, dropping any bundle that fails its HEAD probe.
+ */
 export async function getAvailableRubyVersions(): Promise<string[]> {
   if (availabilityCache) return availabilityCache;
+  let bundles: RubyBundle[];
+  try {
+    const index = await loadWasmIndex('ruby');
+    bundles = index.bundles.length > 0 ? index.bundles : RUBY_BUNDLES;
+  } catch {
+    bundles = RUBY_BUNDLES;
+  }
   const results = await Promise.all(
-    RUBY_BUNDLES.map(async (b) => ({ v: b.version, ok: await checkRubyVersionAvailable(b.version) })),
+    bundles.map(async (b) => ({ v: b.version, ok: await checkRubyVersionAvailable(b.version) })),
   );
   availabilityCache = results.filter((r) => r.ok).map((r) => r.v);
   return availabilityCache;
@@ -92,7 +119,8 @@ export function createRubyRunner() {
   return async (code: string, options?: { version?: string }): Promise<string> => {
     const version = options?.version ?? DEFAULT_RUBY_VERSION;
     const base = import.meta.env.BASE_URL || '/';
-    const dir = `${base}ruby-wasm/build-${directoryFor(version)}/`;
+    const directory = await directoryFor(version);
+    const dir = `${base}ruby-wasm/build-${directory}/`;
 
     const manifest = await loadVendorManifest(dir);
     const bytes = await loadAsset(dir, 'ruby.wasm', manifest);
@@ -101,7 +129,7 @@ export function createRubyRunner() {
     // literal filename in the specifier keeps the dev server from appending its
     // `?import` query, which 500s for files under public/.
     const adapter = (await import(
-      /* @vite-ignore */ `${base}ruby-wasm/build-${directoryFor(version)}/runtime.mjs`
+      /* @vite-ignore */ `${base}ruby-wasm/build-${directory}/runtime.mjs`
     )) as RubyAdapter;
 
     const output: string[] = [];
