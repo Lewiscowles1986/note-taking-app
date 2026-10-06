@@ -10,8 +10,8 @@
 # whole test suite in its initial dry run, so coverage analysis stays correct.
 # Shard membership lives in `.github/stryker-shards.json`.
 #
-# Report-only, and deliberately NOT run on pushes or PRs. At 16 shards a run is
-# 16 runners × (dry run + its mutants), and each extra shard pays its own dry
+# Report-only, and deliberately NOT run on pushes or PRs. At 20 shards a run is
+# 20 runners × (dry run + its mutants), and each extra shard pays its own dry
 # run, so firing it per commit costs far more than the value it adds — it never
 # gates anything. It runs weekly on a schedule and on manual dispatch; ci.yml
 # remains the per-PR gate.
@@ -19,12 +19,13 @@
 # Schedule: Mondays 06:00 UTC — deliberately after ci.yml (05:00) and
 # devcontainer.yml (05:30) so a failing main doesn't waste a mutation run.
 #
-# A `cancel-in-progress: false` group serialises runs for the same ref, so a
-# queued run waits for the running one rather than being dropped. Manual runs
-# all share one group, so a fresh dispatch can sit behind an in-flight one.
+# A `cancel-in-progress: true` group keyed on the ref means a newer run for the
+# same ref CANCELS one that is already in flight — including a manual dispatch,
+# which shares the ref's group with the scheduled run.
 #
 # To run it against an unmerged branch, use "Run workflow" and select the
-# branch (workflow_dispatch resolves the ref itself).
+# branch (workflow_dispatch resolves the ref itself). There is no branch filter,
+# so any pushed branch appears in the picker.
 
 name: Test Quality
 
