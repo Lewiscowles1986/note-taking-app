@@ -1,0 +1,34 @@
+{
+  "loader": "python.mjs",
+  "api": "default",
+  "gzip": [
+    "python.data",
+    "python.wasm"
+  ],
+  "files": {
+    "CPYTHON-LICENSE.txt": {
+      "bytes": 12775,
+      "sha256": "526a15318fc31c5edc8cb67ec8613a22c4c9d9cec797e4a786377cf36cd7b087"
+    },
+    "THIRD-PARTY-NOTICES.txt": {
+      "bytes": 481776,
+      "sha256": "8df3a94e6fc9b653727fb0b86098f9e8f59bd9c67a42d9ba5c59d176f9341d74"
+    },
+    "manifest.json": {
+      "bytes": 2485,
+      "sha256": "59be5c2c4851b92a5cf06f8cf028e980ee7cdaed6631154b6db99956d26d7084"
+    },
+    "python.data": {
+      "bytes": 10062735,
+      "sha256": "2fb81cee6941a41c783baad7c425b3b8a6228f12d5a3f9aa46d9b78d2b656023"
+    },
+    "python.mjs": {
+      "bytes": 155106,
+      "sha256": "a6a29c31f0e7061b447020f17507f1ca02c16e61e708de60b3bdbe980f21fd8d"
+    },
+    "python.wasm": {
+      "bytes": 2272061,
+      "sha256": "01545806b8e98e27a06d9c9a6881ea64a44654c35afb1cd6d19d43901dd40f68"
+    }
+  }
+}
