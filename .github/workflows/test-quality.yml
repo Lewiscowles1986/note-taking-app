@@ -128,7 +128,7 @@ jobs:
 
       - name: Download shard mutation reports
         continue-on-error: true
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: mutation-shard-*
           path: shards
