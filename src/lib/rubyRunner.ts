@@ -36,6 +36,7 @@ export const RUBY_BUNDLES: RubyBundle[] = [
   { version: '1.7.1', directory: '1.7.1' },
   { version: '1.8.0', directory: '1.8.0' },
   { version: '1.8.7', directory: '1.8.7-p374' },
+  { version: '2.2.10', directory: '2.2.10' },
   { version: '2.3.8', directory: '2.3.8' },
   { version: '2.4.10', directory: '2.4.10' },
   { version: '2.5.0', directory: '2.5.0' },
