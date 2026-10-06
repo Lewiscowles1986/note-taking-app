@@ -6,6 +6,7 @@
  */
 
 import { registerRunner } from './codeRunners';
+import { isLanguageEnabled } from './languages';
 
 export function createSandboxedJSRunner() {
   return async (code: string, engine: string = 'default'): Promise<string> => {
@@ -96,4 +97,4 @@ export function registerJSRunner() {
   registerRunner('js', runner);
 }
 
-registerJSRunner();
+if (isLanguageEnabled('js')) registerJSRunner();

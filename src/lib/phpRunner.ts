@@ -10,6 +10,7 @@
  */
 
 import { registerVersionedRunner, setRunnerAvailability } from './codeRunners';
+import { isLanguageEnabled } from './languages';
 
 export const PHP_VERSIONS = [
   '5.4.45',
@@ -167,4 +168,4 @@ export function registerPhpRunner() {
   });
 }
 
-registerPhpRunner();
+if (isLanguageEnabled('php')) registerPhpRunner();
