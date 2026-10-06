@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "elixir": "1.20.4",
+  "otp": "29.0.6",
+  "target": "browser-emscripten",
+  "runtime": "otp-popcorn",
+  "profile": "core",
+  "source": {
+    "version": "1.20.4",
+    "series": "1.20",
+    "position": "latest",
+    "file": "elixir-1.20.4.tar.gz",
+    "url": "https://codeload.github.com/elixir-lang/elixir/tar.gz/refs/tags/v1.20.4",
+    "sha256": "2f87be1702583ecbeee82c0ad4d6353de96463cfa0fa6e7557e05f68d90da869"
+  },
+  "runtimeSources": {
+    "schemaVersion": 1,
+    "sources": [
+      {
+        "name": "otp",
+        "version": "29.0.6",
+        "commit": "e07fd07837e5aa845657f5fa340637121e451d47",
+        "file": "otp.tar.gz",
+        "url": "https://codeload.github.com/erlang/otp/tar.gz/e07fd07837e5aa845657f5fa340637121e451d47",
+        "sha256": "595cf691f8bd78b33d1f3f8f6c16ff47f0eaad9dc76f73960af9372181720b1a"
+      },
+      {
+        "name": "popcorn",
+        "version": "0.4.0-next.0",
+        "commit": "bea24dd50fec39a5859e49c54d496736a3c6857a",
+        "file": "popcorn.tar.gz",
+        "url": "https://codeload.github.com/software-mansion/popcorn/tar.gz/bea24dd50fec39a5859e49c54d496736a3c6857a",
+        "sha256": "99464f73a9279b65e356fc58d6bd5c002fe69779944b1585ac9faffad1873ef2"
+      },
+      {
+        "name": "autoconf",
+        "version": "2.72",
+        "file": "autoconf.tar.gz",
+        "url": "https://ftp.gnu.org/gnu/autoconf/autoconf-2.72.tar.gz",
+        "sha256": "afb181a76e1ee72832f6581c0eddf8df032b83e2e0239ef79ebedc4467d92d6e"
+      }
+    ],
+    "images": {
+      "emsdk": "emscripten/emsdk:6.0.2@sha256:644883f58ca15c38c8be59b3a727ba0eff347729bc31d50a3348a6c9ed92bc07",
+      "otp": "hexpm/erlang:29.0.6-ubuntu-noble-20260911@sha256:7bc4f2c3eea8acec1d27572f85c22c55c50d7def5b9790ea7c94c7ff93cf6e78"
+    }
+  },
+  "codePaths": [
+    "/lib/compiler/ebin",
+    "/lib/eex/ebin",
+    "/lib/elixir/ebin",
+    "/lib/ex_unit/ebin",
+    "/lib/iex/ebin",
+    "/lib/kernel/ebin",
+    "/lib/lab/ebin",
+    "/lib/logger/ebin",
+    "/lib/mix/ebin",
+    "/lib/stdlib/ebin",
+    "/lib/syntax_tools/ebin"
+  ],
+  "capabilities": {
+    "eval": true,
+    "threads": true,
+    "wasi": false,
+    "crypto": false,
+    "nativeSockets": false,
+    "subprocesses": false,
+    "dynamicNifs": false,
+    "filesystem": "ephemeral MEMFS"
+  },
+  "validation": {
+    "browser": "not-yet-tested"
+  },
+  "files": {
+    "ELIXIR-LICENSE": {
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+      "bytes": 10173
+    },
+    "OTP-LICENSE": {
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "bytes": 10175
+    },
+    "POPCORN-LICENSE": {
+      "sha256": "b17dcd539aa7272bef7c799ac67d47ff1b9fd5aa76825bdf9334c713e2c7711c",
+      "bytes": 11319
+    },
+    "THIRD-PARTY-NOTICES.txt": {
+      "sha256": "e1594c617eb98a0790e04ac74891a341feb61046f50c52e44b6ae79397509f63",
+      "bytes": 176139
+    },
+    "beam.emu.mjs": {
+      "sha256": "d2678a57874715ee1e198c153c98af9855a33683f155ff2a70d32908673d799b",
+      "bytes": 71956
+    },
+    "beam.mjs": {
+      "sha256": "d2678a57874715ee1e198c153c98af9855a33683f155ff2a70d32908673d799b",
+      "bytes": 71956
+    },
+    "beam.wasm": {
+      "sha256": "4dc0c04d4cefc5c670b8d651cd5930374bd9471c6066d3fd96cad91a2df1676a",
+      "bytes": 2441717
+    },
+    "filesystem.tar.gz": {
+      "sha256": "4189c5b8200a301b373eb9cba07e0516ed6133f2f2915a6579b4e3514c810189",
+      "bytes": 17996969
+    }
+  },
+  "builderSources": {
+    "artifacts.py": "cb20f7ff748d37e7f3e388805d9f9cd3926cc3528c5d741a8cd61c480d03a97c",
+    "lab_runner.erl": "296c373d8d11b0f277fd45370b02f170bfce7608e0545602e72aae1730a4e3e3",
+    "notices.py": "b912941c632396a47608048dbf2887e0bddfd435097a74a930136cad0df6d9b3",
+    "package.exs": "0ca06a6fedd515dfe4e631bc1bc17cd8dd43b2addf671a5113d10ae37861f140",
+    "recipe/Dockerfile": "daf52117c44aa157e081c3eae2109c53654f580c1ee139892f1808d30d6dd1df",
+    "recipe/historical/Dockerfile": "09bea4481e27aebb174e714c382f2dc3e5798f59fc66e59bac4981c73dcf198f",
+    "recipe/historical/README.md": "79760a59e150cadbb0ae4486028170b9bb187519118cfe678ac245fbe0ca2037",
+    "recipe/historical/compilers.json": "e8b7ebe80bf2664656f0f648004eba740270e062754ef6ece87168b29dd729c7",
+    "recipe/historical/export_forms.erl": "9412b149d1cc67b2dc3d388c5938528040f1562005caa0ab4f4c9d9e1e0db2bb",
+    "recipe/historical/stdio.patch": "c8a3d35afaab2dbcac7811d4dd8673338dc79f2f403c36e4b70e8a140bae5409",
+    "record-provenance.py": "be8cd695b54c9bf5c2b0e748734c81ff535788eb9c987021f0fd4df3b7505cc0",
+    "runtime-phase.sh": "84e7f4e45d1eee2491de5f7e86949621becff4b6f3440e13ce389f29f2e25bde",
+    "sources.lock.json": "6514e42354ff36e173b16ce0f0e45d5513e3380672f1556b20467effdd4adbd7",
+    "verify-source.py": "43ba23524e615f43ec4a11a931d40a4c3347c35109ee7ff9d9bd7344834668ca",
+    "versions.json": "a37a18e729bbdfdc43de1cd6d96d6a33c0e5741dc4445e5b4302326369134943"
+  }
+}
