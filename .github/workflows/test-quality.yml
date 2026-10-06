@@ -4,28 +4,31 @@
 # major) — this is the canary check; .github/workflows/ci.yml covers the
 # support matrix.
 #
-# Mutation testing is SHARDED: mutation is the long pole (~28 min of a 45 min
-# budget), and it is embarrassingly parallel by file, so the matrix below splits
-# `src/lib` into disjoint `--mutate` subsets and merges the reports. Each shard
-# still runs the whole test suite in its initial dry run, so coverage analysis
-# stays correct. Shard membership lives in `.github/stryker-shards.json`.
+# Mutation testing is SHARDED: mutation is the long pole, and it is
+# embarrassingly parallel by file, so the matrix below splits `src/lib` into
+# disjoint `--mutate` subsets and merges the reports. Each shard still runs the
+# whole test suite in its initial dry run, so coverage analysis stays correct.
+# Shard membership lives in `.github/stryker-shards.json`.
 #
-# Report-only: it never gates a PR, so running it on this branch's PR is cheap.
-#
-# Triggers: main pushes (as before) plus pushes to the branch that introduced
-# sharding, so its run is visible on that PR. Deliberately NOT `pull_request`:
-# that filters by BASE branch, so it would fire for *every* PR into main — the
-# opposite of the intended "this branch only" scope. Once merged, fold the
-# branch back out and keep the original `push: branches: [main]` + `schedule`.
+# Report-only, and deliberately NOT run on pushes or PRs. At 16 shards a run is
+# 16 runners × (dry run + its mutants), and each extra shard pays its own dry
+# run, so firing it per commit costs far more than the value it adds — it never
+# gates anything. It runs weekly on a schedule and on manual dispatch; ci.yml
+# remains the per-PR gate.
 #
 # Schedule: Mondays 06:00 UTC — deliberately after ci.yml (05:00) and
 # devcontainer.yml (05:30) so a failing main doesn't waste a mutation run.
+#
+# A `cancel-in-progress: false` group serialises runs for the same ref, so a
+# queued run waits for the running one rather than being dropped. Manual runs
+# all share one group, so a fresh dispatch can sit behind an in-flight one.
+#
+# To run it against an unmerged branch, use "Run workflow" and select the
+# branch (workflow_dispatch resolves the ref itself).
 
 name: Test Quality
 
 on:
-  push:
-    branches: [ main, fix/stryker-disable-type-checks-scope ]
   workflow_dispatch:
   schedule:
     - cron: "0 6 * * 1" # Mondays 06:00 UTC (weekly)

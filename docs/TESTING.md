@@ -127,16 +127,20 @@ npx stryker run   # full src/lib scope; ~28 min on CI, sharded in CI — see bel
     instrumented copy of every file named in `mutate`, so excluding this
     glob-only module keeps it verbatim; the tests still exercise it.
 - HTML report: `reports/mutation/mutation.html` (gitignored).
-- **Sharded in CI.** Mutation is the long pole (~28 min of a 45 min budget) and
-  it parallelises by file, so `test-quality.yml` runs a 16-way matrix that each
+- **Sharded, and off the per-commit path.** Mutation is the long pole and it
+  parallelises by file, so `test-quality.yml` runs a 16-way matrix that each
   mutate a disjoint `--mutate` subset (grouped in
   [`.github/stryker-shards.json`](../.github/stryker-shards.json)) and then
   merges the reports. Each shard still runs the *whole* test suite in its
   initial dry run, so coverage analysis stays correct; shard membership only
-  changes which mutants get generated and tested. To reproduce one shard
-  locally:
+  changes which mutants get generated and tested.
+  Because 16 shards means 16 runners — each paying its own dry run — and the
+  job is report-only, it does **not** run on pushes or PRs: only the weekly
+  schedule and manual `workflow_dispatch` (`ci.yml` is the per-PR gate). To run
+  it against a branch, dispatch it from that branch.
+  Reproduce one shard locally:
   ```bash
-  npx stryker run --mutate "$(jq -r '.shards[0]' .github/stryker-shards.json)"
+  npx stryker run --mutate "$(node -p "require('./.github/stryker-shards.json').shards[0]")"
   ```
   Merge shard reports with `node scripts/merge-mutation-reports.mjs <outDir> <shard.json>...`,
   which also regenerates the single-file HTML report (the per-shard HTML is
