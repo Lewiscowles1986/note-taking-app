@@ -22,18 +22,7 @@ export interface RunnerDefinition {
   defaultVersion?: string;
 }
 
-/**
- * Optional per-language version probe. `check` returns the versions actually
- * present (e.g. by HEAD-requesting each build); `required` versions missing
- * from that list raise a warning in the UI.
- */
-export interface RunnerAvailability {
-  check: () => Promise<string[]>;
-  required?: string[];
-}
-
 const runners = new Map<string, RunnerDefinition>();
-const availability = new Map<string, RunnerAvailability>();
 
 export function registerRunner(language: string, runner: CodeRunner) {
   runners.set(language.toLowerCase(), { run: runner });
@@ -74,12 +63,4 @@ export function getRunnerVersions(language: string): string[] | undefined {
 
 export function getDefaultVersion(language: string): string | undefined {
   return runners.get(language.toLowerCase())?.defaultVersion;
-}
-
-export function setRunnerAvailability(language: string, entry: RunnerAvailability) {
-  availability.set(language.toLowerCase(), entry);
-}
-
-export function getRunnerAvailability(language: string): RunnerAvailability | undefined {
-  return availability.get(language.toLowerCase());
 }
