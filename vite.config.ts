@@ -78,6 +78,11 @@ export default defineConfig(() => ({
         // .mjs glue is dynamically imported, so include it in the glob too.
         maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
         globPatterns: ["**/*.{js,css,html,mjs,wasm}"],
+        // The Ruby, Elixir and Python wasm bundles span dozens of versions and
+        // run to hundreds of MB. They are lazy-loaded on demand and cached by
+        // the HTTP cache after first use; precaching them would stall install
+        // and bloat the deploy. PHP stays precached as before.
+        globIgnores: ["**/ruby-wasm/**", "**/elixir-wasm/**", "**/python-wasm/**"],
       },
       includeAssets: [
         "favicon.svg",
