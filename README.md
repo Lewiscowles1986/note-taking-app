@@ -158,15 +158,15 @@ You can configure rendering parameters via YAML frontmatter in a ` ```3dmodel ` 
 
 - server runner examples
 - reference server sandbox integration code
-- WASM runner example (we could use PHP)
+- [X] WASM runner example (we could use PHP)
 - storybook example
-- ability to plug-in backend server
-   - indexDB still primary
-   - may borrow from vibecodedmess.space for full offline-first experience
+- [X] ability to plug-in backend server
+   - [X] indexDB still primary
+   - ~~may borrow from vibecodedmess.space for full offline-first experience~~
 - infra code
-- better tests
+- [X] better tests
    - [X] browser automation tests
-   - more comprehensive unit and integration level tests
+   - [X] more comprehensive unit and integration level tests
 - regresion tests
    - [X] window.open has two entrypoints. AI couldn't quite cope there.
 - [X] ci workflow(s)
