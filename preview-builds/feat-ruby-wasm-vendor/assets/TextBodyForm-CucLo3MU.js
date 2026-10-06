@@ -1,1 +1,0 @@
-import{j as i}from"./index-BRWf6303.js";import{R as p}from"./SwaggerBlock-C1e7QETi.js";import"./code-xml-9GYOBtKk.js";import"./copy-ZgwRdsA2.js";import"./server-BnTlAt6R.js";import"./rotate-ccw-BCammJ5P.js";function f({value:o,lang:t,testId:r,onChange:m}){return i.jsx(p,{value:o,lang:t,onChange:m,testId:r})}export{f as default};
