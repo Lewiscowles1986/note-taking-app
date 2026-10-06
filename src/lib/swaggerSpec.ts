@@ -252,6 +252,12 @@ function parseYamlBlock(
   // A block of list items
   if (first.isListItem) {
     const list: unknown[] = [];
+    // `i` is hoisted so the return below can report the landing position, and
+    // the header owns the advance so an emptied body cannot halt progress.
+    // Skip-aheads below use `i = Math.max(i, next - 1)`: the header's `i++` then
+    // lands exactly on `next`, while a callee that fails to advance cannot stall
+    // the loop. Do not "simplify" that to `i = next` — doing so reintroduces a
+    // hang that no assertion can catch, only a timeout.
     let i = index;
     for (; i < lines.length && lines[i].indent === indent && lines[i].isListItem; i++) {
       const item = lines[i];
