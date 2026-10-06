@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import { PHP_VERSIONS } from '@/lib/phpRunner';
 
-// PHP predates the manifest + vendor.json contract the other languages use
-// (see docs/wasm/README.md), so there are no recorded hashes to check it
-// against. These assertions still catch the failure that matters — a bundle
-// that is absent, truncated or not actually WebAssembly — and they pin the
-// directory layout the runner resolves to.
+// PHP now follows the same vendor.json contract as the other languages (its
+// only remaining gap is provenance: it has no builder, so no manifest.json).
+// Every asset is checked against its recorded hash, and gzipped assets are
+// decompressed first, so a corrupt bundle fails here rather than at Run.
 const PUBLIC_DIR = join(process.cwd(), 'public', 'php-wasm');
 
 describe('vendored PHP bundles', () => {
@@ -16,15 +17,22 @@ describe('vendored PHP bundles', () => {
       const dir = join(PUBLIC_DIR, `build-${version}`);
       expect(existsSync(dir), `missing ${dir}`).toBe(true);
 
-      for (const name of ['php-web.mjs', 'php-web.wasm']) {
-        const file = join(dir, name);
-        expect(existsSync(file), `missing ${name}`).toBe(true);
-        expect(statSync(file).size, `${name} looks truncated`).toBeGreaterThan(1024);
+      const vendor = JSON.parse(readFileSync(join(dir, 'vendor.json'), 'utf8'));
+      expect(existsSync(join(dir, vendor.loader)), `missing loader ${vendor.loader}`).toBe(true);
+
+      for (const [name, meta] of Object.entries<{ sha256: string }>(vendor.files)) {
+        const gzipped = vendor.gzip.includes(name);
+        const file = join(dir, gzipped ? `${name}.gz` : name);
+        expect(existsSync(file), `missing ${name}${gzipped ? '.gz' : ''}`).toBe(true);
+        const raw = gzipped ? gunzipSync(readFileSync(file)) : readFileSync(file);
+        expect(createHash('sha256').update(raw).digest('hex'), `${name} drifted`).toBe(meta.sha256);
       }
 
-      // The wasm magic number, so a stray HTML error page or gzip body fails here.
-      const magic = readFileSync(join(dir, 'php-web.wasm')).subarray(0, 4);
-      expect([...magic]).toEqual([0x00, 0x61, 0x73, 0x6d]);
+      // It must still be real WebAssembly, not an error page.
+      const wasm = vendor.gzip.includes('php-web.wasm')
+        ? gunzipSync(readFileSync(join(dir, 'php-web.wasm.gz')))
+        : readFileSync(join(dir, 'php-web.wasm'));
+      expect([...wasm.subarray(0, 4)]).toEqual([0x00, 0x61, 0x73, 0x6d]);
     });
   }
 

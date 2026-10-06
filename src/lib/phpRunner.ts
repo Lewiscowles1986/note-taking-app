@@ -11,6 +11,7 @@
 
 import { registerVersionedRunner, setRunnerAvailability } from './codeRunners';
 import { isLanguageEnabled } from './languages';
+import { loadAsset, loadVendorManifest } from './wasmAssets';
 
 export const PHP_VERSIONS = [
   '5.4.45',
@@ -36,7 +37,7 @@ export type PhpVersion = (typeof PHP_VERSIONS)[number];
 let availabilityCache: string[] | null = null;
 
 /**
- * HEAD-request the version's php-web.mjs glue to see whether that build is
+ * HEAD-request the version's vendor.json to see whether that build is
  * actually present (e.g. served by the app or the service worker cache).
  * Only an explicit 404 (or other non-OK status) marks a version as missing;
  * a network error or aborted request can't confirm a 404, so we optimistically
@@ -44,7 +45,7 @@ let availabilityCache: string[] | null = null;
  */
 export async function checkPhpVersionAvailable(version: string): Promise<boolean> {
   const base = import.meta.env.BASE_URL || '/';
-  const url = `${base}php-wasm/build-${version}/php-web.mjs`;
+  const url = `${base}php-wasm/build-${version}/vendor.json`;
   try {
     const res = await fetch(url, { method: 'HEAD' });
     return res.ok;
@@ -87,12 +88,34 @@ async function loadPhp(version: string): Promise<PhpModule> {
   // Resolve against the app's base URL (e.g. "/" in dev, "/note-taking-app/"
   // on GitHub Pages) so the wasm is loaded from THIS repo, not the domain root.
   const base = import.meta.env.BASE_URL || '/';
+  const dir = `${base}php-wasm/build-${version}/`;
+  // Load the wasm ourselves: it is vendored gzipped, and the Emscripten runtime
+  // would otherwise fetch the uncompressed name (see scripts/vendor-wasm.mjs).
+  const manifest = await loadVendorManifest(dir);
+  const wasmBinary = await loadAsset(dir, 'php-web.wasm', manifest);
+  // A literal filename in the specifier keeps the dev server from appending its
+  // `?import` query, which 500s for files under public/.
   const mod = await import(/* @vite-ignore */ `${base}php-wasm/build-${version}/php-web.mjs`);
   const createPhpModule = mod.default as (
     opts: Record<string, unknown>,
   ) => Promise<PhpModule>;
 
   const php = await createPhpModule({
+    wasmBinary,
+    // Some PHP builds (8.x) ignore wasmBinary and fetch the wasm by name, which
+    // is no longer present uncompressed. Instantiate from the bytes we already
+    // decompressed, so every version loads the same way.
+    instantiateWasm: (
+      imports: WebAssembly.Imports,
+      successCallback: (instance: WebAssembly.Instance, module: WebAssembly.Module) => void,
+    ) => {
+      WebAssembly.instantiate(wasmBinary, imports)
+        .then(({ instance, module }) => successCallback(instance, module))
+        .catch(() => {
+          // Fall back to the module's own loader if this build rejects it.
+        });
+      return {};
+    },
     print(data: string) {
       if (!data) return;
       if (outputBuffer.length) outputBuffer.push('\n');
