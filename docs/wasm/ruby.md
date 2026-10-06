@@ -21,18 +21,28 @@ puts RUBY_DESCRIPTION
 
 ### Ruby 1.0 is a different language
 
-The oldest line in the matrix predates a lot of today's syntax. It has no `puts`, no `RUBY_VERSION`, no `String#sum`, and no `Range#sum`, so pick a version and write to that version's rules:
+The oldest line in the matrix predates most of today's syntax. Verified against the vendored bundles, feature by feature:
+
+| Feature | Present from |
+| --- | --- |
+| `print` | 1.0 |
+| `VERSION` | 1.0 (removed by 2.3) |
+| `puts`, string interpolation | 1.1 |
+| `RUBY_VERSION` | 1.4.0 |
+| `Range#sum` | 2.4.10 |
+
+So a version-pinned example must be written to that version's rules. On the 1.x lines the constant is `VERSION`, not `RUBY_VERSION`:
 
 ```ruby
 version: 1.0-971225
 ---
-print "Ruby 1.0 in WebAssembly\n"
+print "Ruby ", VERSION, " in WebAssembly\n"
 print Math.sqrt(144), "\n"
 h = {"a" => 20, "b" => 22}
 print "sum=", h["a"] + h["b"], "\n"
 ```
 
-That prints `Ruby 1.0 in WebAssembly`, `12.0` and `sum=42`. From Ruby 1.9 onwards the modern example at the top of this page works unchanged.
+That prints `Ruby 1.0-971225 in WebAssembly`, `12.0` and `sum=42`. Where both constants exist (1.4.0 through 1.8.7) they hold the same value; below 1.4 only `VERSION` exists, and from 2.3 only `RUBY_VERSION` does. The modern example at the top of this page ends with `Range#sum`, so it runs unchanged from 2.4.10 onward.
 
 ## How the build is chosen
 
