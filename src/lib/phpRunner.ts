@@ -166,5 +166,3 @@ export function registerPhpRunner() {
     required: [...REQUIRED_PHP_VERSIONS],
   });
 }
-
-registerPhpRunner();
