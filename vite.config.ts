@@ -46,8 +46,21 @@ export default defineConfig(() => ({
   server: {
     host: "::",
     port: 8080,
+    // The Elixir BEAM wasm build uses shared memory and worker threads, which
+    // require a cross-origin isolated context. GitHub Pages cannot send these
+    // headers, so the Elixir runner only works when the host does.
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+    },
     hmr: {
       overlay: false,
+    },
+  },
+  preview: {
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
     },
   },
   plugins: [
@@ -78,6 +91,10 @@ export default defineConfig(() => ({
         // .mjs glue is dynamically imported, so include it in the glob too.
         maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
         globPatterns: ["**/*.{js,css,html,mjs,wasm}"],
+        // Ruby, Elixir and Python wasm bundles span dozens of versions and can
+        // reach hundreds of MB. They are lazy-loaded on demand and cached by the
+        // HTTP cache after first use; precaching them would stall install.
+        globIgnores: ["**/ruby-wasm/**", "**/elixir-wasm/**", "**/python-wasm/**"],
       },
       includeAssets: [
         "favicon.svg",

@@ -1,0 +1,43 @@
+{
+  "loader": "beam.mjs",
+  "api": "default",
+  "gzip": [],
+  "files": {
+    "ELIXIR-LICENSE": {
+      "bytes": 10173,
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9"
+    },
+    "OTP-LICENSE": {
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0"
+    },
+    "POPCORN-LICENSE": {
+      "bytes": 11319,
+      "sha256": "b17dcd539aa7272bef7c799ac67d47ff1b9fd5aa76825bdf9334c713e2c7711c"
+    },
+    "THIRD-PARTY-NOTICES.txt": {
+      "bytes": 176139,
+      "sha256": "e1594c617eb98a0790e04ac74891a341feb61046f50c52e44b6ae79397509f63"
+    },
+    "beam.emu.mjs": {
+      "bytes": 71956,
+      "sha256": "d2678a57874715ee1e198c153c98af9855a33683f155ff2a70d32908673d799b"
+    },
+    "beam.mjs": {
+      "bytes": 71956,
+      "sha256": "d2678a57874715ee1e198c153c98af9855a33683f155ff2a70d32908673d799b"
+    },
+    "beam.wasm": {
+      "bytes": 2441717,
+      "sha256": "4dc0c04d4cefc5c670b8d651cd5930374bd9471c6066d3fd96cad91a2df1676a"
+    },
+    "filesystem.tar.gz": {
+      "bytes": 17996969,
+      "sha256": "4189c5b8200a301b373eb9cba07e0516ed6133f2f2915a6579b4e3514c810189"
+    },
+    "manifest.json": {
+      "bytes": 4904,
+      "sha256": "f8338d86a71a229b273da33fea1ec1305dc5a462bc493848111024e8b30d3035"
+    }
+  }
+}
