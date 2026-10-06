@@ -89,9 +89,10 @@ function formatValue(val: unknown): string {
   return String(val);
 }
 
-// Auto-register JS and JavaScript runners
 export function registerJSRunner() {
   const runner = createSandboxedJSRunner();
   registerRunner('javascript', runner);
   registerRunner('js', runner);
 }
+
+registerJSRunner();
