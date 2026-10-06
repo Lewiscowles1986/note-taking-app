@@ -167,6 +167,8 @@ function parseFlowValue(value: string): unknown {
 
 /** Split on a delimiter, ignoring delimiters inside quotes or brackets. */
 function splitTopLevel(text: string, delimiter: string): string[] {
+  // Per-code-point matching changes non-BMP delimiters versus the old index
+  // form (`'😀,a'` on `'😀'`: old `['😀,a']`, new `['', ',a']`); callers pass `','`.
   const parts: string[] = [];
   let depthSquare = 0;
   let depthCurly = 0;
@@ -330,6 +332,10 @@ function splitKey(content: string): [string, string, string] | null {
  * than the key's indent. `marker` is the scalar indicator from the key's
  * value position ('|' or '>' possibly with chomping suffix). Returns
  * [text, nextIndex].
+ *
+ * Unlike `stripComment` and `splitTopLevel`, this loop keeps an index: it hands
+ * a landing position back to its caller, so the counter must survive an emptied
+ * loop body.
  */
 function parseBlockScalar(
   lines: YamlLine[],
@@ -340,9 +346,8 @@ function parseBlockScalar(
   const folded = marker.startsWith('>');
   const parts: string[] = [];
   let i = keyIndex + 1;
-  while (i < lines.length && lines[i].indent > keyIndent) {
+  for (; i < lines.length && lines[i].indent > keyIndent; i++) {
     parts.push(lines[i].content);
-    i++;
   }
   const text = folded ? parts.join(' ') : parts.join('\n');
   return [text, i];
