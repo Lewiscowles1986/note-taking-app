@@ -1,0 +1,29 @@
+{
+  "loader": "runtime.mjs",
+  "api": "runCommand",
+  "gzip": [
+    "ruby.wasm"
+  ],
+  "files": {
+    "COPYING": {
+      "bytes": 17989,
+      "sha256": "b8a2f73f743dc1a51aff23f1aacbca4b868564db52496fa3c0caba755bfd1eaf"
+    },
+    "legacy.mjs": {
+      "bytes": 90797,
+      "sha256": "17bad310a4cd49dea0355555301d056c3a270562adb180f6b5157df7bf8570f8"
+    },
+    "manifest.json": {
+      "bytes": 6949,
+      "sha256": "0352655fd6297d0eea6fd4c801276e4c8b742d3a0396c5bbf1fb15557dd5dc3f"
+    },
+    "ruby.wasm": {
+      "bytes": 2054149,
+      "sha256": "7c1da4a89bf2edaf644a57e3322d50f5a3c4b0c068d119594ddd08e4f6eb3303"
+    },
+    "runtime.mjs": {
+      "bytes": 1634,
+      "sha256": "5baf4914f11a16308448d9dece2f525af9f2603bf84d95d48d3295cc6525768b"
+    }
+  }
+}

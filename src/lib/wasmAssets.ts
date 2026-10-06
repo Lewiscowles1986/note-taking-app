@@ -15,6 +15,36 @@ export interface VendorManifest {
   files: Record<string, { bytes: number; sha256: string }>;
 }
 
+/** The generated catalog of vendored bundles, written by build-wasm-index.mjs. */
+export interface WasmIndex {
+  schema: number;
+  language: string;
+  latest: string | null;
+  bundles: { version: string; directory: string }[];
+}
+
+const indexCache = new Map<string, Promise<WasmIndex>>();
+
+/**
+ * Fetch the bundle catalog for a language. A static site cannot list a
+ * directory, so the vendoring step writes public/<lang>-wasm/index.json; this
+ * is what lets the code block offer whatever has actually been vendored without
+ * a hardcoded version list drifting out of sync.
+ */
+export async function loadWasmIndex(language: string): Promise<WasmIndex> {
+  const base = import.meta.env.BASE_URL || '/';
+  const url = `${base}${language}-wasm/index.json`;
+  let pending = indexCache.get(language);
+  if (!pending) {
+    pending = fetch(url).then((res) => {
+      if (!res.ok) throw new Error(`Bundle catalog missing: HTTP ${res.status}`);
+      return res.json() as Promise<WasmIndex>;
+    });
+    indexCache.set(language, pending);
+  }
+  return pending;
+}
+
 export async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
   if (typeof DecompressionStream === 'undefined') {
     throw new Error('This browser cannot decompress gzip assets (DecompressionStream is unavailable).');

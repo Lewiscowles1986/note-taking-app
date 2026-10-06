@@ -32,8 +32,16 @@ export interface RunnerAvailability {
   required?: string[];
 }
 
+/**
+ * Optional per-language prefetch. Called when a code block for the language
+ * appears, so the default runtime is fetched (and, with a service worker,
+ * cached) before the reader presses Run. It must not throw.
+ */
+export type RunnerWarm = (version?: string) => Promise<void>;
+
 const runners = new Map<string, RunnerDefinition>();
 const availability = new Map<string, RunnerAvailability>();
+const warmers = new Map<string, RunnerWarm>();
 
 export function registerRunner(language: string, runner: CodeRunner) {
   runners.set(language.toLowerCase(), { run: runner });
@@ -82,4 +90,12 @@ export function setRunnerAvailability(language: string, entry: RunnerAvailabilit
 
 export function getRunnerAvailability(language: string): RunnerAvailability | undefined {
   return availability.get(language.toLowerCase());
+}
+
+export function setRunnerWarm(language: string, warm: RunnerWarm) {
+  warmers.set(language.toLowerCase(), warm);
+}
+
+export function getRunnerWarm(language: string): RunnerWarm | undefined {
+  return warmers.get(language.toLowerCase());
 }

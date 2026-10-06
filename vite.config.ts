@@ -2,6 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
+import { readdirSync, rmSync } from "node:fs";
+import { parseLanguages, isEnabled } from "./src/lib/languageList";
 
 // og:image / twitter:image need scheme+host for social scrapers. The Pages
 // deploy workflow supplies the site's absolute base URL (PAGES_ASSET_BASE_URL,
@@ -35,6 +37,32 @@ const NO_SYNC_ALIASES: Record<string, string> = {
   "@/lib/oidcAuth": path.resolve(__dirname, "./src/build-stubs/oidcAuth.ts"),
 };
 
+
+// Leaves a disabled language's wasm out of the built site: a language that is
+// not enabled should not ship its payload, not merely leave it unloaded. Runs
+// after Vite has copied public/ into dist/, so the source tree is never touched.
+function excludeDisabledLanguages(enabled: string[]) {
+  let outDir = "dist";
+  return {
+    name: "exclude-disabled-languages",
+    apply: "build" as const,
+    configResolved(config: { build: { outDir: string } }) {
+      outDir = config.build.outDir;
+    },
+    closeBundle() {
+      const dist = path.resolve(__dirname, outDir);
+      for (const entry of readdirSync(dist)) {
+        const match = /^([a-z]+)-wasm$/.exec(entry);
+        if (match && !isEnabled(enabled, match[1])) {
+          rmSync(path.join(dist, entry), { recursive: true, force: true });
+        }
+      }
+    },
+  };
+}
+
+const enabledLanguages = parseLanguages(process.env.VITE_LANGUAGES);
+
 // https://vitejs.dev/config/
 export default defineConfig(() => ({
   // Default to "/" for local dev; the Pages deploy workflow overrides this
@@ -52,6 +80,7 @@ export default defineConfig(() => ({
   },
   plugins: [
     react(),
+    excludeDisabledLanguages(enabledLanguages),
     {
       name: "compose-social-preview-url",
       transformIndexHtml: (html) => html.replaceAll("__ASSET_BASE_URL__", assetBaseUrl),
@@ -72,17 +101,34 @@ export default defineConfig(() => ({
         navigateFallbackDenylist: previewBuild
           ? [/[^/]+\.[^/]+$/]
           : [/preview-builds\//, /[^/]+\.[^/]+$/],
-        // PHP wasm builds are multi-MB binaries loaded on-demand by the code
-        // runner. Pre-cache them so the app works fully offline; the largest
-        // build is ~9 MB, so raise workbox's default 2 MiB per-file cap. The
-        // .mjs glue is dynamically imported, so include it in the glob too.
+        // No wasm runtime is precached. The matrices span dozens of versions and
+        // run to hundreds of MB, so precaching them would stall install and bloat
+        // the deploy. They are fetched on demand and cached after first use by the
+        // runtime rule below, which also keeps the install small. Raise workbox's
+        // per-file cap anyway so the dynamically imported .mjs glue can be cached.
         maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
         globPatterns: ["**/*.{js,css,html,mjs,wasm}"],
-        // The Ruby, Elixir and Python wasm bundles span dozens of versions and
-        // run to hundreds of MB. They are lazy-loaded on demand and cached by
-        // the HTTP cache after first use; precaching them would stall install
-        // and bloat the deploy. PHP stays precached as before.
-        globIgnores: ["**/ruby-wasm/**", "**/elixir-wasm/**", "**/python-wasm/**"],
+        // Any language's wasm bundle: a new language needs no edit here.
+        globIgnores: ["**/*-wasm/**"],
+        // Precaching the wasm matrices is not viable (hundreds of MB, and the
+        // install would stall on them). Instead cache a runtime the first time it
+        // is actually loaded, so it is instant on later runs and available
+        // offline. Each bundle lives at a versioned path, so the bytes never
+        // change and CacheFirst is safe. This covers whichever versions a reader
+        // touches, not all of them.
+        runtimeCaching: [
+          {
+            urlPattern: /-wasm\//,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "wasm-runtimes-v1",
+              // Warming all versions of a language can exceed the default cap,
+              // so allow the full matrix per language (plus a little headroom).
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
       includeAssets: [
         "favicon.svg",

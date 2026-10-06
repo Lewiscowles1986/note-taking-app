@@ -35,6 +35,7 @@ if (!from || !to || !loader) {
 const drop = new Set((arg('drop', '') || '').split(',').filter(Boolean));
 const keep = new Set((arg('keep', '') || '').split(',').filter(Boolean));
 const api = arg('api', null);
+const version = arg('version', null);
 
 if (!existsSync(from)) {
   console.error(`vendor-wasm: no such bundle: ${from}`);
@@ -71,7 +72,7 @@ for (const name of entries) {
 
 writeFileSync(
   join(to, 'vendor.json'),
-  `${JSON.stringify({ loader, api, gzip: gz.sort(), files }, null, 2)}\n`,
+  `${JSON.stringify({ version, loader, api, gzip: gz.sort(), files }, null, 2)}\n`,
 );
 
 console.log(`${to}: ${Object.keys(files).length} files, ${gz.length} gzipped`);
