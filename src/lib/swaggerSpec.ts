@@ -173,8 +173,7 @@ function splitTopLevel(text: string, delimiter: string): string[] {
   let inSingle = false;
   let inDouble = false;
   let current = '';
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
+  for (const ch of text) {
     if (ch === "'" && !inDouble) inSingle = !inSingle;
     else if (ch === '"' && !inSingle) inDouble = !inDouble;
     else if (!inSingle && !inDouble) {
