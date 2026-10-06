@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import CodeBlock from '../components/CodeBlock';
-import { listRunners, registerRunner, registerVersionedRunner, unregisterRunner } from '@/lib/codeRunners';
+import { listRunners, registerRunner, registerVersionedRunner, unregisterRunner, setRunnerAvailability } from '@/lib/codeRunners';
 import { registerJSRunner } from '@/lib/jsRunner';
 
 // CodeBlock pulls shiki in with a dynamic import(); replace it with a
@@ -16,10 +16,7 @@ vi.mock('shiki', () => ({ codeToHtml: codeToHtmlMock }));
 const { getAvailablePhpVersionsMock } = vi.hoisted(() => ({
   getAvailablePhpVersionsMock: vi.fn(),
 }));
-vi.mock('@/lib/phpRunner', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/phpRunner')>();
-  return { ...actual, getAvailablePhpVersions: getAvailablePhpVersionsMock };
-});
+vi.mock('@/lib/phpRunner', () => ({ registerPhpRunner: () => {} }));
 
 const HIGHLIGHTED = '<span data-testid="shiki-output">highlighted</span>';
 const REHIGHLIGHTED = '<span data-testid="shiki-output">rehighlighted</span>';

@@ -9,7 +9,7 @@
  * selected version changes.
  */
 
-import { registerVersionedRunner } from './codeRunners';
+import { registerVersionedRunner, setRunnerAvailability } from './codeRunners';
 
 export const PHP_VERSIONS = [
   '5.4.45',
@@ -161,4 +161,10 @@ function normalizePhpCode(code: string): string {
 export function registerPhpRunner() {
   const runner = createPhpRunner();
   registerVersionedRunner('php', runner, [...PHP_VERSIONS], DEFAULT_PHP_VERSION);
+  setRunnerAvailability('php', {
+    check: getAvailablePhpVersions,
+    required: [...REQUIRED_PHP_VERSIONS],
+  });
 }
+
+registerPhpRunner();

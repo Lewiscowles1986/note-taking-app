@@ -95,3 +95,5 @@ export function registerJSRunner() {
   registerRunner('javascript', runner);
   registerRunner('js', runner);
 }
+
+registerJSRunner();
