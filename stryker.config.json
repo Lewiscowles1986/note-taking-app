@@ -8,7 +8,7 @@
   "htmlReporter": {
     "fileName": "reports/mutation/mutation.html"
   },
-  "timeoutMS": 60000,
+  "timeoutMS": 15000,
   "concurrency": 4,
   "ignorers": [],
   "vitest": {
