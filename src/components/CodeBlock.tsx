@@ -1,16 +1,20 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Check, Copy, Play, Loader2, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { getRunner, hasRunner, getRunnerVersions, getDefaultVersion, getRunnerAvailability } from '@/lib/codeRunners';
+import { getRunner, hasRunner, getRunnerVersions, getDefaultVersion } from '@/lib/codeRunners';
 import { parseCodeFrontmatter } from '@/lib/codeBlockFrontmatter';
+import { registerJSRunner } from '@/lib/jsRunner';
+import { registerPhpRunner } from '@/lib/phpRunner';
+import { getAvailablePhpVersions, REQUIRED_PHP_VERSIONS } from '@/lib/phpRunner';
 import { looksLikeHtml } from '@/lib/htmlOutput';
 
-// Pull in the wasm-backed language runners when this code viewer chunk loads,
-// so their modules (and wasm payloads) are only pulled in when a code block is
-// actually rendered — not at app boot. Each runner self-registers on import.
-import '@/lib/registerRunners';
+// Register the language runners when this code viewer chunk is loaded, so the
+// runner modules (and their wasm/execution payloads) are only pulled in when a
+// code block is actually rendered — not at app boot.
+registerJSRunner();
+registerPhpRunner();
 
-// Dedupe the "required version missing" alert across code blocks on a page.
+// Dedupe the "required PHP version missing" alert across code blocks on a page.
 const alertedMissing: string[] = [];
 
 interface CodeBlockProps {
@@ -33,21 +37,19 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
     meta.version ?? getDefaultVersion(language),
   );
 
-  // For versioned wasm runners (PHP, Ruby, …) that declare an availability
-  // probe, 404-check each build and only offer the ones actually present.
-  // Alert once per page if any of a language's required versions are missing;
-  // optional versions that 404 are just skipped.
+  // For PHP, 404-check each build and only offer the ones that are actually
+  // present. Alert once if any of the required versions (5.6, 7.4, 8.4) are
+  // missing; optional versions that 404 are just skipped.
   useEffect(() => {
     let cancelled = false;
-    const probe = getRunnerAvailability(language);
-    if (probe) {
-      probe.check().then((avail) => {
+    if (language === 'php') {
+      getAvailablePhpVersions().then((avail) => {
         if (cancelled) return;
         setAvailableVersions(avail);
-        const missing = (probe.required ?? []).filter((v) => !avail.includes(v));
-        if (missing.length > 0 && !alertedMissing.includes(`${language}:${missing.join(',')}`)) {
-          alertedMissing.push(`${language}:${missing.join(',')}`);
-          toast.warning(`${language.toUpperCase()} ${missing.join(', ')} not available`);
+        const missing = REQUIRED_PHP_VERSIONS.filter((v) => !avail.includes(v));
+        if (missing.length > 0 && !alertedMissing.includes(missing.join(','))) {
+          alertedMissing.push(missing.join(','));
+          toast.warning(`PHP ${missing.join(', ')} not available`);
         }
       });
     }
@@ -56,8 +58,8 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
     };
   }, [language]);
 
-  // If the selected version isn't available (e.g. the default 404s), fall back
-  // to the first available one.
+  // If the selected version isn't available (e.g. the default 8.4.25 404s),
+  // fall back to the first available one.
   useEffect(() => {
     if (availableVersions && version && !availableVersions.includes(version)) {
       setVersion(availableVersions[0]);
@@ -66,7 +68,7 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
 
   const versions = useMemo(() => {
     const all = getRunnerVersions(language);
-    if (availableVersions) {
+    if (language === 'php' && availableVersions) {
       return all?.filter((v) => availableVersions.includes(v));
     }
     return all;
@@ -161,7 +163,7 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
             >
               {versions.map((v) => (
                 <option key={v} value={v}>
-                  {language.toUpperCase()} {v}
+                  PHP {v}
                 </option>
               ))}
             </select>
