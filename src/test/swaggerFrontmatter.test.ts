@@ -125,13 +125,11 @@ describe('parseSwaggerFrontmatter', () => {
     expect(specText).toBe('spec');
   });
 
-  it('currently re-parses the body as header when two markers are adjacent', () => {
-    // Pre-refactor behaviour, pinned deliberately. The old recursive rebuild
-    // treats the opening marker as the closer, so `host: h` is parsed into meta
-    // AND left in specText — the same content counted twice.
-    // The non-recursive rewrite intentionally changes this to meta === {}.
+  it('treats the first marker after the opening one as the closer', () => {
+    // Two adjacent markers mean an empty header: the second marker closes it, so
+    // `host: h` stays in the spec rather than also being parsed into meta.
     const { meta, specText } = parseSwaggerFrontmatter('---\n---\nhost: h\n---');
-    expect(meta).toEqual({ host: 'h' });
+    expect(meta).toEqual({});
     expect(specText).toBe('host: h\n---');
   });
 });
