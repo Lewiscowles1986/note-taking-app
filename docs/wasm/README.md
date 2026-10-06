@@ -4,7 +4,7 @@ Code blocks can run in the browser through WebAssembly. Each language is a plugi
 
 | Language | Doc | Vendored builder | Contract |
 | --- | --- | --- | --- |
-| PHP | [docs/FEATURES.md](../FEATURES.md) | none | legacy, hand-vendored |
+| PHP | [docs/FEATURES.md](../FEATURES.md) | `php-wasm-builder` | vendor.json (no provenance manifest) |
 | Python | [python.md](./python.md) | `python-wasm-builder` | manifest + vendor + gzip |
 | Ruby | [ruby.md](./ruby.md) | `ruby-wasm-builder` | manifest + vendor + gzip |
 | Elixir | [elixir.md](./elixir.md) | `elixir-wasm-builder` | manifest + vendor + gzip |
@@ -29,22 +29,26 @@ Bundles built by a sibling `*-wasm-builder` repository are vendored under `publi
 
 Large assets are committed gzipped and decompressed in the browser with `DecompressionStream`. `scripts/build-wasm-index.mjs` then writes `public/<language>-wasm/index.json`, the catalog the version selector lists from, so a newly vendored bundle appears with no code change.
 
+## The PHP builder
+
+PHP is built by [php-wasm-builder](https://github.com/Lewiscowles1986/php-wasm-builder), a fork of [derickr/php-wasm-builder](https://github.com/derickr/php-wasm-builder). `docker-bake.hcl` on the `feat/parallel-build-multiple-php` branch builds each version in parallel and exports `php-web.mjs` and `php-web.wasm` (plus an `php-cli.mjs` for Node) into `builds/auto/build-<series>/`.
+
+Its versions match the vendored bundles exactly: 5.4.45, 7.4.33, 8.0.30, 8.1.34, 8.2.33, 8.3.33, 8.4.25, 8.5.10.
+
 ## Known inconsistency: PHP
 
-PHP predates this contract and is the exception on every point. Its bundles were vendored by hand in "run PHP code blocks in the browser via wasm" (#57) and have:
+PHP's bundles are now vendored through `scripts/vendor-wasm.mjs` like the others, so they carry `vendor.json` and gzipped payloads. Two gaps remain, both because the builder does not produce the inputs:
 
-- no `manifest.json` and no `vendor.json`,
-- no licence files or third-party notices,
-- uncompressed payloads (`php-web.wasm` is stored raw, so 8 bundles are ~49 MB that would be ~18 MB gzipped),
-- a differently named loader (`php-web.mjs`).
+- **No `manifest.json`** — `php-wasm-builder` emits only the two build artifacts, so there is no recorded source URL, hash, compiler identity or capability list to vendor. A manifest could be generated from the builder at build time; it does not exist today.
+- **No licence files or third-party notices** — the builder does not emit them either.
 
-There is also **no `php-wasm-builder`**, so PHP's bundles cannot be rebuilt or verified from source the way the other three can. The runner still works; this is a provenance and consistency gap, not a functional one. Bringing PHP onto the contract is tracked work, and would let it use the same vendoring script, integrity tests and version catalog as the rest.
+So PHP is verified as far as its inputs allow (file hashes from `vendor.json`, and that the payload is really WebAssembly), but it has no provenance record, unlike Ruby, Python and Elixir.
 
 ## Size
 
 | Language | Bundles | Vendored | Notes |
 | --- | ---: | ---: | --- |
-| PHP | 8 | ~49 MB | uncompressed (legacy) |
+| PHP | 8 | ~18 MB | gzipped; no provenance manifest |
 | Python | 17 | ~72 MB | gzipped |
 | Ruby | 28 | ~124 MB | gzipped |
 | Elixir | 1 | ~20 MB | gzipped |
