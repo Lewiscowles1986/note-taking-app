@@ -1,0 +1,21 @@
+{
+  "host": "v26.0.0",
+  "version": "4.0.0",
+  "platform": "wasm32-wasi",
+  "stdout": "{\"answer\":42}\nHello Ada\nfile-ok\npartial:\ud83d\udc8eGC=20;FIBER=21,42;INTEGER=ok\n",
+  "stderr": "error-stream",
+  "assertions": [
+    "arithmetic",
+    "json",
+    "erb",
+    "stdin",
+    "virtual-files",
+    "unicode",
+    "partial-output",
+    "stderr",
+    "exception",
+    "repeated-collection",
+    "fiber-resume",
+    "large-integer"
+  ]
+}
