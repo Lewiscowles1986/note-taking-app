@@ -115,7 +115,7 @@ function setKey(state: KeyState, key: string, inlineVal: string) {
 }
 
 /** Parse header lines into frontmatter metadata. */
-function parseHeaderLines(headerLines: string[]): ParsedSwaggerBlock {
+function parseHeaderLines(headerLines: string[]): SwaggerFrontmatter {
   const state: KeyState = { meta: {}, currentKey: null, notesLines: [] };
 
   for (const line of headerLines) {
@@ -144,7 +144,7 @@ function parseHeaderLines(headerLines: string[]): ParsedSwaggerBlock {
     state.meta.notes = state.notesLines.join('\n').trim();
   }
 
-  return { meta: state.meta, specText: '' };
+  return state.meta;
 }
 
 /**
@@ -173,7 +173,7 @@ export function parseSwaggerFrontmatter(raw: string): ParsedSwaggerBlock {
       // Opening marker only — treat everything after it as the spec.
       return { meta: {}, specText: rest.join('\n') };
     }
-    const { meta } = parseHeaderLines(rest.slice(0, closeOffset));
+    const meta = parseHeaderLines(rest.slice(0, closeOffset));
     return { meta, specText: rest.slice(closeOffset + 1).join('\n') };
   }
 
@@ -184,6 +184,6 @@ export function parseSwaggerFrontmatter(raw: string): ParsedSwaggerBlock {
     return { meta: {}, specText: raw };
   }
 
-  const { meta } = parseHeaderLines(lines.slice(0, delimIdx));
+  const meta = parseHeaderLines(lines.slice(0, delimIdx));
   return { meta, specText: lines.slice(delimIdx + 1).join('\n') };
 }
