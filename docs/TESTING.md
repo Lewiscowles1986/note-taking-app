@@ -112,6 +112,20 @@ npx stryker run   # ~10 min in-container at concurrency 4; not for CI by default
 - Scope: `src/lib/**/*.ts`, `coverageAnalysis: "perTest"`. Baseline run
   (937 mutants): **86.87% total score, 89.45% on covered code** — 813 killed,
   96 survived, 1 timeout, 27 no-coverage. Target was >50%; met at baseline.
+- Two settings keep Stryker's initial test run green with this repo's
+  browser-only features; both are load-bearing, not preferences:
+  - `disableTypeChecks` is pinned to `src/**` instead of Stryker's default
+    `**/*.{js,ts,jsx,tsx,html,vue,mjs,mts,cts,cjs}`. The default also matches
+    the vendored `.mjs` loaders under `public/*-wasm/`, and Stryker prepends
+    `// @ts-nocheck` to every match before the sandbox runs the tests — which
+    trips the `*Bundles.test.ts` SHA-256 integrity checks.
+  - `src/lib/registerRunners.ts` is excluded from `mutate`. Its
+    `import.meta.glob('./*Runner.ts', { eager: true })` must stay statically
+    analysable for Vite's import-glob plugin; Stryker's per-mutant coverage
+    instrumentation wraps the glob's arguments in helper calls, so the plugin
+    fails to parse it (`RollupError: Expected ','`). Stryker writes an
+    instrumented copy of every file named in `mutate`, so excluding this
+    glob-only module keeps it verbatim; the tests still exercise it.
 - HTML report: `reports/mutation/mutation.html` (gitignored).
 
 Per-module scores from that run:
