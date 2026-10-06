@@ -37,6 +37,16 @@ grep -n "for (let\|while (" src/lib/swaggerSpec.ts src/lib/swaggerFrontmatter.ts
 
 Expected at the end: only `for (let …; …; i++)` headers, no bare `while`.
 
+**Run every test command under `timeout`.** An under-advance (index moving
+backwards or not at all) hangs the process and produces *no output at all*
+rather than a failing assertion — verified empirically. Without `timeout`, a
+mistake silently consumes your whole turn instead of reporting an error:
+
+```bash
+timeout 300 npm test
+timeout 120 npx vitest run src/test/swaggerSpec.test.ts
+```
+
 ---
 
 ## Task 1: Characterization tests
@@ -543,9 +553,10 @@ git commit -m "ci(stryker): bound mutant timeout at 15s"
 **Step 1: Full suite must stay green**
 
 Run: `npm test`
-Expected: PASS. Green baseline at plan-writing time is **63 files / 997 tests
-/ ~9 s** (the 447-test figure in `docs/TESTING.md` is stale — that is a
+Expected: PASS. Green baseline at plan-writing time is **63 files / 1007 tests
+/ ~6 s** (the 447-test figure in `docs/TESTING.md` is stale — that is a
 separate docs issue, not part of this work). No snapshot changes.
+Use `timeout 300 npm test` — see the timeout note under "The invariant".
 
 **Step 2: Lint**
 
