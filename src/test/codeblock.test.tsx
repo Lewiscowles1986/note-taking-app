@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import CodeBlock from '../components/CodeBlock';
-import { listRunners, registerRunner, registerVersionedRunner, unregisterRunner } from '@/lib/codeRunners';
+import { listRunners, registerRunner, registerVersionedRunner, unregisterRunner, setRunnerAvailability } from '@/lib/codeRunners';
 import { registerJSRunner } from '@/lib/jsRunner';
 
 // CodeBlock pulls shiki in with a dynamic import(); replace it with a
@@ -11,15 +11,17 @@ import { registerJSRunner } from '@/lib/jsRunner';
 const { codeToHtmlMock } = vi.hoisted(() => ({ codeToHtmlMock: vi.fn() }));
 vi.mock('shiki', () => ({ codeToHtml: codeToHtmlMock }));
 
-// CodeBlock 404-checks PHP builds via getAvailablePhpVersions(); stub it to
-// report every version as available so the version selector renders in tests.
+// CodeBlock registers the real language runners at import time; the PHP runner
+// is replaced with a no-op so each test controls registration, and the
+// availability probe is stubbed to report every version as present.
 const { getAvailablePhpVersionsMock } = vi.hoisted(() => ({
   getAvailablePhpVersionsMock: vi.fn(),
 }));
-vi.mock('@/lib/phpRunner', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/phpRunner')>();
-  return { ...actual, getAvailablePhpVersions: getAvailablePhpVersionsMock };
-});
+vi.mock('@/lib/phpRunner', () => ({ registerPhpRunner: () => {} }));
+
+const PHP_VERSIONS_FOR_TESTS = [
+  '5.4.45', '7.4.33', '8.0.30', '8.1.34', '8.2.33', '8.3.33', '8.4.25', '8.5.10',
+];
 
 const HIGHLIGHTED = '<span data-testid="shiki-output">highlighted</span>';
 const REHIGHLIGHTED = '<span data-testid="shiki-output">rehighlighted</span>';
@@ -35,6 +37,8 @@ describe('CodeBlock component', () => {
     getAvailablePhpVersionsMock.mockResolvedValue([
       '5.4.45', '7.4.33', '8.0.30', '8.1.34', '8.2.33', '8.3.33', '8.4.25', '8.5.10',
     ]);
+    registerVersionedRunner('php', async () => '', [...PHP_VERSIONS_FOR_TESTS], '8.4.25');
+    setRunnerAvailability('php', { check: getAvailablePhpVersionsMock });
   });
 
   afterEach(() => {
