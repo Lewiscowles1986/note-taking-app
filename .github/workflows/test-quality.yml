@@ -2,23 +2,33 @@
 #
 # Scope: Node.js LATEST only (resolved live from nodejs.org, not a pinned
 # major) — this is the canary check; .github/workflows/ci.yml covers the
-# support matrix. Single job: unit/component tests with coverage, then
-# StrykerJS mutation testing scoped to src/lib.
+# support matrix.
 #
-# Runs on a weekly schedule and on main pushes only — NOT on every PR. It is
-# report-only (never gates a PR), and running it per-PR doubled the cost of
-# every dependency PR and reddened them with a slow, non-gating job. Coverage
-# and mutation results are still published as run artifacts and the run
-# summary; enforcement stays in ci.yml.
+# Mutation testing is SHARDED: mutation is the long pole, and it is
+# embarrassingly parallel by file, so the matrix below splits `src/lib` into
+# disjoint `--mutate` subsets and merges the reports. Each shard still runs the
+# whole test suite in its initial dry run, so coverage analysis stays correct.
+# Shard membership lives in `.github/stryker-shards.json`.
+#
+# Report-only, and deliberately NOT run on pushes or PRs. At 16 shards a run is
+# 16 runners × (dry run + its mutants), and each extra shard pays its own dry
+# run, so firing it per commit costs far more than the value it adds — it never
+# gates anything. It runs weekly on a schedule and on manual dispatch; ci.yml
+# remains the per-PR gate.
 #
 # Schedule: Mondays 06:00 UTC — deliberately after ci.yml (05:00) and
 # devcontainer.yml (05:30) so a failing main doesn't waste a mutation run.
+#
+# A `cancel-in-progress: false` group serialises runs for the same ref, so a
+# queued run waits for the running one rather than being dropped. Manual runs
+# all share one group, so a fresh dispatch can sit behind an in-flight one.
+#
+# To run it against an unmerged branch, use "Run workflow" and select the
+# branch (workflow_dispatch resolves the ref itself).
 
 name: Test Quality
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
   schedule:
     - cron: "0 6 * * 1" # Mondays 06:00 UTC (weekly)
@@ -28,15 +38,19 @@ permissions:
 
 concurrency:
   group: test-quality-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  report:
-    name: Coverage & mutation (Node latest)
+  mutation:
+    name: Mutation shard ${{ matrix.shard }} of 20
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     steps:
       - uses: actions/checkout@v7
 
@@ -69,11 +83,66 @@ jobs:
           npm install --no-save --no-audit --no-fund
           "typescript@npm:@typescript/typescript6@^6.0.2"
 
+      - name: Mutation testing (this shard)
+        run: |
+          mutate=$(node -p "require('./.github/stryker-shards.json').shards[${{ matrix.shard }}]")
+          echo "Mutating: ${mutate}"
+          npx stryker run --mutate "${mutate}"
+
+      - name: Upload shard mutation report
+        if: always() && hashFiles('reports/mutation/mutation.json') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-shard-${{ matrix.shard }}
+          path: reports/mutation/mutation.json
+          retention-days: 7
+
+  report:
+    name: Merge reports & coverage
+    needs: mutation
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve latest Node.js
+        id: node
+        run: |
+          latest=$(curl -fsSL https://nodejs.org/dist/index.json \
+            | jq -r '[.[].version | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0]')
+          echo "version=${latest}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ steps.node.outputs.version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Unit & component tests with coverage
         run: npm run test:coverage
 
-      - name: Mutation testing (Stryker, src/lib scope)
-        run: npx stryker run
+      - name: Download shard mutation reports
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: mutation-shard-*
+          path: shards
+
+      # Tolerate a failed shard: merge whatever arrived so the report still
+      # publishes (it is report-only). If nothing arrived, skip rather than fail.
+      - name: Merge shard mutation reports
+        run: |
+          mapfile -t shards < <(find shards -name '*.json' 2>/dev/null | sort)
+          if [ "${#shards[@]}" -eq 0 ]; then
+            echo "No shard reports found; leaving the mutation section as 'not available'."
+            exit 0
+          fi
+          node scripts/merge-mutation-reports.mjs reports/mutation "${shards[@]}"
 
       - name: Build report (run summary + PR comment body)
         run: node scripts/test-quality-report.mjs pr-comment.md

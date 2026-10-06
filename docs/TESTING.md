@@ -91,7 +91,7 @@ mutants your tests kill. It is installed (`@stryker-mutator/core` +
 `@stryker-mutator/vitest-runner`) and configured in `stryker.config.json`:
 
 ```bash
-npx stryker run   # ~10 min in-container at concurrency 4; not for CI by default
+npx stryker run   # full src/lib scope; ~28 min on CI, sharded in CI — see below
 ```
 
 > **TypeScript 7 caveat (2026-09):** Stryker 10 needs the classic TS compiler
@@ -112,7 +112,42 @@ npx stryker run   # ~10 min in-container at concurrency 4; not for CI by default
 - Scope: `src/lib/**/*.ts`, `coverageAnalysis: "perTest"`. Baseline run
   (937 mutants): **86.87% total score, 89.45% on covered code** — 813 killed,
   96 survived, 1 timeout, 27 no-coverage. Target was >50%; met at baseline.
+- Two settings keep Stryker's initial test run green with this repo's
+  browser-only features; both are load-bearing, not preferences:
+  - `disableTypeChecks` is pinned to `src/**` instead of Stryker's default
+    `**/*.{js,ts,jsx,tsx,html,vue,mjs,mts,cts,cjs}`. The default also matches
+    the vendored `.mjs` loaders under `public/*-wasm/`, and Stryker prepends
+    `// @ts-nocheck` to every match before the sandbox runs the tests — which
+    trips the `*Bundles.test.ts` SHA-256 integrity checks.
+  - `src/lib/registerRunners.ts` is excluded from `mutate`. Its
+    `import.meta.glob('./*Runner.ts', { eager: true })` must stay statically
+    analysable for Vite's import-glob plugin; Stryker's per-mutant coverage
+    instrumentation wraps the glob's arguments in helper calls, so the plugin
+    fails to parse it (`RollupError: Expected ','`). Stryker writes an
+    instrumented copy of every file named in `mutate`, so excluding this
+    glob-only module keeps it verbatim; the tests still exercise it.
 - HTML report: `reports/mutation/mutation.html` (gitignored).
+- **Sharded, and off the per-commit path.** Mutation is the long pole and it
+  parallelises by file, so `test-quality.yml` runs a 20-way matrix that each
+  mutate a disjoint `--mutate` subset (grouped in
+  [`.github/stryker-shards.json`](../.github/stryker-shards.json)) and then
+  merges the reports. Each shard still runs the *whole* test suite in its
+  initial dry run, so coverage analysis stays correct; shard membership only
+  changes which mutants get generated and tested.
+  Because 20 shards means 20 runners — each paying its own dry run — and the
+  job is report-only, it does **not** run on pushes or PRs: only the weekly
+  schedule and manual `workflow_dispatch` (`ci.yml` is the per-PR gate). To run
+  it against a branch, dispatch it from that branch.
+  Reproduce one shard locally:
+  ```bash
+  npx stryker run --mutate "$(node -p "require('./.github/stryker-shards.json').shards[0]")"
+  ```
+  A single slow file can be split across shards with Stryker's line-range
+  syntax (`src/lib/foo.ts:121-237`), which is the only way to divide a file
+  whose own tests are slow (the wasm runners are the example here).
+  Merge shard reports with `node scripts/merge-mutation-reports.mjs <outDir> <shard.json>...`,
+  which also regenerates the single-file HTML report (the per-shard HTML is
+  partial).
 
 Per-module scores from that run:
 
@@ -133,7 +168,8 @@ Two config settings are load-bearing:
   keeps seed symlinks, caches and build output out of Stryker's sandbox copy.
 
 Use it targeted: point `mutate` at a single module when hunting survivors in
-it, and keep it out of CI by default.
+it. In CI it runs weekly (and on demand), never per-PR — see "Sharded, and off
+the per-commit path" above.
 
 ### True integration tests — `fake-indexeddb` (installed)
 
