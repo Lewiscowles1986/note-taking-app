@@ -74,6 +74,14 @@ Search for the closing marker in `lines.slice(1)` (offset by 1) and drop the
 recursive rebuild. The `idx > 0` predicate stops being what keeps the function
 finite, and depth becomes bounded by construction.
 
+**This is an intentional behaviour change, not a pure refactor.** With two
+adjacent markers (`'---\n---\nhost: h\n---'`) the recursive rebuild treats the
+opening marker as the closer, so `host: h` lands in `meta` *and* stays in
+`specText` — the same content counted twice. The rewrite yields an empty header
+and leaves `host: h` in the spec, which is correct. No fixture in `src/` or
+`e2e/` uses adjacent markers, so this was previously unexercised; it is pinned by
+a test before the change so the flip is deliberate.
+
 ## Verification
 
 - Before/after: re-run the two affected shards and compare `Timeout` count and

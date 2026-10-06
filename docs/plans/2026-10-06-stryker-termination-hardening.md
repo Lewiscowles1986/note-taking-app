@@ -100,13 +100,44 @@ describe('mutation kills: parser termination', () => {
   });
 
   it('terminates on a list item with an empty nested block', () => {
-    expect(parseSimpleYaml('- a:\n- b: 2')).toEqual([{ a: null }, { b: 2 }]);
+    // Rooted at a mapping: a sequence-rooted document is rejected by
+    // parseSimpleYaml's top-level-mapping guard before any nested-block
+    // advance runs, which would make this test unable to fail.
+    expect(parseSimpleYaml('root:\n  - a:\n  - b: 2')).toEqual({ root: [{ a: null }, { b: 2 }] });
   });
 
   it('terminates on an unbalanced flow bracket', () => {
     expect(parseSimpleYaml('a: [1, [2')).toEqual({ a: '[1, [2' });
   });
+
+  it('resumes at the right line after a nested mapping block', () => {
+    // The sibling line only parses if the skip-ahead index lands on it.
+    expect(parseSimpleYaml('a:\n  b:\n    c: 1\nd: 2')).toEqual({ a: { b: { c: 1 } }, d: 2 });
+  });
+
+  it('resumes at the right line after a list block scalar', () => {
+    expect(parseSimpleYaml('a:\n  - |\n    line\n  - 2')).toEqual({ a: ['line', 2] });
+  });
 });
+```
+
+The last two exist because the other four all end the document immediately
+after the nested content, so an off-by-one in the refactor's skip-ahead index is
+never read. A guard that cannot observe the arithmetic it protects is worthless.
+
+**Step 3b: Pin the adjacent-marker behaviour that Task 6 will intentionally change**
+
+Add to `src/test/swaggerFrontmatter.test.ts`:
+
+```ts
+  it('currently re-parses the body as header when two markers are adjacent', () => {
+    // Pre-refactor behaviour, pinned deliberately. The recursive rebuild treats
+    // the opening marker as the closer, so `host: h` lands in meta AND stays in
+    // specText — the same content counted twice. Task 6 flips this to meta {}.
+    const { meta, specText } = parseSwaggerFrontmatter('---\n---\nhost: h\n---');
+    expect(meta).toEqual({ host: 'h' });
+    expect(specText).toBe('host: h\n---');
+  });
 ```
 
 **Step 4: Run them**
@@ -444,7 +475,24 @@ Expected: `1` (the export declaration only).
 **Step 4: Run the tests**
 
 Run: `npx vitest run src/test/swaggerFrontmatter.test.ts src/test/swaggerSpec.test.ts src/test/swaggerMutationKills.test.ts`
-Expected: PASS, including the marker-pair regression guard.
+
+Expected: one **intentional** failure — the adjacent-marker test from Step 3b,
+which pinned the old double-counting behaviour. **Update that test** to the new
+value:
+
+```ts
+  it('treats the first marker after the opening one as the closer', () => {
+    // Two adjacent markers mean an empty header: the second marker closes it, so
+    // `host: h` stays in the spec rather than being parsed into meta as well.
+    const { meta, specText } = parseSwaggerFrontmatter('---\n---\nhost: h\n---');
+    expect(meta).toEqual({});
+    expect(specText).toBe('host: h\n---');
+  });
+```
+
+Then re-run and expect all PASS. Do not "fix" this by weakening the assertion in
+the other direction — the empty-header result is the correct one, and the
+double-count was the bug.
 
 **Step 5: Commit**
 
@@ -537,8 +585,11 @@ git commit -m "docs(testing): record mutation results after termination hardenin
 - `grep -n "while (" src/lib/swaggerSpec.ts` returns nothing.
 - `grep -c "parseSwaggerFrontmatter(" src/lib/swaggerFrontmatter.ts` is `1`.
 - `npm test` green; `npm run lint` clean.
-- The frontmatter marker-pair regression test exists and passes.
-- No behaviour change for well-formed input (characterization tests unchanged).
+- The frontmatter marker-pair, adjacent-marker and sibling-after-nested-block
+  tests exist and pass, and each has been shown to fail when its target
+  arithmetic is broken.
+- No behaviour change for well-formed input, except the one intentional
+  adjacent-marker fix documented above.
 
 ## Out of scope
 
