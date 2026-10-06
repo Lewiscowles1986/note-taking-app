@@ -20,13 +20,21 @@ Removes the load-bearing `idx > 0` predicate in `parseSwaggerFrontmatter`.
 
 ## The invariant
 
-> **Every loop in these two files advances its index by at least 1 on every
-> path, and the advance lives in the `for` header.**
+> **Rule 1 — an advance never lives in a loop body.** Every loop advances on
+> every path, and the advance lives in the `for` header. Stryker's
+> `BlockStatement` mutant replaces a body with `{}`, which deletes an in-body
+> `i++` and hangs the loop.
+>
+> **Rule 2 — a returned index is the loop counter, never a derived
+> expression.** Stryker's `ArithmeticOperator` mutant turns `+` into `-`. A
+> derived return like `keyIndex + 1 + parts.length` becomes
+> `keyIndex + 1 - parts.length`, which for `parts.length === 0` lands *before*
+> the caller's position — and a backwards landing position hangs the caller's
+> loop. A counter reports real progress and leaves no expression to mutate.
 
-Stryker mutates loop *bodies* (`BlockStatement` → `{}`) and *update
-expressions* (`i++` → `i--`), but not the header's `i++` being removed, and not
-the condition into a non-advancing one. So a header-owned increment is the only
-shape that survives body-emptying.
+Both rules were learned from execution, not reasoning: an under-advance hangs
+the test process with no output at all, so a violation here surfaces as a
+Stryker timeout rather than a failing assertion.
 
 Verify the invariant by inspection at the end of every task:
 
@@ -263,27 +271,41 @@ function parseBlockScalar(
 ): [string, number] {
   const folded = marker.startsWith('>');
   const parts: string[] = [];
-  for (let i = keyIndex + 1; i < lines.length && lines[i].indent > keyIndent; i++) {
+  let i = keyIndex + 1;
+  for (; i < lines.length && lines[i].indent > keyIndent; i++) {
     parts.push(lines[i].content);
   }
   const text = folded ? parts.join(' ') : parts.join('\n');
-  return [text, keyIndex + 1 + parts.length];
+  return [text, i];
 }
 ```
 
-The returned index is derived from `parts.length` rather than the loop's final
-`i`, so a mutated `i--` cannot hand a caller a backwards index.
+The increment is header-owned, so a `BlockStatement` mutant (body → `{}`) loses data
+instead of looping forever.
+
+**The return must be the actual counter, never a derived expression.** Do NOT write
+`keyIndex + 1 + parts.length`: Stryker's `ArithmeticOperator` mutant rewrites it to
+`keyIndex + 1 - parts.length`, and for an empty block scalar (`parts.length === 0`) that
+returns `keyIndex` — a position *before* the caller's. The caller's map loop then re-reads
+the same line forever and hangs. The original counter-based `return i` was structurally
+immune, because it reports real progress and leaves no expression to mutate. This was found
+by review and verified by execution.
+
+Because `i` must survive to the `return`, it is declared outside the header
+(`let i = …; for (; …; i++)`). That is deliberate, and the asymmetry with
+`stripComment`/`splitTopLevel` (which drop the index entirely) belongs in a comment: this
+loop has to hand a landing position back to its caller.
 
 **Step 2: Run the tests**
 
-Run: `npx vitest run src/test/swaggerSpec.test.ts src/test/swaggerMutationKills.test.ts`
+Run: `timeout 120 npx vitest run src/test/swaggerSpec.test.ts src/test/swaggerMutationKills.test.ts`
 Expected: PASS, including the new block-scalar termination test.
 
 **Step 3: Commit**
 
 ```bash
 git add src/lib/swaggerSpec.ts
-git commit -m "refactor(swagger): advance block scalars in the loop header"
+git commit -m "refactor(swagger): own the block-scalar advance in the loop header"
 ```
 
 ---
@@ -366,7 +388,7 @@ position of progress per iteration no matter what a mutation makes `next`:
 
 **Step 3: Run the tests**
 
-Run: `npx vitest run src/test/swaggerSpec.test.ts src/test/swaggerMutationKills.test.ts src/test/swaggerBlock.test.tsx`
+Run: `timeout 120 npx vitest run src/test/swaggerSpec.test.ts src/test/swaggerMutationKills.test.ts src/test/swaggerBlock.test.tsx`
 Expected: PASS, including the nested-mapping and empty-nested-block
 termination tests.
 
@@ -376,6 +398,36 @@ termination tests.
 grep -n "while (" src/lib/swaggerSpec.ts
 ```
 Expected: no output.
+
+**Step 4b: Prove the floor is structurally safe, don't assume it**
+
+`Math.max(i, next - 1)` is safe *because* `Math.max` can never return less than
+`i`, and the header's `i++` then guarantees a full position of progress every
+iteration — no matter what a mutation makes `next` be. Check the two mutants that
+matter and report the outcome for each:
+
+| Mutant | Result | Why |
+|---|---|---|
+| `next - 1` → `next + 1` | terminates | skips a line; wrong answer, not a hang |
+| `Math.max` → `Math.min` | terminates | `next ≥ i + 1` always (both callees return at least their input index), so `min(i, next - 1) === i`, and `i++` still advances |
+| `parseBlockScalar` `i++` → `i--` | terminates | see below |
+
+**The floor, not the callee, is what saves the `i--` case.** A review claimed the
+`Math.max` floor cannot rescue a mutated `parseBlockScalar`, on the grounds that
+the callee throws before returning. That is wrong, and the mechanism matters
+because Task 5 is what fixes it:
+
+- In a `while (… ) { …; i = next; }` loop, a callee returning `next === i` makes
+  `i = next` a no-op and the loop re-reads the same line forever. This is exactly
+  how `a:\n  - |\n    line\n  - 2` hangs today.
+- With the header-owned `for (…; i++)` plus `i = Math.max(i, next - 1)`, that same
+  input advances: `next` of `1` clamps to `Math.max(1, 0) === 1`, the header's
+  `i++` moves to `2`, and the line whose indent fails the guard ends the loop.
+
+Verified by fuzz: 200,000 random `YamlLine[]` inputs through the Task 5 shape with
+the `i--` mutant injected produced **0 hangs** (200,000 terminated). Prefer the
+fuzz over reasoning here — the failure mode is a timeout, which no assertion
+reports.
 
 **Step 5: Commit**
 
