@@ -128,7 +128,7 @@ npx stryker run   # full src/lib scope; ~28 min on CI, sharded in CI — see bel
     glob-only module keeps it verbatim; the tests still exercise it.
 - HTML report: `reports/mutation/mutation.html` (gitignored).
 - **Sharded in CI.** Mutation is the long pole (~28 min of a 45 min budget) and
-  it parallelises by file, so `test-quality.yml` runs a 13-way matrix that each
+  it parallelises by file, so `test-quality.yml` runs a 16-way matrix that each
   mutate a disjoint `--mutate` subset (grouped in
   [`.github/stryker-shards.json`](../.github/stryker-shards.json)) and then
   merges the reports. Each shard still runs the *whole* test suite in its
