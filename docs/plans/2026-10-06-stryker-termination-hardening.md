@@ -325,7 +325,10 @@ position of progress per iteration no matter what a mutation makes `next`:
 ```ts
   if (first.isListItem) {
     const list: unknown[] = [];
-    for (let i = index; i < lines.length && lines[i].indent === indent && lines[i].isListItem; i++) {
+    // `i` is hoisted so the return below can report the landing position; a
+    // `for`-header `let` would be scoped to the loop.
+    let i = index;
+    for (; i < lines.length && lines[i].indent === indent && lines[i].isListItem; i++) {
       const item = lines[i];
       // `- key: value` (mapping inside a list item) → collect following lines
       // at deeper indent as the rest of that mapping.
@@ -355,12 +358,16 @@ position of progress per iteration no matter what a mutation makes `next`:
   }
 ```
 
+The original incremented `i` *before* recursing (`i++; … parseYamlBlock(lines, i, …)`); the
+recursion now uses `i + 1` directly, which is equivalent.
+
 **Step 2: Convert the map block the same way**
 
 ```ts
   // A block of mapping entries
   const map: Record<string, unknown> = {};
-  for (let i = index; i < lines.length && lines[i].indent === indent && !lines[i].isListItem; i++) {
+  let i = index;
+  for (; i < lines.length && lines[i].indent === indent && !lines[i].isListItem; i++) {
     const line = lines[i];
     const kv = splitKey(line.content);
     if (!kv) throw new SpecParseError(`Cannot parse YAML line: ${line.content}`);
@@ -385,6 +392,11 @@ position of progress per iteration no matter what a mutation makes `next`:
   }
   return [map, i];
 ```
+
+**The map branch has two `i` increments in the original** — `i = next` on the nested paths
+and a trailing `i++` on the plain-value path. The header now owns the plain-value increment,
+so that trailing `i++` must be **removed**, not left in place. Double-advancing compiles
+fine and silently drops lines.
 
 **Step 3: Run the tests**
 
