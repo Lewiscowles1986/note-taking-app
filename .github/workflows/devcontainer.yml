@@ -131,7 +131,12 @@ jobs:
             npm run build
             if [ "$RUN_E2E" = "1" ]; then
               echo "Scheduled run: exercising the baked Playwright browsers end-to-end"
-              npm run test:e2e
+              # Force Playwright's CI profile. The runner sets CI, but that env
+              # var does not cross into the devcontainer (which is why this job
+              # has been running the LOCAL profile: workers=4 on a 4-vCPU box and
+              # only 1 retry — over-subscribing the runner and getting the
+              # weakest retry policy, unlike every other job here).
+              CI=1 npm run test:e2e
             fi
 
   publish:
