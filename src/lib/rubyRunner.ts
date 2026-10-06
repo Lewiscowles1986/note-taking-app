@@ -135,7 +135,11 @@ export function createRubyRunner() {
     const output: string[] = [];
     const send: RubyOutput = (stream, text) => {
       if (!text) return;
-      output.push(stream === 'stderr' ? `[error] ${text}` : text);
+      // stderr is not failure: the yarv-port builds (2.3-2.5) print a benign
+      // "pthread_create failed for timer" warning there on every run, and a
+      // Ruby program can still write to it and exit 0. Label it as a warning
+      // rather than an error; a run that actually fails rejects below.
+      output.push(stream === 'stderr' ? `[stderr] ${text}` : text);
     };
 
     if (typeof adapter.runCommand === 'function') {
