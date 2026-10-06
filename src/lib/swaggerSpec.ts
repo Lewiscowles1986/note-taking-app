@@ -253,7 +253,7 @@ function parseYamlBlock(
   if (first.isListItem) {
     const list: unknown[] = [];
     let i = index;
-    while (i < lines.length && lines[i].indent === indent && lines[i].isListItem) {
+    for (; i < lines.length && lines[i].indent === indent && lines[i].isListItem; i++) {
       const item = lines[i];
       // `- key: value` (mapping inside a list item) → collect following lines
       // at deeper indent as the rest of that mapping.
@@ -261,27 +261,22 @@ function parseYamlBlock(
       if (inlineMatch && !inlineMatch[2].startsWith('|') && !inlineMatch[2].startsWith('>')) {
         const obj: Record<string, unknown> = {};
         obj[inlineMatch[1].trim()] = parseFlowValue(inlineMatch[2]);
-        i++;
-        const [nested, next] = parseYamlBlock(lines, i, indent + 1);
-        i = next;
+        const [nested, next] = parseYamlBlock(lines, i + 1, indent + 1);
         if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
           Object.assign(obj, nested);
         }
         list.push(obj);
+        i = Math.max(i, next - 1);
+        continue;
+      }
+      // Scalar item, flow value, or a nested block (| / >)
+      const text = item.content;
+      if (text.startsWith('|') || text.startsWith('>')) {
+        const [scalar, next] = parseBlockScalar(lines, i, indent, text);
+        list.push(scalar);
+        i = Math.max(i, next - 1);
       } else {
-        // Scalar item, flow value, or a nested block (| / >)
-        const text = item.content;
-        if (text.startsWith('|') || text.startsWith('>')) {
-          const [scalar, next] = parseBlockScalar(lines, i, indent, text);
-          list.push(scalar);
-          i = next;
-        } else if (/^[{[]/.test(text)) {
-          list.push(parseFlowValue(text));
-          i++;
-        } else {
-          list.push(parseScalar(text));
-          i++;
-        }
+        list.push(/^[{[]/.test(text) ? parseFlowValue(text) : parseScalar(text));
       }
     }
     return [list, i];
@@ -290,7 +285,7 @@ function parseYamlBlock(
   // A block of mapping entries
   const map: Record<string, unknown> = {};
   let i = index;
-  while (i < lines.length && lines[i].indent === indent && !lines[i].isListItem) {
+  for (; i < lines.length && lines[i].indent === indent && !lines[i].isListItem; i++) {
     const line = lines[i];
     const kv = splitKey(line.content);
     if (!kv) throw new SpecParseError(`Cannot parse YAML line: ${line.content}`);
@@ -299,7 +294,7 @@ function parseYamlBlock(
     if (rest === '|' || rest === '>' || rest.startsWith('|') || rest.startsWith('>')) {
       const [scalar, next] = parseBlockScalar(lines, i, indent, rest);
       map[key] = scalar;
-      i = next;
+      i = Math.max(i, next - 1);
       continue;
     }
 
@@ -307,12 +302,11 @@ function parseYamlBlock(
       // Value is a nested block (mapping or list) at deeper indent, or null.
       const [nested, next] = parseYamlBlock(lines, i + 1, indent + 1);
       map[key] = nested;
-      i = next;
+      i = Math.max(i, next - 1);
       continue;
     }
 
     map[key] = parseFlowValue(rest);
-    i++;
   }
   return [map, i];
 }
