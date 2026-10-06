@@ -12,6 +12,7 @@
 
 import { registerVersionedRunner, setRunnerAvailability } from './codeRunners';
 import { loadAsset, loadVendorManifest } from './wasmAssets';
+import { isLanguageEnabled } from './languages';
 
 export interface PythonBundle {
   version: string;
@@ -142,4 +143,4 @@ export function registerPythonRunner() {
   });
 }
 
-registerPythonRunner();
+if (isLanguageEnabled('python')) registerPythonRunner();

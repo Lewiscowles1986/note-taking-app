@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Check, Copy, Play, Loader2, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { getRunner, hasRunner, getRunnerVersions, getDefaultVersion, getRunnerAvailability } from '@/lib/codeRunners';
+import { getRunner, hasRunner, getRunnerVersions, getDefaultVersion, getRunnerAvailability, getRunnerWarm } from '@/lib/codeRunners';
 import { parseCodeFrontmatter } from '@/lib/codeBlockFrontmatter';
 import { looksLikeHtml } from '@/lib/htmlOutput';
 
@@ -102,6 +102,14 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
 
     return () => { cancelled = true; };
   }, [code, language]);
+
+  // Once a language's block appears, fetch that language's default runtime in
+  // the background so the first Run is instant and the service worker caches it.
+  // Only Ruby declares a warmer today; anything without one is skipped.
+  useEffect(() => {
+    const warm = getRunnerWarm(language);
+    if (warm) void warm(meta.version ?? getDefaultVersion(language));
+  }, [language, meta.version]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code);

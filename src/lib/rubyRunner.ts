@@ -9,8 +9,9 @@
  * source).
  */
 
-import { registerVersionedRunner, setRunnerAvailability } from './codeRunners';
+import { registerVersionedRunner, setRunnerAvailability, setRunnerWarm } from './codeRunners';
 import { loadAsset, loadVendorManifest, loadWasmIndex, type WasmIndex } from './wasmAssets';
+import { isLanguageEnabled } from './languages';
 
 export interface RubyBundle {
   version: string;
@@ -96,6 +97,50 @@ interface RubyVM {
 interface RubyAdapter {
   createVM?: (bytes: Uint8Array, output: RubyOutput, stdin?: string) => Promise<{ vm: RubyVM; flush(): void }>;
   runCommand?: (bytes: Uint8Array, output: RubyOutput, source: string, stdin?: string) => Promise<unknown>;
+}
+
+/**
+ * Fetch a language's runtime assets without running anything, so the service
+ * worker's runtime cache has them before the first Run. Called when a block for
+ * the language appears, which is the earliest sign the reader wants it.
+ *
+ * The requested (or default) version is fetched first so it is ready fastest,
+ * then every other vendored version is attempted with a little concurrency. Each
+ * failure is ignored: this is a prefetch, and the normal Run path reports real
+ * errors.
+ */
+async function warmVersion(version: string): Promise<void> {
+  const base = import.meta.env.BASE_URL || '/';
+  const dir = `${base}ruby-wasm/build-${await directoryFor(version)}/`;
+  try {
+    const manifest = await loadVendorManifest(dir);
+    await Promise.all([
+      loadAsset(dir, 'ruby.wasm', manifest),
+      fetch(`${dir}${manifest.loader}`),
+    ]);
+  } catch {
+    // Offline, or this bundle is absent: skip it and keep warming the rest.
+  }
+}
+
+async function allRubyBundles(): Promise<RubyBundle[]> {
+  try {
+    const index = await loadWasmIndex('ruby');
+    if (index.bundles.length > 0) return index.bundles;
+  } catch {
+    // Fall back to the bundled list.
+  }
+  return RUBY_BUNDLES;
+}
+
+export async function warmRubyRuntime(version: string = DEFAULT_RUBY_VERSION): Promise<void> {
+  const bundles = await allRubyBundles();
+  const rest = bundles.map((b) => b.version).filter((v) => v !== version);
+  await warmVersion(version);
+  const limit = 3;
+  for (let i = 0; i < rest.length; i += limit) {
+    await Promise.all(rest.slice(i, i + limit).map(warmVersion));
+  }
 }
 
 let availabilityCache: string[] | null = null;
@@ -192,6 +237,7 @@ export function registerRubyRunner() {
     check: getAvailableRubyVersions,
     required: [...REQUIRED_RUBY_VERSIONS],
   });
+  setRunnerWarm('ruby', warmRubyRuntime);
 }
 
-registerRubyRunner();
+if (isLanguageEnabled('ruby')) registerRubyRunner();
