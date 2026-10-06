@@ -9,7 +9,7 @@ puts (1..10).sum
 
 ## Choose or pin a version
 
-A version selector next to **Run** lists every build that is present, labelled with the real Ruby version from the bundle manifest. A build that is missing is hidden rather than failing at run time.
+A version selector next to **Run** lists every build that is present, labelled with the Ruby version the bundle actually contains. A build that is missing is hidden rather than failing at run time.
 
 Pin a version for a single block with a `version:` frontmatter line:
 
@@ -19,9 +19,30 @@ version: 4.0.0
 puts RUBY_DESCRIPTION
 ```
 
+### Ruby 1.0 is a different language
+
+The oldest line in the matrix predates a lot of today's syntax. It has no `puts`, no `RUBY_VERSION`, no `String#sum`, and no `Range#sum`, so pick a version and write to that version's rules:
+
+```ruby
+version: 1.0-971225
+---
+print "Ruby 1.0 in WebAssembly\n"
+print Math.sqrt(144), "\n"
+h = {"a" => 20, "b" => 22}
+print "sum=", h["a"] + h["b"], "\n"
+```
+
+That prints `Ruby 1.0 in WebAssembly`, `12.0` and `sum=42`. From Ruby 1.9 onwards the modern example at the top of this page works unchanged.
+
 ## How the build is chosen
 
-The selector label and the on-disk directory are not always the same. Upstream ruby.wasm baselines are keyed by line — the `4.0` bundle contains Ruby `4.0.0` — so `src/lib/rubyRunner.ts` maps each version to its `public/ruby-wasm/build-<directory>/`. `src/test/rubyBundles.test.ts` checks that mapping and the bundle hashes so a version that points at a missing directory fails in tests, not in the editor.
+The selector label and the on-disk directory are not always the same. Upstream ruby.wasm baselines are keyed by line — the `4.0` directory contains Ruby `4.0.0` — so `RUBY_BUNDLES` in `src/lib/rubyRunner.ts` pairs each version with its directory. `src/test/rubyBundles.test.ts` checks that mapping and every asset hash, so a version that points at a missing or corrupt bundle fails in tests rather than in the editor.
+
+The runner also reads each bundle's `vendor.json` to pick the loader and entry point, covering **both integration families**: modern upstream ruby.wasm exports `createVM` (a RubyVM reactor), while the historical Emscripten ports export `runCommand`.
+
+## Size
+
+Large binaries are committed gzipped and decompressed in the browser with `DecompressionStream`, which is about three times smaller in the repository and on the wire. Each bundle's `vendor.json` records which of its files are gzipped.
 
 ## Limits
 
