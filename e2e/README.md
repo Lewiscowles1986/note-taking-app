@@ -63,15 +63,17 @@ already-running dev server when present.
 
 ## Run modes
 
-Three environment-driven modes coexist, controlled by four env vars:
+Three environment-driven modes coexist, controlled by five env vars:
 `E2E_BASE_URL` (attach mode), `E2E_BASE_PATH` (app-root path), `E2E_DEBUG` (debug
-mode) and `E2E_NO_SCREENSHOTS` (no-screenshot mode). They combine freely.
+mode), `E2E_SCREENSHOTS` (screenshot capture) and `E2E_NO_SCREENSHOTS`
+(no-screenshot mode). They combine freely.
 
 | Mode | Command | Behavior |
 | --- | --- | --- |
 | **Default** | `npm run test:e2e` | Playwright starts `vite` on **5173** (`--strictPort`) and runs headless, parallel. |
 | **Attach** | `E2E_BASE_URL=http://host:port npm run test:e2e` | **No server is started** — tests attach to the already-running server at that URL. Use against a preview/CI build or a dev server on a non-default port. |
 | **Debug** | `npm run test:e2e:debug` (or `E2E_DEBUG=1 npx playwright test -g "encrypts a note"`) | **Headed**, serial (`workers: 1`), no retries. Every test pauses at its labeled `debugBreak` drop-in before the assertion cluster. |
+| **Screenshots** | `E2E_SCREENSHOTS=1 npm run test:e2e` | Enables the `step()` diagnostic screenshots (off by default). |
 | **No screenshots** | `E2E_NO_SCREENSHOTS=1 npm run test:e2e` | Failure screenshots off, retry traces off (trace archives embed screenshots), `step()` is a no-op. **No image artifacts at all.** |
 
 - **Attach mode** (`E2E_BASE_URL` set): `webServer` is disabled entirely, so Playwright
@@ -95,6 +97,12 @@ mode) and `E2E_NO_SCREENSHOTS` (no-screenshot mode). They combine freely.
   test pauses, filter with `-g` to target one test. `page.pause()` is a no-op in
   headless (Playwright 1.58.x), so it never hangs, but debug mode forces headed so the
   Inspector actually opens.
+- **Screenshot mode** (`E2E_SCREENSHOTS=1` or `E2E_SCREENSHOTS=true`): enables the
+  `step()` diagnostic screenshots in `e2e/fixtures.ts`. **Off by default** — the suite
+  calls `step()` ~150 times and each call is a full-page capture, which is a large extra
+  load on a shared runner (a single capture has been observed taking ~22s under load,
+  enough to push a functional test past its wall-clock test timeout). Turn it on when you
+  want the artifacts; `E2E_NO_SCREENSHOTS=1` still wins if both are set.
 - **No-screenshot mode** (`E2E_NO_SCREENSHOTS=1` or `E2E_NO_SCREENSHOTS=true`):
   `screenshot: 'off'` and `trace: 'off'` in the config, and the `step()` helper in
   `e2e/fixtures.ts` becomes a no-op, so a run leaves no image artifacts anywhere. It
@@ -142,8 +150,9 @@ Then prove the no-update run still passes (see "Regenerating baselines" below).
   round-tripped back to `Date` inside the page.
 - **`step(page, name)`** — takes a full-page screenshot to
   `e2e/artifacts/<spec>/<test>/<name>.png`, logs the path, and returns it. Call it
-  after each meaningful UI action to build a visual record of the run. With
-  `E2E_NO_SCREENSHOTS=1` it is a fast no-op that returns an empty string.
+  after each meaningful UI action to build a visual record of the run. It is **off by
+  default** (a no-op returning an empty string) because of the capture cost; enable it
+  with `E2E_SCREENSHOTS=1`, or force it off with `E2E_NO_SCREENSHOTS=1`.
 - **`debugBreak(page, label?)`** — the debug drop-in. When `E2E_DEBUG=1` it logs a
   banner and calls `page.pause()` (Playwright Inspector) so you can interact with the
   app before the assertions run; otherwise it is a fast no-op. Every test calls it once

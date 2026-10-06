@@ -273,15 +273,28 @@ export async function seedLegacyNotes(
  * e2e/artifacts/<test-file-basename>/<test-title>/<name>.png, log the path,
  * and return it. Call after each meaningful UI action in a spec.
  *
- * With E2E_NO_SCREENSHOTS=1 (or "true") this is a fast no-op returning "" so
- * a run produces no image artifacts (typically attach mode against a remote
- * server); see playwright.config.ts.
+ * Artifact capture is OPT-IN: it happens only when E2E_SCREENSHOTS=1 (or
+ * "true"). It is off by default because every call is a full-page screenshot
+ * and the suite makes ~150 of them; under a loaded runner a single fullPage
+ * capture has taken ~22s on its own (see the Devcontainer scheduled run at
+ * 05:54), which can push a functional test past its wall-clock test timeout
+ * and turn a green run into a timeout failure. The specs' real assertions do
+ * not depend on the screenshots.
+ *
+ * E2E_NO_SCREENSHOTS=1 (or "true") still forces a no-op — e.g. for attach-mode
+ * runs against a remote server — and wins over E2E_SCREENSHOTS.
  */
 export async function step(
   page: Page,
   name: string,
   opts?: { fullPage?: boolean }
 ): Promise<string> {
+  if (
+    process.env.E2E_SCREENSHOTS !== '1' &&
+    process.env.E2E_SCREENSHOTS !== 'true'
+  ) {
+    return '';
+  }
   if (
     process.env.E2E_NO_SCREENSHOTS === '1' ||
     process.env.E2E_NO_SCREENSHOTS === 'true'
