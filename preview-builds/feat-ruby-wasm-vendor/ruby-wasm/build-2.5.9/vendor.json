@@ -1,0 +1,41 @@
+{
+  "loader": "runtime.mjs",
+  "api": "runCommand",
+  "gzip": [
+    "ruby.wasm"
+  ],
+  "files": {
+    "BSDL": {
+      "bytes": 1282,
+      "sha256": "a5e3042dacb53eebda91f3b1caefbfec8307711df8c4ed1ed20e4e97c43307a4"
+    },
+    "COPYING": {
+      "bytes": 2537,
+      "sha256": "dc3a475d5d6d1541d85647c0161e485d3e22eea5ec47e6efe204a642c84f24dc"
+    },
+    "GPL": {
+      "bytes": 18092,
+      "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+    },
+    "LEGAL": {
+      "bytes": 36676,
+      "sha256": "65cfb613fa2bd077d77866cf65d903afcddf155ab44c6c197e0f01173fb0bd0b"
+    },
+    "legacy.mjs": {
+      "bytes": 111191,
+      "sha256": "61b4d372d050c3dc5f983b07b9875b4e6dc5db076a50dd07974b6c4c3ab8c001"
+    },
+    "manifest.json": {
+      "bytes": 7505,
+      "sha256": "30f44887b6c8c1cf76264f78ba42b36b92cbd04d202d37b985789b10f613b2c6"
+    },
+    "ruby.wasm": {
+      "bytes": 14739247,
+      "sha256": "b6ad8b00495e7e28ed2fefd453f6c565eb49119fb2b62dd1d08798c406a4bf6b"
+    },
+    "runtime.mjs": {
+      "bytes": 1634,
+      "sha256": "5baf4914f11a16308448d9dece2f525af9f2603bf84d95d48d3295cc6525768b"
+    }
+  }
+}
