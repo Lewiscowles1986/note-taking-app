@@ -102,4 +102,34 @@ describe('parseSwaggerFrontmatter', () => {
     const { meta } = parseSwaggerFrontmatter(raw);
     expect(meta).toEqual({ servers: ['https://good.dev'] });
   });
+
+  it('treats an opening marker with no closing marker as an empty header', () => {
+    const { meta, specText } = parseSwaggerFrontmatter('---\ntitle: x\nopenapi: 3.0.0');
+    expect(meta).toEqual({});
+    expect(specText).toBe('title: x\nopenapi: 3.0.0');
+  });
+
+  it('does not treat the opening marker as the closing marker', () => {
+    // Regression guard: if the closing search may match index 0, the rebuild
+    // re-emits '---' and parseSwaggerFrontmatter recurses without bound.
+    const raw = '---\ntitle: x\n---\nopenapi: 3.0.0\n';
+    const { meta, specText } = parseSwaggerFrontmatter(raw);
+    expect(meta).toEqual({});
+    expect(specText).toBe('openapi: 3.0.0\n');
+  });
+
+  it('parses keys between a matched marker pair', () => {
+    const raw = '---\nservers: https://api.dev\n---\nspec';
+    const { meta, specText } = parseSwaggerFrontmatter(raw);
+    expect(meta.servers).toEqual(['https://api.dev']);
+    expect(specText).toBe('spec');
+  });
+
+  it('treats the first marker after the opening one as the closer', () => {
+    // Two adjacent markers mean an empty header: the second marker closes it, so
+    // `host: h` stays in the spec rather than also being parsed into meta.
+    const { meta, specText } = parseSwaggerFrontmatter('---\n---\nhost: h\n---');
+    expect(meta).toEqual({});
+    expect(specText).toBe('host: h\n---');
+  });
 });

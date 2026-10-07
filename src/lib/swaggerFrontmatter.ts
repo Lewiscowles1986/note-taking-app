@@ -114,49 +114,8 @@ function setKey(state: KeyState, key: string, inlineVal: string) {
   }
 }
 
-/**
- * Parse a swagger code block's content: optional YAML-like frontmatter header
- * followed by the spec text.
- *
- * Two header styles are accepted, matching how people actually write these:
- *   1. Delimited — an optional opening `---` line, header keys, then a closing
- *      `---` line. The spec starts after the closing marker.
- *   2. Bare — header keys on the first lines, terminated by the FIRST `---`
- *      line (the repo's CodeBlock convention; no closing marker needed).
- *
- * An opening `---` with no closing one is just a stray marker: header is
- * empty and the whole rest is spec.
- */
-export function parseSwaggerFrontmatter(raw: string): ParsedSwaggerBlock {
-  const lines = raw.split('\n');
-
-  // Case 1: starts with an opening `---` → find the CLOSING marker.
-  if (lines[0]?.trim() === '---') {
-    const closeIdx = lines.findIndex((l, idx) => idx > 0 && l.trim() === '---');
-    if (closeIdx < 0) {
-      // Opening marker only — treat everything after it as the spec.
-      return { meta: {}, specText: lines.slice(1).join('\n') };
-    }
-    const { meta } = parseSwaggerFrontmatter(
-      [
-        ...lines.slice(1, closeIdx),
-        '---',
-        ...lines.slice(closeIdx + 1),
-      ].join('\n')
-    );
-    return { meta, specText: lines.slice(closeIdx + 1).join('\n') };
-  }
-
-  // Case 2: bare header terminated by the first `---` line.
-  const delimIdx = lines.findIndex((l) => l.trim() === '---');
-
-  if (delimIdx < 0) {
-    return { meta: {}, specText: raw };
-  }
-
-  const headerLines = lines.slice(0, delimIdx);
-  const specText = lines.slice(delimIdx + 1).join('\n');
-
+/** Parse header lines into frontmatter metadata. */
+function parseHeaderLines(headerLines: string[]): SwaggerFrontmatter {
   const state: KeyState = { meta: {}, currentKey: null, notesLines: [] };
 
   for (const line of headerLines) {
@@ -178,7 +137,6 @@ export function parseSwaggerFrontmatter(raw: string): ParsedSwaggerBlock {
 
     if (state.currentKey === 'notes') {
       state.notesLines.push(line.trimStart());
-      continue;
     }
   }
 
@@ -186,5 +144,46 @@ export function parseSwaggerFrontmatter(raw: string): ParsedSwaggerBlock {
     state.meta.notes = state.notesLines.join('\n').trim();
   }
 
-  return { meta: state.meta, specText };
+  return state.meta;
+}
+
+/**
+ * Parse a swagger code block's content: optional YAML-like frontmatter header
+ * followed by the spec text.
+ *
+ * Two header styles are accepted, matching how people actually write these:
+ *   1. Delimited — an optional opening `---` line, header keys, then a closing
+ *      `---` line. The spec starts after the closing marker.
+ *   2. Bare — header keys on the first lines, terminated by the FIRST `---`
+ *      line (the repo's CodeBlock convention; no closing marker needed).
+ *
+ * An opening `---` with no closing one is just a stray marker: header is
+ * empty and the whole rest is spec.
+ */
+export function parseSwaggerFrontmatter(raw: string): ParsedSwaggerBlock {
+  const lines = raw.split('\n');
+
+  // Case 1: starts with an opening `---` → find the CLOSING marker. Searching
+  // the slice means index 0 is unreachable by construction, so the opening
+  // marker can never be mistaken for the closing one and no recursion is needed.
+  if (lines[0]?.trim() === '---') {
+    const rest = lines.slice(1);
+    const closeOffset = rest.findIndex((l) => l.trim() === '---');
+    if (closeOffset < 0) {
+      // Opening marker only — treat everything after it as the spec.
+      return { meta: {}, specText: rest.join('\n') };
+    }
+    const meta = parseHeaderLines(rest.slice(0, closeOffset));
+    return { meta, specText: rest.slice(closeOffset + 1).join('\n') };
+  }
+
+  // Case 2: bare header terminated by the first `---` line.
+  const delimIdx = lines.findIndex((l) => l.trim() === '---');
+
+  if (delimIdx < 0) {
+    return { meta: {}, specText: raw };
+  }
+
+  const meta = parseHeaderLines(lines.slice(0, delimIdx));
+  return { meta, specText: lines.slice(delimIdx + 1).join('\n') };
 }

@@ -112,6 +112,35 @@ npx stryker run   # full src/lib scope; ~28 min on CI, sharded in CI — see bel
 - Scope: `src/lib/**/*.ts`, `coverageAnalysis: "perTest"`. Baseline run
   (937 mutants): **86.87% total score, 89.45% on covered code** — 813 killed,
   96 survived, 1 timeout, 27 no-coverage. Target was >50%; met at baseline.
+- **Loop termination hardening (2026-10).** A merged 20-shard run recorded 4,933
+  mutants with **22 timeouts** — and every one was a *non-terminating loop*, not a
+  slow test. Stryker's `BlockStatement` mutant replaces a loop body with `{}`,
+  deleting an in-body `i++`; its `UpdateOperator` mutant turns `i++` into `i--`,
+  walking the index backwards. In `swaggerSpec.ts` / `swaggerFrontmatter.ts` the
+  parsers' progress rested on those in-body increments, so a one-token change hung
+  the process until the 60 s timeout.
+  The two files were reworked so that (1) a loop's advance lives in its `for`
+  header, and (2) a returned landing index is the loop counter, never a derived
+  expression — a derived index can land *before* the caller's position and hang
+  the caller. `parseSwaggerFrontmatter` also stopped re-parsing its own header
+  recursively; its termination had depended on an `idx > 0` guard, and without it
+  an input as ordinary as `---\ntitle: x\n---\nopenapi: 3.0.0` overflowed the stack
+  (recorded as a `RuntimeError`).
+  Measured result on the two shards:
+
+  | File | Timeouts | Score | RuntimeError |
+  |---|---|---|---|
+  | `swaggerSpec.ts` | 15 → 2 | 86.7% → 89.6% | — |
+  | `swaggerFrontmatter.ts` | 4 → **0** | 80.4% → 84.6% | 1 → **0** |
+
+  Two timeouts remain in `parseYamlBlock`'s list-branch header (`i++` → `i--`) and
+  `parseFlowValue`'s `trimmed` mutation. Both are **pre-existing** — they were
+  timing out at those same sites before this work (old lines 261 and 147) — and
+  both need a different technique to kill: a header increment has no replacement
+  that both terminates and stays correct.
+  `timeoutMS` was lowered 60000 → 15000 to bound the cost of any mutant that does
+  still hang. That bounds waste; it does not recover time, which is why the loops
+  themselves were changed.
 - Two settings keep Stryker's initial test run green with this repo's
   browser-only features; both are load-bearing, not preferences:
   - `disableTypeChecks` is pinned to `src/**` instead of Stryker's default

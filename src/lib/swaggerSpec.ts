@@ -110,16 +110,18 @@ interface YamlLine {
 }
 
 function stripComment(line: string): string {
-  // Remove trailing comments, but not inside quotes.
+  // Remove trailing comments, but not inside quotes. Accumulating the prefix
+  // keeps `out` identical to `line.slice(0, i)` without an index to mutate.
   let inSingle = false;
   let inDouble = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
+  let out = '';
+  for (const ch of line) {
     if (ch === "'" && !inDouble) inSingle = !inSingle;
     else if (ch === '"' && !inSingle) inDouble = !inDouble;
     else if (ch === '#' && !inSingle && !inDouble) {
-      if (i === 0 || /\s/.test(line[i - 1])) return line.slice(0, i);
+      if (out === '' || /\s$/.test(out)) return out;
     }
+    out += ch;
   }
   return line;
 }
@@ -165,14 +167,15 @@ function parseFlowValue(value: string): unknown {
 
 /** Split on a delimiter, ignoring delimiters inside quotes or brackets. */
 function splitTopLevel(text: string, delimiter: string): string[] {
+  // Per-code-point matching changes non-BMP delimiters versus the old index
+  // form (`'😀,a'` on `'😀'`: old `['😀,a']`, new `['', ',a']`); callers pass `','`.
   const parts: string[] = [];
   let depthSquare = 0;
   let depthCurly = 0;
   let inSingle = false;
   let inDouble = false;
   let current = '';
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
+  for (const ch of text) {
     if (ch === "'" && !inDouble) inSingle = !inSingle;
     else if (ch === '"' && !inSingle) inDouble = !inDouble;
     else if (!inSingle && !inDouble) {
@@ -249,8 +252,14 @@ function parseYamlBlock(
   // A block of list items
   if (first.isListItem) {
     const list: unknown[] = [];
+    // `i` is hoisted so the return below can report the landing position, and
+    // the header owns the advance so an emptied body cannot halt progress.
+    // Skip-aheads below use `i = Math.max(i, next - 1)`: the header's `i++` then
+    // lands exactly on `next`, while a callee that fails to advance cannot stall
+    // the loop. Do not "simplify" that to `i = next` — doing so reintroduces a
+    // hang that no assertion can catch, only a timeout.
     let i = index;
-    while (i < lines.length && lines[i].indent === indent && lines[i].isListItem) {
+    for (; i < lines.length && lines[i].indent === indent && lines[i].isListItem; i++) {
       const item = lines[i];
       // `- key: value` (mapping inside a list item) → collect following lines
       // at deeper indent as the rest of that mapping.
@@ -258,27 +267,22 @@ function parseYamlBlock(
       if (inlineMatch && !inlineMatch[2].startsWith('|') && !inlineMatch[2].startsWith('>')) {
         const obj: Record<string, unknown> = {};
         obj[inlineMatch[1].trim()] = parseFlowValue(inlineMatch[2]);
-        i++;
-        const [nested, next] = parseYamlBlock(lines, i, indent + 1);
-        i = next;
+        const [nested, next] = parseYamlBlock(lines, i + 1, indent + 1);
         if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
           Object.assign(obj, nested);
         }
         list.push(obj);
+        i = Math.max(i, next - 1);
+        continue;
+      }
+      // Scalar item, flow value, or a nested block (| / >)
+      const text = item.content;
+      if (text.startsWith('|') || text.startsWith('>')) {
+        const [scalar, next] = parseBlockScalar(lines, i, indent, text);
+        list.push(scalar);
+        i = Math.max(i, next - 1);
       } else {
-        // Scalar item, flow value, or a nested block (| / >)
-        const text = item.content;
-        if (text.startsWith('|') || text.startsWith('>')) {
-          const [scalar, next] = parseBlockScalar(lines, i, indent, text);
-          list.push(scalar);
-          i = next;
-        } else if (/^[{[]/.test(text)) {
-          list.push(parseFlowValue(text));
-          i++;
-        } else {
-          list.push(parseScalar(text));
-          i++;
-        }
+        list.push(/^[{[]/.test(text) ? parseFlowValue(text) : parseScalar(text));
       }
     }
     return [list, i];
@@ -287,7 +291,7 @@ function parseYamlBlock(
   // A block of mapping entries
   const map: Record<string, unknown> = {};
   let i = index;
-  while (i < lines.length && lines[i].indent === indent && !lines[i].isListItem) {
+  for (; i < lines.length && lines[i].indent === indent && !lines[i].isListItem; i++) {
     const line = lines[i];
     const kv = splitKey(line.content);
     if (!kv) throw new SpecParseError(`Cannot parse YAML line: ${line.content}`);
@@ -296,7 +300,7 @@ function parseYamlBlock(
     if (rest === '|' || rest === '>' || rest.startsWith('|') || rest.startsWith('>')) {
       const [scalar, next] = parseBlockScalar(lines, i, indent, rest);
       map[key] = scalar;
-      i = next;
+      i = Math.max(i, next - 1);
       continue;
     }
 
@@ -304,12 +308,11 @@ function parseYamlBlock(
       // Value is a nested block (mapping or list) at deeper indent, or null.
       const [nested, next] = parseYamlBlock(lines, i + 1, indent + 1);
       map[key] = nested;
-      i = next;
+      i = Math.max(i, next - 1);
       continue;
     }
 
     map[key] = parseFlowValue(rest);
-    i++;
   }
   return [map, i];
 }
@@ -329,6 +332,10 @@ function splitKey(content: string): [string, string, string] | null {
  * than the key's indent. `marker` is the scalar indicator from the key's
  * value position ('|' or '>' possibly with chomping suffix). Returns
  * [text, nextIndex].
+ *
+ * Unlike `stripComment` and `splitTopLevel`, this loop keeps an index: it hands
+ * a landing position back to its caller, so the counter must survive an emptied
+ * loop body.
  */
 function parseBlockScalar(
   lines: YamlLine[],
@@ -339,9 +346,8 @@ function parseBlockScalar(
   const folded = marker.startsWith('>');
   const parts: string[] = [];
   let i = keyIndex + 1;
-  while (i < lines.length && lines[i].indent > keyIndent) {
+  for (; i < lines.length && lines[i].indent > keyIndent; i++) {
     parts.push(lines[i].content);
-    i++;
   }
   const text = folded ? parts.join(' ') : parts.join('\n');
   return [text, i];
