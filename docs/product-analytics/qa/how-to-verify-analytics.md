@@ -27,6 +27,12 @@ The source of truth for what should be sent is
 [what the app records](../privacy/what-is-recorded.md) (privacy audience,
 same content as this page references).
 
+> Note: the deployed PR preview builds receive their key at build time from
+> a repository secret (`POSTHOG_PROJECT_KEY`), so a live preview exercises
+> the configured-analytics path against the real host without local setup.
+> Pointing the local run at a collector still gives you payload-level access
+> the real host does not.
+
 ## Set up a receiver (~2 min)
 
 1. In a terminal, start a local collector that answers any request and prints
