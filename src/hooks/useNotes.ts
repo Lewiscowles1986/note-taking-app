@@ -12,7 +12,7 @@ import {
 } from '@/lib/db';
 import { recordDeletion } from '@/lib/syncDeletion';
 import { SYNC_NOTIFICATIONS_EVENT } from '@/lib/syncNotifications';
-import posthog from '@/lib/posthog';
+import { capture as posthogCapture } from '@/lib/posthog';
 
 export function useNotes() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -86,7 +86,7 @@ export function useNotes() {
       const existing = await getNote(id);
       recordDeletion(id, existing?.updatedAt ?? new Date());
       await deleteNote(id);
-      posthog.capture('note_deleted');
+      posthogCapture('note_deleted');
       if (activeNoteId === id) setActiveNoteId(null);
       await refresh();
     },

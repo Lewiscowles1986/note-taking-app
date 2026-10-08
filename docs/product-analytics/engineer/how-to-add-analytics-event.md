@@ -25,8 +25,8 @@ and [src/pages/SettingsPage.tsx](../../../src/pages/SettingsPage.tsx).
 
 ## By hand
 
-1. Import the module in the file where the action happens:
-   `import posthog from '@/lib/posthog';`
+1. Import the shim in the file where the action happens:
+   `import { capture as posthogCapture } from '@/lib/posthog';`
 2. Choose an event name: `snake_case`, named for the completed fact —
    `note_created`, not `create_note`. If a similar event exists (for example
    the `notes_exported` family, told apart by an `export_format` property),
@@ -36,26 +36,31 @@ and [src/pages/SettingsPage.tsx](../../../src/pages/SettingsPage.tsx).
    count as done. Example shape:
 
    ```ts
-   posthog.capture('note_created');
+   posthogCapture('note_created');
    ```
 
    or with properties:
 
    ```ts
-   posthog.capture('attachment_added', { attachment_type: 'image' });
+   posthogCapture('attachment_added', { attachment_type: 'image' });
    ```
 
+   The call is fire-and-forget: it queues and never blocks or rejects, so
+   there is no error path to handle.
 4. Follow the property style already in use: counts end in `_count`, booleans
    in `has_`/`is_`, choices in `snake_case` (`sync_outcome`, `export_format`).
    Keep note contents, titles, and category names out of properties.
 5. Verify: run the app, perform the action, and check the event appears in
-   the network tab addressed to the configured host.
+   the network tab addressed to the configured host (or a local collector —
+   see the [QA runbook](../qa/how-to-verify-analytics.md)).
 
 ## With the PostHog wizard
 
 1. Run the wizard and describe the action to instrument.
 2. Review the diff before staging — check the placement (after success, not
-   before), the event name, and the properties it chose.
+   before), the event name, and the properties it chose. If the wizard
+   writes `posthog.capture(...)` against a module-level SDK import, adapt it
+   to the shim call (`posthogCapture`) so the SDK stays lazy.
 3. If the wizard adds an event that overlaps an existing one, align the names
    before merging, or you will get two events for one concept.
 

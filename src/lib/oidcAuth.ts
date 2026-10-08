@@ -32,6 +32,8 @@ import {
   type OidcSession,
 } from './oidcStorage';
 
+import posthog from '@/lib/posthog';
+
 /** sessionStorage key for the in-flight login (per-tab, survives redirect). */
 export const PENDING_KEY = 'notehaven.oidc.pending';
 
@@ -98,17 +100,19 @@ function requireIssuer(issuer: string): string {
  * Identify a successful OIDC sign-in using the issuer-scoped subject. `sub` is
  * the provider's stable user identifier; the issuer scope prevents unrelated
  * providers that happen to use the same subject from being merged.
+ *
+ * Environments without VITE_POSTHOG_* at build time ship the no-op stub, so
+ * these calls cost nothing; with analytics, the shim applies them in order
+ * with queued events and resets when switching accounts.
  */
-async function identifyOidcUser(issuer: string, claims: OidcSession['claims']): Promise<void> {
-  if (!claims.sub || !import.meta.env.VITE_POSTHOG_KEY || !import.meta.env.VITE_POSTHOG_HOST) return;
+/** The distinct id this module applied to the shim, used to scope resets. */
+let oidcDistinctIdApplied: string | null = null;
+
+function identifyOidcUser(issuer: string, claims: OidcSession['claims']): void {
+  if (!claims.sub) return;
 
   const distinctId = `oidc:${requireIssuer(issuer)}:${claims.sub}`;
-  const { default: posthog } = await import('./posthog');
-  const currentUserId = posthog.get_property('$user_id');
-  if (typeof currentUserId === 'string' && currentUserId && currentUserId !== distinctId) {
-    posthog.reset();
-  }
-
+  oidcDistinctIdApplied = distinctId;
   posthog.identify(distinctId, {
     ...(claims.email ? { email: claims.email } : {}),
     ...(claims.name ? { name: claims.name } : {}),
@@ -116,14 +120,13 @@ async function identifyOidcUser(issuer: string, claims: OidcSession['claims']): 
   });
 }
 
-/** Reset only when this server's user is the identity currently in PostHog. */
-async function resetOidcUser(serverId: string, session: OidcSession | null): Promise<void> {
-  if (!session?.claims.sub || !import.meta.env.VITE_POSTHOG_KEY || !import.meta.env.VITE_POSTHOG_HOST) return;
+/** Reset only when this server's user is the identity currently applied. */
+function resetOidcUser(serverId: string, session: OidcSession | null): void {
+  if (!session?.claims.sub || !posthog.has_identity()) return;
 
   const issuer = loadOidcConfigFor(serverId).issuer;
   const distinctId = `oidc:${requireIssuer(issuer)}:${session.claims.sub}`;
-  const { default: posthog } = await import('./posthog');
-  if (posthog.get_distinct_id() === distinctId) posthog.reset();
+  if (oidcDistinctIdApplied === distinctId) posthog.reset();
 }
 
 async function fetchJson(url: string, what: string, fetchImpl: typeof fetch): Promise<unknown> {
@@ -545,9 +548,9 @@ export async function completeLogin(params: URLSearchParams, fetchImpl: typeof f
     },
   };
   saveOidcSessionFor(serverId, session);
-  // Establish identity at the successful-login boundary. The SDK persists it
-  // across reloads, so subsequent browser events and errors inherit it.
-  await identifyOidcUser(pending.issuer, session.claims).catch(() => undefined);
+  // Establish identity at the successful-login boundary. The shim persists it
+  // (via the SDK) across reloads, so subsequent events and errors inherit it.
+  identifyOidcUser(pending.issuer, session.claims);
   sessionStorage.removeItem(PENDING_KEY);
   return { returnTo: pending.returnTo || '/' };
 }
@@ -678,7 +681,7 @@ export async function logout(serverId: string, fetchImpl: typeof fetch = fetch):
       ).catch(() => undefined); // RFC 7009: clear locally regardless
     }
   }
-  await resetOidcUser(serverId, session).catch(() => undefined);
+  resetOidcUser(serverId, session);
   clearOidcSessionFor(serverId);
 }
 

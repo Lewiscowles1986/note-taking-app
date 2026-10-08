@@ -48,7 +48,7 @@ import {
 import { getAllCategories } from '@/lib/db';
 import SyncNotifications from '@/components/SyncNotifications';
 import { toast } from 'sonner';
-import posthog from '@/lib/posthog';
+import { capture as posthogCapture } from '@/lib/posthog';
 import { logSyncFailure, logSyncOutcome } from '@/lib/posthogLogs';
 
 interface SettingsPageProps {
@@ -209,7 +209,7 @@ export default function SettingsPage({ serverId, onBack, onSynced }: SettingsPag
       scope: oidcConfig.scope,
     });
     setOidcConfig(loadOidcConfigFor(serverId));
-    posthog.capture('sync_settings_saved', {
+    posthogCapture('sync_settings_saved', {
       auto_sync_enabled: autoSync,
       sync_scope: syncScope,
       selected_category_count: syncedCategories.length,
@@ -228,7 +228,7 @@ export default function SettingsPage({ serverId, onBack, onSynced }: SettingsPag
       const result = await runInFlight({ label: 'Syncing with server', group: 'sync' }, async () =>
         runSync({ serverId }),
       );
-      posthog.capture('sync_completed', {
+      posthogCapture('sync_completed', {
         sync_outcome: result.ok ? 'success' : 'partial_failure',
         pushed_count: result.pushed,
         pulled_count: result.pulled,

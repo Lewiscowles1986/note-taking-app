@@ -25,27 +25,30 @@ subsets are listed in [.github/stryker-shards.json](../../../.github/stryker-sha
 Shard 2 currently includes `src/lib/oidcAuth.ts` — the identification code —
 so its mutants are exercised in that shard.
 
-`src/lib/posthog.ts` and `src/lib/posthogLogs.ts` are **not** in any shard.
-Consequences:
+`src/lib/posthog.ts` (the shim), `src/lib/posthogSdk.ts` (the loader), and
+`src/lib/posthogLogs.ts` are **not** in any shard. Consequences:
 
 - These files get no mutation score; surviving mutants there are invisible.
 - Their behaviour is still exercised indirectly: shard dry runs execute the
   whole test suite, and any test importing a component that calls
-  `posthog.capture` runs the real module.
+  `posthogCapture` runs the shim.
 
-When you assume the workflow covers a change to the two unmutated files,
+When you assume the workflow covers a change to these unmutated files,
 check the shards first.
 
 ## What to do when you change analytics code
 
 - **Changed `src/lib/oidcAuth.ts`** — mutation results for it appear in the
   shard 2 report after the next scheduled or manual run. Nothing to wire up.
-- **Changed `src/lib/posthog.ts` or `src/lib/posthogLogs.ts` and want them
-  mutated** — edit `.github/stryker-shards.json` so a shard's `--mutate`
-  glob includes the file. Each shard pays its own full-suite dry run, so
-  prefer adding a file to an existing similar shard over creating a new one.
-  The merge step (`scripts/merge-mutation-reports.mjs`) combines shard
-  reports, so no other workflow change is needed.
+- **Changed `src/lib/posthog.ts`, `src/lib/posthogSdk.ts`, or
+  `src/lib/posthogLogs.ts` and want them mutated** — edit
+  `.github/stryker-shards.json` so a shard's `--mutate` glob includes the
+  file. Each shard pays its own full-suite dry run, so prefer adding a file
+  to an existing similar shard over creating a new one. The merge step
+  (`scripts/merge-mutation-reports.mjs`) combines shard reports, so no other
+  workflow change is needed. Note `posthogSdk.ts` loads the real SDK only
+  when imported with a key set; its mutants mostly guard the dynamic import
+  and would report low without that context.
 - **Added unit tests importing analytics code** — they run in every shard's
   dry run and in the `report` job's `npm run test:coverage`. If the tests
   make network calls to the analytics host, they belong behind the normal

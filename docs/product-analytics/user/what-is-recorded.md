@@ -36,8 +36,9 @@ tokens, and session data are never sent.
 
 Sent data goes to PostHog, an analytics service, from your browser as you
 use the app. The version you run decides whether this happens at all: the
-people who build or host your copy of the app enable it by configuration.
-If it is not enabled, nothing is sent.
+people who build or host your copy of the app enable it by configuration,
+and a copy built without that setting contains no analytics code. If it is
+not enabled, nothing is sent and nothing is stored.
 
 When you sign in to a sync server, your counted actions are linked to a
 sign-in identifier so the app can tell accounts apart. The identifier is
@@ -51,11 +52,12 @@ are counted without a name again.
 - Your notes and their contents behave exactly as before. Nothing about how
   notes are stored, encrypted, or synced is affected; the counted actions
   are separate from note syncing.
-- If you prefer that no usage data is sent, say so to whoever provides your
-  copy of the app — they can turn it off by not setting two configuration
-  values.
 - Blocking the analytics service in your browser or network also stops the
-  data from being sent. The app keeps working without it.
+  data from being sent, with no error or warning shown. The app keeps
+  working without it.
+- If you prefer that no usage data is sent, say so to whoever provides your
+  copy of the app — they can produce a build without it by leaving one
+  configuration value unset.
 
 ## Common questions
 

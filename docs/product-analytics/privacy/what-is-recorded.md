@@ -25,10 +25,12 @@ documents in the [index](../README.md).
 ## Where data goes
 
 Events go to the PostHog analytics service at the host configured in
-`VITE_POSTHOG_HOST` (the example config points at PostHog's EU region).
-The project token and host ship in the app bundle and are not secret. If the
-variables are unset, the analytics module is inert in a production build: the
-app runs, and nothing is sent.
+`VITE_POSTHOG_HOST`, falling back to PostHog's EU region
+(`https://eu.i.posthog.com`) when unset. The project token and host ship in
+the app bundle and are not secret. If the build has no project key, the
+analytics calls compile away at build time and the app contains no
+analytics code — not event names, not the SDK: nothing is sent and the
+code to send it does not exist in the bundle.
 
 ## What is sent: product events
 
@@ -77,12 +79,14 @@ sent.
 
 ## Timing and storage
 
-Events are sent from the browser as actions happen. The SDK persists the
-identity (and its own device ID) in browser storage between page loads, so
-events after a reload keep the signed-in attribution until sign-out. Note
-data itself is synced separately by the app's sync feature under its own
-rules — analytics never carries note payloads; the sync counts describe
-numbers only.
+Events are sent from the browser as actions happen; actions raised before
+the analytics loader finishes are held briefly in memory and sent once it
+does (or dropped if it never loads — for example when the loader is blocked
+by a browser extension or network rule). The SDK persists the identity (and
+its own device ID) in browser storage between page loads, so events after a
+reload keep the signed-in attribution until sign-out. Note data itself is
+synced separately by the app's sync feature under its own rules — analytics
+never carries note payloads; the sync counts describe numbers only.
 
 ## Review notes
 
@@ -90,7 +94,8 @@ numbers only.
 - `sync_settings_saved` sends whether a manual token exists
   (`has_manual_token`) — a boolean, not the token.
 - If your jurisdiction requires consent handling before analytics runs, the
-  current code has no consent gate: setting the two environment variables is
-  what turns analytics on. That decision is visible in
-  [src/lib/posthog.ts](../../../src/lib/posthog.ts) and worth recording in
-  your review.
+  current code has no consent gate: the presence of `VITE_POSTHOG_KEY` at
+  build time is what turns analytics on, and builds without it ship no
+  analytics code at all. That decision is visible in
+  [vite.config.ts](../../../vite.config.ts) and worth recording in your
+  review.

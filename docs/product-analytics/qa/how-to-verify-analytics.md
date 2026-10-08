@@ -50,7 +50,9 @@ same content as this page references).
 
 Every analytics message now arrives at your terminal with the full request
 path, and the app itself keeps working (the collector doesn't speak the
-analytics API — that is fine for observation).
+analytics API — that is fine for observation). Events raised before the SDK
+finishes loading replay from an in-memory queue, so the very first actions of
+a run still arrive.
 
 Alternative: leave the real host configured and watch the browser DevTools
 **Network** tab filtered to the analytics host. This also shows the request
@@ -63,6 +65,10 @@ bodies (JSON payloads) without any terminal.
 
 Each row: perform the action in the app, then confirm the collector output
 (or network tab) shows the event name and the listed properties.
+
+Prerequisite: a build WITH a key (`.env` present — the QA build). In a
+keyless build every call below compiles away, so NOTHING is sent and there
+is nothing to observe; check that case in the off-case section instead.
 
 | # | Do this in the app | Expect |
 |---|---|---|
@@ -116,19 +122,24 @@ Also verify persistence: sign in, reload the page, and confirm
 ## The off case
 
 1. Rename `.env` to `.env.disabled` and restart `npm run dev`.
-2. Expect the app to throw at startup naming the missing variable
-   (`VITE_POSTHOG_KEY` or `VITE_POSTHOG_HOST`) — this is the documented
-   development behaviour, not a bug.
-3. Add a dummy `VITE_POSTHOG_KEY` back (still no host). Expect a throw naming
-   `VITE_POSTHOG_HOST`.
-4. For the production-shaped case: move `.env` aside, run `npm run build`,
-   then `npm run preview` with `.env` still moved aside. Expect NO startup
-   error and NO requests to any host: analytics off, app on.
+2. Expect NO startup error and NO requests to any host: without a key the
+   build stubs analytics out entirely (in dev the shim resolves without a
+   key and stays inert). The app runs normally.
+3. Stronger check (keyless production build): move `.env` aside, replace
+   `VITE_POSTHOG_KEY` with any dummy value, run `npm run build`, then
+   `npm run preview` WITHOUT `.env` (so the key isn't present at load — the
+   shim then stays inert at runtime). Expect a working app and no analytics
+   traffic.
+4. Strongest check (no analytics code at all): with `.env` moved aside, run
+   a build WITHOUT any `VITE_POSTHOG_*` values in the environment. Expect
+   the built assets to contain no event names, no posthog module, and no
+   analytics calls — e.g. `grep -rl "note_created" dist/assets` returns
+   nothing. The call statements themselves compile away in this build.
 5. Restore `.env`.
 
-> Build mode (`import.meta.env.DEV`) decides throw-vs-silent. The throw must
-> appear only in dev; silently staying off is only acceptable in a
-> production build.
+> Behaviour does not differ between dev and production modes: the throw the
+> earlier implementation had is gone. If a missing-key build ever throws or
+> logs user-visible errors, that is a regression.
 
 ## Negative checks (privacy)
 

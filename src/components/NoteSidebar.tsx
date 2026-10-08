@@ -20,7 +20,7 @@ import { importFiles } from '@/lib/import';
 import { runInFlight } from '@/lib/inFlight';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import posthog from '@/lib/posthog';
+import { capture as posthogCapture } from '@/lib/posthog';
 
 interface NoteSidebarProps {
   notes: Note[];
@@ -82,7 +82,7 @@ export default function NoteSidebar({
         if (mode === 'html') await exportToHtml(active);
         else await exportToPdf(active);
       });
-      posthog.capture('notes_exported', { export_format: mode, note_count: 1 });
+      posthogCapture('notes_exported', { export_format: mode, note_count: 1 });
       toast.success(`Exported as ${mode.toUpperCase()}`);
     } catch (err) {
       if (!(err instanceof Error && err.name === 'CancelledError')) {
@@ -94,7 +94,7 @@ export default function NoteSidebar({
   const handleExportZip = async () => {
     try {
       await runInFlight({ label: 'Exporting ZIP', group: 'export' }, () => exportToZip(notes));
-      posthog.capture('notes_exported', { export_format: 'zip', note_count: notes.length });
+      posthogCapture('notes_exported', { export_format: 'zip', note_count: notes.length });
       toast.success('Exported all notes as ZIP');
     } catch (err) {
       if (!(err instanceof Error && err.name === 'CancelledError')) {
@@ -111,7 +111,7 @@ export default function NoteSidebar({
         importFiles(files),
       );
       if (result.imported > 0) {
-        posthog.capture('notes_imported', { note_count: result.imported });
+        posthogCapture('notes_imported', { note_count: result.imported });
         toast.success(`Imported ${result.imported} note${result.imported !== 1 ? 's' : ''}`);
         onRefresh();
       }
@@ -226,7 +226,7 @@ export default function NoteSidebar({
             onClick={() => {
               void runInFlight({ label: 'Backing up database', group: 'export' }, () => exportDatabase())
                 .then(() => {
-                  posthog.capture('notes_exported', { export_format: 'database_backup', note_count: notes.length });
+                  posthogCapture('notes_exported', { export_format: 'database_backup', note_count: notes.length });
                   toast.success('Database backup downloaded');
                 })
                 .catch((err: unknown) => {

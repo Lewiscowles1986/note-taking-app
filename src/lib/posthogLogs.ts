@@ -1,4 +1,4 @@
-import posthog from '@/lib/posthog';
+import { logger as posthogLogger } from '@/lib/posthog';
 
 interface SyncLogOutcome {
   ok: boolean;
@@ -21,12 +21,12 @@ export function logSyncOutcome(result: SyncLogOutcome): void {
   };
 
   if (result.ok) {
-    posthog.logger.info('sync round completed', attributes);
+    posthogLogger.info('sync round completed', attributes);
   } else {
-    posthog.logger.warn('sync round completed with problems', attributes);
+    posthogLogger.warn('sync round completed with problems', attributes);
   }
 }
 
 export function logSyncFailure(): void {
-  posthog.logger.error('sync round failed', { event: 'sync.round.failed' });
+  posthogLogger.error('sync round failed', { event: 'sync.round.failed' });
 }

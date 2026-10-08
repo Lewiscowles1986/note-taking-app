@@ -26,19 +26,21 @@ Keep these when you edit, or events will be misattributed:
    `oidc:<issuer>:<subject>`. The issuer prefix stops two unrelated providers
    that happen to issue the same `sub` claim from being merged into one
    person. Keep `requireIssuer` (it normalises the issuer URL) in the ID.
-2. **Reset before re-identify when switching users.** If the SDK already
-   holds a different identity, `identifyOidcUser` calls `posthog.reset()`
-   first, or one user's events would be stitched onto another's.
-3. **Reset only what you recognise.** `resetOidcUser` compares the current
-   distinct ID with the ID this server's session produced and resets only on
-   a match — signing out of server A must not discard the identity attached
-   while using server B's session.
-4. **Both are gated and non-fatal.** Each function returns early when
-   `VITE_POSTHOG_KEY`/`VITE_POSTHOG_HOST` are unset or there is no `sub`
-   claim, and each is `.catch(() => undefined)` at its call site — an
-   analytics failure must not fail a sign-in or a sign-out.
-5. **Identity survives page reloads.** The SDK persists the identity, so
-   identify belongs at the login boundary, not per event or per page load.
+2. **Reset before re-identify when switching users.** The shim's
+   `identify()` does this itself (comparing the SDK's persisted user id),
+   so callers should not add their own reset logic.
+3. **Reset only what you recognise.** `resetOidcUser` sets state when THIS
+   server's login applied an identity, and resets only if so — signing out
+   of server A must not discard the identity attached while using server B's
+   session. The `oidcDistinctIdApplied` tracker and `posthog.has_identity()`
+   gate carry this; keep both.
+4. **Neither can fail user flows.** Calls are synchronous fire-and-forget
+   through the shim — an analytics failure cannot break a sign-in or
+   sign-out, and there is no `catch` to add at call sites. Builds without
+   `VITE_POSTHOG_KEY` ship no-op stubs, making these calls free there.
+5. **Identity survives page reloads.** The SDK persists the identity once
+   applied, so identify belongs at the login boundary, not per event or per
+   page load.
 
 ## Making a change
 
@@ -49,10 +51,11 @@ Keep these when you edit, or events will be misattributed:
    spread so absent claims become absent properties. Add or remove fields the
    same way, and clear any new field with the privacy team
    ([what the app records](../privacy/what-is-recorded.md)).
-3. Verify: sign in with identity enabled and check `get_distinct_id()` in the
-   console matches `oidc:<issuer>:<sub>`; sign out and check it returns to an
-   anonymous ID; sign in as a different user on the same server and check no
-   pre-sign-in events from the second user carry the first user's ID.
+3. Verify: sign in with analytics enabled and check the distinct ID matches
+   `oidc:<issuer>:<sub>` (in DevTools: `posthog.get_distinct_id()`);
+   sign out and check it returns to an anonymous ID; sign in as a different
+   user on the same server and check no pre-sign-in events from the second
+   user carry the first user's ID.
 
 ## With the PostHog wizard
 
@@ -60,7 +63,8 @@ The wizard can generate identify/reset wiring, but the current version was
 written by hand to satisfy the scoped-ID and switch-user rules above. If you
 use the wizard here, re-check rules 1–3 against its output before staging —
 its default examples identify with raw emails or bare user IDs, which would
-violate rule 1.
+violate rule 1, and call the SDK directly rather than through the shim,
+which would put the SDK back in the eager bundle.
 
 ## Checklist before you commit
 

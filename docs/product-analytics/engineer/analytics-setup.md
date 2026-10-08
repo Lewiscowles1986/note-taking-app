@@ -5,6 +5,9 @@ reading-time: ~4 min
 staged-files:
   - package.json
   - src/lib/posthog.ts
+  - src/lib/posthogSdk.ts
+  - src/build-stubs/posthog.ts
+  - vite.config.ts
   - src/main.tsx
 last-reviewed: 2026-10-08
 ---
@@ -18,9 +21,17 @@ in the [index](../README.md).
 
 ## What was added
 
-One dependency (`posthog-js`) and one module, [src/lib/posthog.ts](../../../src/lib/posthog.ts),
-imported from [src/main.tsx](../../../src/main.tsx) so it runs once at startup,
-before the app renders.
+One dependency (`posthog-js`), a dependency-free shim
+([src/lib/posthog.ts](../../../src/lib/posthog.ts)) that every component and
+hook imports, and the SDK loader
+([src/lib/posthogSdk.ts](../../../src/lib/posthogSdk.ts)) that dynamically
+imports `posthog-js` only when a project key exists. `src/main.tsx` no longer
+imports analytics: the SDK's bytes live in a lazy chunk fetched at first use,
+not in the eager entry bundle the app boots from.
+
+Calls are fire-and-forget ("sidecar"): raising an event never awaits network
+activity, and a blocked or unreachable analytics host produces no user-visible
+error and no change in app behaviour.
 
 ## Configuration sources
 
@@ -30,7 +41,7 @@ prefixed with `VITE_` to browser code, which is why the names start that way:
 | Variable | Purpose |
 |---|---|
 | `VITE_POSTHOG_KEY` | The project token that identifies where events go |
-| `VITE_POSTHOG_HOST` | The server that receives events (for example `https://eu.i.posthog.com`) |
+| `VITE_POSTHOG_HOST` | Optional. The server that receives events; absence falls back to the EU region (`https://eu.i.posthog.com`) |
 
 Both values are public by design: browser analytics keys ship inside the
 JavaScript bundle and are visible to anyone who loads the app. The example
@@ -38,21 +49,36 @@ file [.env.example](../../../.env.example) documents them;
 [.gitignore](../../../.gitignore) lists `.env` so real values stay uncommitted.
 Package-lock and package.json changes add only the `posthog-js` dependency.
 
-## The three start-up cases
+## The three build-time cases
 
-On load, the module takes exactly one of three paths:
+[vite.config.ts](../../../vite.config.ts) reads the key via `loadEnv` at
+config load, and takes exactly one of three paths:
 
-1. **Both variables set —** analytics starts. Events and errors go to the
-   host from `VITE_POSTHOG_HOST`.
-2. **A variable missing during development —** the module throws. The error
-   names the missing variable and disappears once the value is set. This
-   converts a silent failure (events quietly not sent) into a loud one.
-3. **A variable missing in a production build —** the module does nothing.
-   The app runs with analytics off rather than throwing for every visitor.
+1. **Key set —** analytics ships. The shim dynamically imports the SDK,
+   which sits in its own lazy chunk (~330 KB raw / ~105 KB gzip at time of
+   writing) fetched on first use; the entry bundle carries only the shim
+   (~1 KB). Events raised before the SDK finishes loading replay from an
+   in-memory queue; if the load fails or is blocked, queued items drop
+   silently.
+2. **Key absent —** two eliminations apply, so no analytics code ships at
+   all:
+   - `@/lib/posthog` is aliased to a no-op stub
+     ([src/build-stubs/posthog.ts](../../../src/build-stubs/posthog.ts)).
+   - The `drop-analytics-calls` plugin (in the same config) removes the call
+     statements themselves — `posthogCapture(...)`, the log-helper bodies,
+     and the identity calls in `oidcAuth.ts` — and prunes now-unused
+     imports; what remains is tree-shaken away. A keyless bundle contains no
+     event names, no shim, and no SDK (CI and no-sync builds take this
+     path).
+3. **Key set, host absent —** analytics ships and targets the EU region via
+   the fallback in the loader; no stub, no error.
 
-## What the init call turns on
+There is no runtime throw in any case, including development: a dev server
+without a key simply runs with analytics off.
 
-The single `posthog.init` call in the staged module sets:
+## What the SDK's init turns on
+
+The single `posthog.init` call in the loader sets:
 
 - `defaults: "2026-05-30"` — a dated preset that pins posthog-js
   behaviour to that release's defaults instead of tracking upstream defaults
@@ -66,12 +92,12 @@ The single `posthog.init` call in the staged module sets:
 
 ## Where events are raised
 
-Analytics calls live in three forms:
+Analytics calls live in three forms, all going through the shim's exports:
 
-- `posthog.capture(...)` calls inside components and pages — one call per
+- `posthogCapture(...)` calls inside components and pages — one call per
   user action worth counting (see
   [how-to-add-analytics-event](how-to-add-analytics-event.md)).
-- `posthog.logger...` calls in [src/lib/posthogLogs.ts](../../../src/lib/posthogLogs.ts)
+- `posthogLogger...` calls in [src/lib/posthogLogs.ts](../../../src/lib/posthogLogs.ts)
   — structured log lines for sync rounds (see
   [how-to-add-log-event](how-to-add-log-event.md)).
 - Identity handling in [src/lib/oidcAuth.ts](../../../src/lib/oidcAuth.ts) —
@@ -79,4 +105,4 @@ Analytics calls live in three forms:
   [how-to-manage-identification](how-to-manage-identification.md)).
 
 The SDK persists an identity between page loads, so events after a sign-in
-keep the signed-in attribution until sign-out.
+keep the signed-in attribution until sign-out removes it.

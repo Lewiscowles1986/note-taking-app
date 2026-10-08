@@ -32,7 +32,7 @@ import {
 import { resolveAuthToken } from '@/lib/authToken';
 import { loadOidcSessionFor, type OidcSession } from '@/lib/oidcStorage';
 import SyncNotifications from '@/components/SyncNotifications';
-import posthog from '@/lib/posthog';
+import { capture as posthogCapture } from '@/lib/posthog';
 import { logSyncFailure, logSyncOutcome } from '@/lib/posthogLogs';
 
 interface ServersPageProps {
@@ -102,7 +102,7 @@ export default function ServersPage({ onBack, onClose, onOpenServerSettings, onS
       setAddUrl('');
       setAddLabel('');
       reload();
-      posthog.capture('sync_server_added');
+      posthogCapture('sync_server_added');
       toast.success(`Server added — ${record.label ?? record.id}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not add the server');
@@ -119,7 +119,7 @@ export default function ServersPage({ onBack, onClose, onOpenServerSettings, onS
         { label: `Syncing server`, group: 'sync' },
         async () => runSync({ serverId }),
       );
-      posthog.capture('sync_completed', {
+      posthogCapture('sync_completed', {
         sync_outcome: result.ok ? 'success' : 'partial_failure',
         pushed_count: result.pushed,
         pulled_count: result.pulled,
@@ -412,7 +412,7 @@ export default function ServersPage({ onBack, onClose, onOpenServerSettings, onS
                             className="h-7"
                             onClick={() => {
                               removeServer(server.id);
-                              posthog.capture('sync_server_removed');
+                              posthogCapture('sync_server_removed');
                               setConfirmRemoveId(null);
                               reload();
                               toast.success('Server removed');

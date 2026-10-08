@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { type Note, type NoteAttachment, MAX_INLINE_SIZE, fileToDataUrl, detectContentFeatures } from '@/lib/db';
 import SlashCommandMenu, { type SlashCommand } from './SlashCommandMenu';
 import { Paperclip } from 'lucide-react';
-import posthog from '@/lib/posthog';
+import { capture as posthogCapture } from '@/lib/posthog';
 
 interface NoteEditorProps {
   note: Note;
@@ -157,7 +157,7 @@ export default function NoteEditor({ note, onSave }: NoteEditorProps) {
         attachments: [...note.attachments, att],
         ...detectContentFeatures(newContent),
       });
-      posthog.capture('attachment_added', { attachment_type: 'image' });
+      posthogCapture('attachment_added', { attachment_type: 'image' });
 
       setTimeout(() => {
         if (ta) {
@@ -204,7 +204,7 @@ export default function NoteEditor({ note, onSave }: NoteEditorProps) {
         };
         insertAtCursor(`[📎 ${file.name}](${dataUrl})`);
         onSave({ attachments: [...note.attachments, att] });
-        posthog.capture('attachment_added', { attachment_type: 'file' });
+        posthogCapture('attachment_added', { attachment_type: 'file' });
       } else {
         const url = prompt(`"${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Enter an external URL for this file:`);
         if (url) {
