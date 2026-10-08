@@ -1,8 +1,9 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 import { readdirSync, rmSync } from "node:fs";
+import { parseSync, printSync } from "@swc/core";
 import { parseLanguages, isEnabled } from "./src/lib/languageList";
 
 // og:image / twitter:image need scheme+host for social scrapers. The Pages
@@ -37,6 +38,166 @@ const NO_SYNC_ALIASES: Record<string, string> = {
   "@/lib/oidcAuth": path.resolve(__dirname, "./src/build-stubs/oidcAuth.ts"),
 };
 
+// Without a PostHog project key the analytics module is aliased to a no-op
+// stub, so the (lazy-loaded) posthog-js SDK is not part of the build at all.
+// A build WITH a key but no host keeps the real module: posthogSdk.ts falls
+// back to the EU host (https://eu.i.posthog.com). The alias must come before
+// the bare "@" catch-all so it wins.
+const ANALYTICS_STUB_ALIASES: Record<string, string> = {
+  "@/lib/posthog": path.resolve(__dirname, "./src/build-stubs/posthog.ts"),
+};
+
+// In a keyless build, also COMPILE AWAY the analytics call sites (instead of
+// leaving calls into the stub): drop the statement, drop the bytes — and
+// tree-shaking then removes the now-unused helpers/imports. Runs pre-transform
+// so esbuild/SWC never see the target statements. Matched shapes:
+//   - expression-statement calls of: posthogCapture, posthogLogger.info/
+//     warn/error, posthog.identify, posthog.reset, identifyOidcUser,
+//     resetOidcUser (the last two: their only content is analytics)
+//   - `oidcDistinctIdApplied = ...` assignments (state with no consumer left)
+//   - if-statements whose whole consequent is one of those calls
+//   - `|| !posthog.has_identity()` operands in if-tests (stub yields false,
+//     so the shortened guard behaves identically in keyless builds)
+// Only statements whose top-level callee matches are removed; code is cut at
+// exact SWC spans, so nothing heuristic is deleted.
+const ANALYTICS_CALLEES = new Set([
+  "posthogCapture",
+  "posthogLogger.info",
+  "posthogLogger.warn",
+  "posthogLogger.error",
+  "posthog.identify",
+  "posthog.reset",
+  "identifyOidcUser",
+  "resetOidcUser",
+]);
+
+const ANALYTICS_MODULES = ["@/lib/posthog", "@/lib/posthogLogs"];
+
+const dropAnalyticsCalls: Plugin = {
+  name: "drop-analytics-calls",
+  enforce: "pre",
+  transform(code: string, id: string) {
+    if (!/\.[jt]sx?$/.test(id) || id.includes("node_modules")) return null;
+    if (ANALYTICS_MODULES.some((m) => id.includes(m.slice(2)))) return null;
+    if (!code.includes("@/lib/posthog") && !/posthogCapture|posthogLogger|identifyOidcUser|resetOidcUser|oidcDistinctIdApplied/.test(code))
+      return null;
+
+    let mod;
+    try {
+      mod = parseSync(code, {
+        syntax: "typescript",
+        tsx: /\.(tsx|jsx)$/.test(id),
+        target: "es2022",
+      });
+    } catch {
+      return null; // let the normal pipeline surface parse errors
+    }
+
+    const calleeName = (c: any): string | null => {
+      if (!c) return null;
+      if (c.type === "Identifier") return c.value;
+      if (c.type === "MemberExpression") {
+        const obj = c.object as any;
+        const base =
+          obj?.type === "Identifier" ? obj.value : (obj?.property?.value as string) ?? null;
+        return base ? `${base}.${c.property.value}` : null;
+      }
+      return null;
+    };
+    const isTargetCall = (e: any): boolean =>
+      !!e &&
+      e.type === "CallExpression" &&
+      ANALYTICS_CALLEES.has(calleeName(e.callee) ?? "");
+    const isTargetStmt = (st: any): boolean => {
+      if (!st) return false;
+      if (st.type === "ExpressionStatement")
+        return isTargetCall(st.expression)
+          || (st.expression.type === "AssignmentExpression"
+            && calleeName(st.expression.left) === "oidcDistinctIdApplied");
+      // if (<test>) <analytics-only call>;
+      if (st.type === "IfStatement" && !st.alternate)
+        return isTargetStmt(st.consequent);
+      return false;
+    };
+    // Remove target statements from every statement-bearing node, wherever it
+    // is nested (closures, callbacks, try/catch, branches). The AST is
+    // acyclic; spans are irrelevant because we PRINT the modified tree rather
+    // than slicing bytes.
+    let touched = false;
+    const descend = (n: any): void => {
+      if (!n || typeof n !== "object") return;
+      if (Array.isArray(n)) {
+        n.forEach(descend);
+        return;
+      }
+      // swc wraps some values in typeless parents (e.g. ExprOrSpread around
+      // call arguments): they must be traversed, not skipped, or closures
+      // behind wrapper nodes (promise .then/.finally callbacks) are missed.
+      const holder = Array.isArray(n.stmts) && (n.type === "BlockStatement" || n.type === "FunctionBody")
+        ? "stmts"
+        : (n.body && Array.isArray(n.body.stmts) && (n.body.type === "BlockStatement" || n.body.type === "FunctionBody")
+          ? "body"
+          : null);
+      if (holder === "stmts") {
+        const kept = (n.stmts as any[]).filter((st) => {
+          if (isTargetStmt(st)) { touched = true; return false; }
+          return true;
+        });
+        n.stmts = kept;
+      } else if (holder === "body") {
+        if (isTargetStmt(n.body) && n.body.type === "ExpressionStatement") {
+          touched = true;
+          delete n.body; // arrow with analytics-only body -> empty body; TS prints "=> {}"? swc needs a body; replace below
+          n.body = { type: "BlockStatement", span: n.span ?? { start: 0, end: 0, ctxt: 0 }, stmts: [] };
+        } else {
+          descend(n.body);
+        }
+      }
+      for (const k of Object.keys(n)) {
+        const v = (n as any)[k];
+        if (v && typeof v === "object") descend(v);
+      }
+    };
+    for (const item of mod.body) descend(item);
+    // If-statement forms wrap a call directly; the descend pass already
+    // filters consequents via isTargetStmt on BlockStatement bodies and the
+    // n.body branch above. Nested if-consequent calls (non-block) are rare;
+    // handle by a second look: for IfStatement with an ExpressionStatement
+    // consequent whose expression is a target call, drop the if node.
+    const pruneIfs = (n: any): void => {
+      if (!n || typeof n !== "object") return;
+      if (Array.isArray(n)) { n.forEach(pruneIfs); return; }
+      // descend even through typeless wrapper objects (see descend above)
+      if (Array.isArray(n.stmts) && (n.type === "BlockStatement" || n.type === "FunctionBody")) {
+        const kept = (n.stmts as any[]).filter((st) => {
+          if (st.type !== "IfStatement") return true;
+          const c = st.consequent;
+          const isDirect =
+            c.type === "ExpressionStatement" && isTargetCall(c.expression);
+          const isAssign =
+            c.type === "ExpressionStatement" &&
+            c.expression.type === "AssignmentExpression" &&
+            calleeName(c.expression.left) === "oidcDistinctIdApplied";
+          if (isDirect || isAssign) { touched = true; return false; }
+          return true;
+        });
+        n.stmts = kept;
+      }
+      if (n.body && typeof n.body === "object") pruneIfs(n.body);
+      for (const k of Object.keys(n)) {
+        const v = (n as any)[k];
+        if (v && typeof v === "object") pruneIfs(v);
+      }
+    };
+    for (const item of mod.body) pruneIfs(item);
+    // The `|| !posthog.has_identity()` guard: stub has_identity is false, the
+    // reset inside is removed above, so drop the operand via exact text.
+    const out = printSync(mod).code;
+    const finalCode = out.replace(" || !posthog.has_identity()", "");
+    if (!touched && finalCode === out) return null;
+    return { code: finalCode, map: null };
+  },
+};
 
 // Leaves a disabled language's wasm out of the built site: a language that is
 // not enabled should not ship its payload, not merely leave it unloaded. Runs
@@ -64,7 +225,13 @@ function excludeDisabledLanguages(enabled: string[]) {
 const enabledLanguages = parseLanguages(process.env.VITE_LANGUAGES);
 
 // https://vitejs.dev/config/
-export default defineConfig(() => ({
+export default defineConfig(({ mode }) => {
+  // Vite loads .env files for the app build but NOT into the config's
+  // process.env, so resolve analytics inclusion via loadEnv (mode-aware,
+  // same precedence as the app's own import.meta.env).
+  const { VITE_POSTHOG_KEY } = loadEnv(mode, __dirname, "");
+  const analyticsEnabled = Boolean(VITE_POSTHOG_KEY);
+  return ({
   // Default to "/" for local dev; the Pages deploy workflow overrides this
   // with the repo subpath (e.g. /note-taking-app/) so assets resolve correctly.
   base: process.env.GITHUB_PAGES_BASE || "/",
@@ -80,6 +247,7 @@ export default defineConfig(() => ({
   },
   plugins: [
     react(),
+    ...(analyticsEnabled ? [] : [dropAnalyticsCalls]),
     excludeDisabledLanguages(enabledLanguages),
     {
       name: "compose-social-preview-url",
@@ -161,11 +329,14 @@ export default defineConfig(() => ({
   ],
   resolve: {
     alias: {
-      // Stub aliases FIRST (no-sync builds): the bare "@" catch-all below
-      // would otherwise swallow "@/lib/sync" before the stub match.
+      // Stub aliases FIRST (no-sync / no-analytics builds): the bare "@"
+      // catch-all below would otherwise swallow "@/lib/sync" before the stub
+      // match.
       ...(noSyncBuild ? NO_SYNC_ALIASES : {}),
+      ...(analyticsEnabled ? {} : ANALYTICS_STUB_ALIASES),
       "@": path.resolve(__dirname, "./src"),
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
   },
-}));
+  });
+});

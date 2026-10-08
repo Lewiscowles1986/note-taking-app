@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { getRunner, hasRunner, getRunnerVersions, getDefaultVersion, getRunnerAvailability, getRunnerWarm } from '@/lib/codeRunners';
 import { parseCodeFrontmatter } from '@/lib/codeBlockFrontmatter';
 import { looksLikeHtml } from '@/lib/htmlOutput';
+import { capture as posthogCapture } from '@/lib/posthog';
 
 // Importing this pulls in every language runner (JS, PHP, and the wasm-backed
 // ones), which register themselves on import. It lives in this chunk so the
@@ -87,6 +88,7 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
         if (!cancelled) {
           setHtml(result);
           setLoading(false);
+          posthogCapture('code_block_rendered', { language, runnable: hasRunner(language) });
         }
       } catch {
         const result = await codeToHtml(code, {
@@ -96,6 +98,7 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
         if (!cancelled) {
           setHtml(result);
           setLoading(false);
+          posthogCapture('code_block_rendered', { language, runnable: hasRunner(language) });
         }
       }
     });
@@ -121,14 +124,30 @@ export default function CodeBlock({ code: rawCode, language }: CodeBlockProps) {
     const runner = getRunner(language);
     if (!runner) return;
 
+    posthogCapture('code_run_requested', {
+      language,
+      code_length: code.length,
+      runner_version: version ?? getDefaultVersion(language),
+    });
+
     setRunning(true);
     setOutput(null);
 
     try {
       const result = await runner(code, { version });
       setOutput({ type: 'success', text: result || '(no output)' });
+      posthogCapture('code_run_completed', {
+        language,
+        outcome: 'success',
+        runner_version: version ?? getDefaultVersion(language),
+      });
     } catch (err) {
       setOutput({ type: 'error', text: err instanceof Error ? err.message : String(err) });
+      posthogCapture('code_run_completed', {
+        language,
+        outcome: 'error',
+        runner_version: version ?? getDefaultVersion(language),
+      });
     } finally {
       setRunning(false);
     }

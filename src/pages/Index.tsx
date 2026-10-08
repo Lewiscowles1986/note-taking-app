@@ -27,6 +27,7 @@ import type { StoredKeyPair } from '@/lib/crypto';
 import { runInFlight } from '@/lib/inFlight';
 import { Eye, Pencil, PanelLeftClose, PanelLeftOpen, Calendar, Settings, Lock, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { capture as posthogCapture } from '@/lib/posthog';
 
 export default function Index() {
   const isMobile = useIsMobile();
@@ -83,6 +84,7 @@ export default function Index() {
 
   const handleNewNote = useCallback(async () => {
     await addNote();
+    posthogCapture('note_created');
     setMode('edit');
     setCalendarMode(false);
     // On mobile, drop straight into the new note's editor (close the list sheet).
@@ -173,6 +175,7 @@ export default function Index() {
       delete next[activeNoteId];
       return next;
     });
+    posthogCapture('note_encrypted', { encryption_method: method });
     toast.success('Note encrypted');
   }, [activeNote, activeNoteId, decryptedCache, encryption, saveNote]);
 
@@ -195,6 +198,7 @@ export default function Index() {
       delete next[activeNoteId];
       return next;
     });
+    posthogCapture('note_decrypted');
     toast.success('Note decrypted');
   }, [activeNote, activeNoteId, encryption, saveNote]);
 
