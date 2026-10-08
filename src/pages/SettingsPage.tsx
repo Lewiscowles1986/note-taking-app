@@ -48,6 +48,8 @@ import {
 import { getAllCategories } from '@/lib/db';
 import SyncNotifications from '@/components/SyncNotifications';
 import { toast } from 'sonner';
+import posthog from '@/lib/posthog';
+import { logSyncFailure, logSyncOutcome } from '@/lib/posthogLogs';
 
 interface SettingsPageProps {
   /** The server this page edits — REQUIRED under multi-server sync. */
@@ -207,6 +209,13 @@ export default function SettingsPage({ serverId, onBack, onSynced }: SettingsPag
       scope: oidcConfig.scope,
     });
     setOidcConfig(loadOidcConfigFor(serverId));
+    posthog.capture('sync_settings_saved', {
+      auto_sync_enabled: autoSync,
+      sync_scope: syncScope,
+      selected_category_count: syncedCategories.length,
+      excluded_category_count: excludedCategories.length,
+      has_manual_token: Boolean(authToken),
+    });
     toast.success('Sync settings saved');
   };
 
@@ -219,6 +228,15 @@ export default function SettingsPage({ serverId, onBack, onSynced }: SettingsPag
       const result = await runInFlight({ label: 'Syncing with server', group: 'sync' }, async () =>
         runSync({ serverId }),
       );
+      posthog.capture('sync_completed', {
+        sync_outcome: result.ok ? 'success' : 'partial_failure',
+        pushed_count: result.pushed,
+        pulled_count: result.pulled,
+        deleted_local_count: result.deletedLocal,
+        deleted_remote_count: result.deletedRemote,
+        error_count: result.errors.length,
+      });
+      logSyncOutcome(result);
       if (result.ok) {
         toast.success(`Sync complete — ${result.summary}`);
       } else {
@@ -229,6 +247,7 @@ export default function SettingsPage({ serverId, onBack, onSynced }: SettingsPag
       onSynced?.();
     } catch (err) {
       if (!(err instanceof Error && err.name === 'CancelledError')) {
+        logSyncFailure();
         toast.error(err instanceof Error ? err.message : 'Sync failed');
       }
     } finally {
