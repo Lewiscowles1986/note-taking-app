@@ -95,7 +95,11 @@ The single `posthog.init` call in the loader sets:
 Analytics calls live in three forms, all going through the shim's exports:
 
 - `posthogCapture(...)` calls inside components and pages — one call per
-  user action worth counting (see
+  user action worth counting: note lifecycle (create/delete/encrypt/
+  decrypt), attachments, export/import, sync server and settings changes,
+  sync completions, and code blocks (rendered with `language` + `runnable`;
+  runs split into requested and completed with `outcome` and
+  `runner_version`) (see
   [how-to-add-analytics-event](how-to-add-analytics-event.md)).
 - `posthogLogger...` calls in [src/lib/posthogLogs.ts](../../../src/lib/posthogLogs.ts)
   — structured log lines for sync rounds (see

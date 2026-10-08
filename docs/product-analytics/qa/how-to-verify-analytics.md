@@ -94,8 +94,13 @@ is nothing to observe; check that case in the off-case section instead.
 | 14 | Sync that ends with conflicts/errors | `sync_outcome` = `partial_failure`, and the log line severity raises to warn |
 | 15 | Cancel a sync/export mid-flight | **no** event (cancelled operations must not count) |
 | 16 | Save sync settings | `sync_settings_saved` with `auto_sync_enabled`, `sync_scope`, `selected_category_count`, `excluded_category_count`, `has_manual_token` |
+| 17 | Open a note containing a runnable code block (e.g. ```js) | `code_block_rendered`, `language` = `js`, `runnable` = true |
+| 18 | Open a note with a non-runnable language block (e.g. ```toml) | `code_block_rendered`, `language` = `toml`, `runnable` = false |
+| 19 | Press Run on a ```python block with a version selected | `code_run_requested` with `language`, `code_length` matching the block's character count, `runner_version` = selected version |
+| 20 | Run completes producing output | `code_run_completed`, `outcome` = `success` |
+| 21 | Run a block that throws (e.g. reference an undefined name where the runtime reports it) | `code_run_completed`, `outcome` = `error` |
 
-## Error reporting (rows 17–18)
+## Error reporting (rows 22–23)
 
 1. Temporarily add a line that throws on page load on an uncommitted branch
    (e.g. in a component's render path), or reproduce any known runtime
@@ -105,7 +110,7 @@ is nothing to observe; check that case in the off-case section instead.
    deliberately not reported.
 3. Revert the temporary throw before committing.
 
-## Identity rows (19–21) — needs a real sign-in server
+## Identity rows (24–26) — needs a real sign-in server
 
 Your collector cannot answer the app's OIDC sign-in, so identity needs a
 running sync server (see [server administration](../../server-admin.md)) or

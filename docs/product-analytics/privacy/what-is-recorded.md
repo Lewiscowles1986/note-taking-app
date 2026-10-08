@@ -45,13 +45,17 @@ text:
 | `attachment_added` | `attachment_type` (`image` / `file`) |
 | `notes_exported` | `export_format`, `note_count` |
 | `notes_imported` | `note_count` |
+| `code_block_rendered` | `language`, `runnable` |
+| `code_run_requested` | `language`, `code_length`, `runner_version` |
+| `code_run_completed` | `language`, `outcome` (`success` / `error`), `runner_version` |
 | `sync_server_added`, `sync_server_removed` | none |
 | `sync_completed` | `sync_outcome`, `pushed_count`, `pulled_count`, `deleted_local_count`, `deleted_remote_count`, `error_count` |
 | `sync_settings_saved` | `auto_sync_enabled`, `sync_scope`, `selected_category_count`, `excluded_category_count`, `has_manual_token` |
 
 Note contents, titles, tags, and category names are not properties of any
 staged event. Counts ("how many notes were exported") are sent; content is
-not.
+not. Code blocks are described by length only: `code_run_requested` sends
+`code_length`, never the code itself.
 
 ## What is sent: log lines
 

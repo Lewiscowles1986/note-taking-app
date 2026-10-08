@@ -130,7 +130,9 @@ const dropAnalyticsCalls: Plugin = {
         n.forEach(descend);
         return;
       }
-      if (typeof n.type !== "string") return;
+      // swc wraps some values in typeless parents (e.g. ExprOrSpread around
+      // call arguments): they must be traversed, not skipped, or closures
+      // behind wrapper nodes (promise .then/.finally callbacks) are missed.
       const holder = Array.isArray(n.stmts) && (n.type === "BlockStatement" || n.type === "FunctionBody")
         ? "stmts"
         : (n.body && Array.isArray(n.body.stmts) && (n.body.type === "BlockStatement" || n.body.type === "FunctionBody")
@@ -165,7 +167,7 @@ const dropAnalyticsCalls: Plugin = {
     const pruneIfs = (n: any): void => {
       if (!n || typeof n !== "object") return;
       if (Array.isArray(n)) { n.forEach(pruneIfs); return; }
-      if (typeof n.type !== "string") return;
+      // descend even through typeless wrapper objects (see descend above)
       if (Array.isArray(n.stmts) && (n.type === "BlockStatement" || n.type === "FunctionBody")) {
         const kept = (n.stmts as any[]).filter((st) => {
           if (st.type !== "IfStatement") return true;

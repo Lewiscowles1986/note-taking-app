@@ -20,7 +20,9 @@ examples: `note_created` ([src/pages/Index.tsx](../../../src/pages/Index.tsx)),
 ([src/components/NoteSidebar.tsx](../../../src/components/NoteSidebar.tsx)),
 `note_deleted` ([src/hooks/useNotes.ts](../../../src/hooks/useNotes.ts)),
 `note_encrypted` / `note_decrypted` ([src/pages/Index.tsx](../../../src/pages/Index.tsx)),
-and the sync events in [src/pages/ServersPage.tsx](../../../src/pages/ServersPage.tsx)
+the rendered/run events in
+[src/components/CodeBlock.tsx](../../../src/components/CodeBlock.tsx), and
+the sync events in [src/pages/ServersPage.tsx](../../../src/pages/ServersPage.tsx)
 and [src/pages/SettingsPage.tsx](../../../src/pages/SettingsPage.tsx).
 
 ## By hand
