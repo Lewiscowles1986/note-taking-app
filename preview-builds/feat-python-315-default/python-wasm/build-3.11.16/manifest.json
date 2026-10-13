@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "version": "3.11.16",
+  "runtime": "cpython",
+  "target": "wasm32-emscripten",
+  "adapter": "emscripten",
+  "invocation": "callMain",
+  "source": {
+    "url": "https://www.python.org/ftp/python/3.11.16/Python-3.11.16.tar.xz",
+    "sha256": "91bcdebfdde239a003ae93738a7fce0f9230fee5c4bc2b86f6e6e8c6f98aabe8"
+  },
+  "emscripten": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 5.0.3 (285c424dfa9e83b03cf8490c65ceadb7c45f28eb)",
+  "features": {
+    "filesystem": "MEMFS",
+    "threads": false,
+    "dynamicLinking": false,
+    "asyncStdin": false,
+    "pip": false,
+    "micropip": false,
+    "modules": {
+      "sqlite3": true,
+      "zlib": true,
+      "bz2": true,
+      "decimal": true,
+      "ssl": false,
+      "ctypes": false,
+      "pip": false,
+      "micropip": false
+    }
+  },
+  "validation": {
+    "node": {
+      "version": "3.11.16 (main, Sep 15 2026, 00:00:00) [Clang 23.0.0git (https:/github.com/llvm/llvm-project e5927fecf8a6ce89e1a4eac5b8",
+      "platform": "emscripten",
+      "modules": {
+        "sqlite3": true,
+        "zlib": true,
+        "bz2": true,
+        "decimal": true,
+        "ssl": false,
+        "ctypes": false,
+        "pip": false,
+        "micropip": false
+      },
+      "checks": [
+        "version",
+        "arithmetic",
+        "json",
+        "math",
+        "regex",
+        "filesystem",
+        "target-sysconfig"
+      ],
+      "stderr": [],
+      "failureExit": 1,
+      "engine": "v22.16.0",
+      "jsStackSwitching": false
+    },
+    "browser": "pending"
+  },
+  "files": {
+    "CPYTHON-LICENSE.txt": {
+      "bytes": 13936,
+      "sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf"
+    },
+    "THIRD-PARTY-NOTICES.txt": {
+      "bytes": 357830,
+      "sha256": "f6846ce6da15163cdbabc0ed54adca9586f843b8e46b1fded2626572c047452f"
+    },
+    "python.data": {
+      "bytes": 11181457,
+      "sha256": "d295210e8aea984c3548f5d30e2a51ece87d316164f5c4a283122f825989ca33"
+    },
+    "python.mjs": {
+      "bytes": 134680,
+      "sha256": "cd5a271fca7f57a1148bf59f6009207ebe3bf070e3a9259d68babb0941792598"
+    },
+    "python.wasm": {
+      "bytes": 7387243,
+      "sha256": "f37aeaa8b4e21d5ed82f365334893cd439ea83a8aad5e84156e607a6ca61e642"
+    },
+    "smoke.json": {
+      "bytes": 561,
+      "sha256": "e564325daad502a62751e7da52fbc3f3b7034acf4a969d649e1543f7049edc6e"
+    },
+    "smoke.mjs": {
+      "bytes": 3425,
+      "sha256": "bffa1f3d225538482d4a940e6a7239b52848f8a104c530438b8bfd0750b3f114"
+    }
+  }
+}

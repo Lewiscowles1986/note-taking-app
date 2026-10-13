@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "version": "3.4.10",
+  "runtime": "cpython",
+  "target": "wasm32-emscripten",
+  "adapter": "emscripten",
+  "invocation": "callMain",
+  "source": {
+    "url": "https://www.python.org/ftp/python/3.4.10/Python-3.4.10.tar.xz",
+    "sha256": "d46a8f6fe91679e199c671b1b0a30aaf172d2acb5bcab25beb35f16c3d195b4e"
+  },
+  "emscripten": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 5.0.3 (285c424dfa9e83b03cf8490c65ceadb7c45f28eb)",
+  "features": {
+    "filesystem": "MEMFS",
+    "threads": false,
+    "dynamicLinking": false,
+    "pip": false,
+    "micropip": false,
+    "modules": {
+      "decimal": true,
+      "zlib": false,
+      "micropip": false,
+      "ctypes": false,
+      "ssl": false,
+      "sqlite3": false,
+      "bz2": false,
+      "pip": false
+    }
+  },
+  "validation": {
+    "node": {
+      "modules": {
+        "decimal": true,
+        "zlib": false,
+        "micropip": false,
+        "ctypes": false,
+        "ssl": false,
+        "sqlite3": false,
+        "bz2": false,
+        "pip": false
+      },
+      "platform": "emscripten",
+      "checks": [
+        "version",
+        "arithmetic",
+        "json",
+        "math",
+        "regex",
+        "filesystem"
+      ],
+      "version": "3.4.10 (default, Sep 15 2026, 00:00:00) \n[GCC Clang 23.0.0git (https:/github.com/llvm/llvm-project e5927fecf8a6ce89e1a4e",
+      "stderr": [],
+      "failureExit": 1,
+      "engine": "v22.16.0",
+      "jsStackSwitching": false
+    },
+    "browser": "pending"
+  },
+  "files": {
+    "CPYTHON-LICENSE.txt": {
+      "bytes": 12785,
+      "sha256": "82fc0bf3d22387c6b347184f3b44e8caba9f0b4c28e03127dd9685d2b9c20327"
+    },
+    "THIRD-PARTY-NOTICES.txt": {
+      "bytes": 480515,
+      "sha256": "aa0132d72bfb987965c5f4715cfa5618fe832a3b930426ba5e502f60a64e10be"
+    },
+    "python.data": {
+      "bytes": 9727463,
+      "sha256": "992883915cb6497de595931209a6943ece2283ebfc3ac214017be52657cb5307"
+    },
+    "python.mjs": {
+      "bytes": 155104,
+      "sha256": "cad900778a59997ea6c26859e57b574054180040c47a90bc7d979890e7c73f85"
+    },
+    "python.wasm": {
+      "bytes": 2135688,
+      "sha256": "17f46fe260ce82e01bd51ec7f6b31f26fa6a9924d27262836ed90d0aaa8e38e2"
+    },
+    "smoke.json": {
+      "bytes": 543,
+      "sha256": "6ddf62085adf9ea36be05bb5f7d590addbf97379981950bcafc95111ca157dad"
+    },
+    "smoke.mjs": {
+      "bytes": 3310,
+      "sha256": "fd4826613c131b8cf24e412dc2ca3cc8c6eb1d31a820f4286646809e0bd1aae8"
+    }
+  }
+}

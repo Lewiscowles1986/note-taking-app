@@ -1,0 +1,159 @@
+{
+  "schema": 1,
+  "id": "browser-3.2.11",
+  "target": "browser",
+  "series": "3.2",
+  "ruby_version": "3.2.11",
+  "abi": "wasip1",
+  "assembly": "source-build",
+  "integration": "wasi-command",
+  "release": "2.10.1",
+  "source": {
+    "url": "https://cache.ruby-lang.org/pub/ruby/3.2/ruby-3.2.11.tar.gz",
+    "sha256": "b3eeabd6636f334531db3ffdc3229eb05e524740e6c84fdc043720573cf2f8b2"
+  },
+  "image": "sha256:11856c2a992235373f3c4b966b50313dba90baa24031cb938ae408281231360b",
+  "toolchains": {
+    "schema": 1,
+    "ruby_wasm_gem": "2.10.1",
+    "docker_base": "ruby:3.4-bookworm@sha256:246b2dc3f6e40bba3af18503c22997a34dbb27c9f97e198dde6dd727895115c5",
+    "wasi_sdk": {
+      "url": "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/wasi-sdk-34.0-arm64-linux.tar.gz",
+      "sha256": "f7e243dff54d60bcc576e94d6166b69f410f2500ae4a9ceef34315be10e77971",
+      "directory": "wasi-sdk-34.0-arm64-linux",
+      "platform": "linux/arm64"
+    },
+    "legacy_emscripten": "emscripten/emsdk@sha256:7b5d14203bb4ef20da6f5b71b90c8f37ec09c2776d342efff3bc989ebf1aa873"
+  },
+  "dependency_archives": {
+    "build/wasm32-unknown-wasip1/openssl-3.2.0/openssl-3.2.0.tar.gz": "14c826f07c7e433706fb5c69fa9e25dab95684844b4c962a2cf1bf183eb4690e",
+    "build/wasm32-unknown-wasip1/yaml-0.2.5/libyaml-0.2.5.tar.gz": "c642ae9b75fee120b2d96c712538bd2cf283228d2337df2cf2988e3c02678ef4",
+    "build/wasm32-unknown-wasip1/zlib-1.3.1/zlib-1.3.1.tar.gz": "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
+  },
+  "registry_sha256": "0052233086f14378e5c8952eb4ab0495a660391235762334da932922d7ebc08e",
+  "recipe_files": {
+    "scripts/artifacts.py": "c604bb4ce419af0f335525649ef178578dc480b6d088283486d630fed70d43f4",
+    "scripts/browser-runtime.mjs": "22203890c6bd3f43095e4a106773f3430a65b0223350aa99d007fb9f6c90a3f5",
+    "scripts/build-history.py": "8f311d24a4e0795cbd8f955dda94734ffe6fccc58f3c4d449bbf384b91f715a4",
+    "scripts/build-legacy-wasi.py": "529198aeeccea7cea7f656fad082bf69f1b019a6f5716b6f881d935c48810c9b",
+    "scripts/build-legacy.py": "85aedaaf211eb610fd9902c3d0e4a2e3180550f2c7d688892c207a9145af305b",
+    "scripts/build-source.py": "7141ed4487d293cb8ce7cc68c50590cb434bd6688fad76f096ff1e962ba01190",
+    "scripts/build-yarv.py": "b1777cd6e9a44762277e7a6a03224c2d08a9ce4c4b22fcd80196627c79ca913e",
+    "scripts/build.py": "14dc441091fef274507e46d442c604b145fd248ff1791fb9d288b5f331c54a05",
+    "scripts/command-runtime.mjs": "f002c2ce1b828c07792e2874708d1a52242ab3795daac26e281b3a0b2dbe5af0",
+    "scripts/document-runtimes.py": "a8a594d69befa811e69a4f4084cb8a2885ed5b3e2a7471034722e38b2e52d57c",
+    "scripts/export-lab.py": "3ec26dca878ba6bbda65c236bde59e6dd53fdd1be81dfcfce4a6a144f6dab1e0",
+    "scripts/inspect.mjs": "79ffaed5803345484bf3183c9b61f4b71d7d6406fbfcb73b153797b99690d9bd",
+    "scripts/legacy-runtime.mjs": "5baf4914f11a16308448d9dece2f525af9f2603bf84d95d48d3295cc6525768b",
+    "scripts/lock-versions.py": "dea64cfa4e726c72d5055b0555a8ea9cd880f0d318566932ee283d9128cc573b",
+    "scripts/package-app.py": "38293e7ffab7762d519e81489e4d2956a0429a68327514f2c3629a6dc893a95f",
+    "scripts/refresh-command-adapters.py": "115b3212c719f29772a954130e78435107680fad365dbd0886ff0db104db21c1",
+    "scripts/run-wasi.mjs": "9ec90aec8d6013037ddc2b496e5e87fe9ad591616e498451840e6c815abd8a0a",
+    "scripts/smoke-browser.mjs": "5f51b1934f681886e19065d62a5b8245ffaac040ac482a4554c20067d9976f0b",
+    "scripts/smoke-command.mjs": "bbf303aa27ca5feb16fdb3bb616530d776873d2d9cd1e8ece5650a16bf3c7079",
+    "scripts/smoke-legacy-wasi.py": "9bec2ad572ebecfae2d2e4342aa151b9d9cea4bbffb21c8e6aea7027bf928899",
+    "scripts/smoke-legacy.mjs": "bddbf146403a48ab8feb4be38ba4d05c35fd0ad11f66bbf13e53c60ea0828d6c",
+    "scripts/smoke-yarv.mjs": "28f6f9d805a1fdf5bd8370281ee5bbbe4484ca2bdae3b1aa66bf58527de309b6",
+    "scripts/verify.py": "ae2717336bc27f0af22d9a091f4d8961f7d012089b83f22d60ac83f5206b6b96",
+    "families/legacy/Dockerfile": "238a6f74c8dcb115014cd4387c7e5fa48cd16fd9ee2c0f54831e7bace704674d",
+    "families/legacy/build.sh": "0112af6bf421b1e452452091985769bab62775bad270549e093f13469ef30fd1",
+    "families/legacy/entry.c": "389b7e16fe98a455adce54c3ba260f8b9def320b212be06028971c0b1ee2b8d9",
+    "families/legacy/licenses/compiler-rt-LICENSE": "1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d",
+    "families/legacy/licenses/emscripten-LICENSE": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86",
+    "families/legacy/licenses/musl-COPYRIGHT": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af",
+    "families/legacy/post.js": "d0d27357982e61fc2c88db8c465bc2b6cd52baa467a8ceb60a797d28aad77410",
+    "families/legacy/ruby-1.0-971225.patch": "0e085055b88dec3641e7bb8eae2f043d1c8470b198e670ebef29304ea0f0855b",
+    "families/legacy/ruby-1.1d1.patch": "d3c91011e082f394a1c8045b426080b8f00a7be6c3599152e56b291e9ccb6253",
+    "families/legacy/ruby-1.2.6.patch": "7a12cdb31cafb8fca063d8639eff02d83009c5a74c0406bb453bda74dfb01550",
+    "families/legacy/ruby-1.2.patch": "735d1d34705c4f2a540bd48903472c72f1ce89a734c4f631ceca028867a40fcd",
+    "families/legacy/ruby-1.3.7.patch": "e67324365f257469122db27b912b14a9a09f9b89564a6674ecb3db581d36ac94",
+    "families/legacy/ruby-1.3.patch": "d3c91011e082f394a1c8045b426080b8f00a7be6c3599152e56b291e9ccb6253",
+    "families/legacy/ruby-1.4.0.patch": "26a3ba2ded696d0a4a9bb82dee17952d44ee2759bf9a6b71edac90cad01c4f4c",
+    "families/legacy/ruby-1.4.6.patch": "c2ef3988a5991cdf336b05d77ee108d8f82dcd24c9dca8ecd812de9ca8c94476",
+    "families/legacy/ruby-1.5.0.patch": "918ede9be89b12b25978445ab54e839dbf235379848c6c0746324f58f335d015",
+    "families/legacy/ruby-1.6.0.patch": "b68f26b7a9f1a802d526493292657462b96fbfa71e34e0546fea8fa1fa8c0a76",
+    "families/legacy/ruby-1.6.8.patch": "c4185eb12cc2926e4f0215d79c548f1a7be0e627f2d83baf6f3ce0113b011ca2",
+    "families/legacy/ruby-1.7.1.patch": "467ec6ac34e2b904fa9d01c24a7c6f405bf6b96fe4661825b7cbbbe12f5dd285",
+    "families/legacy/ruby-1.8.0.patch": "9518d48ff9cac3882aac7da69a5268ebe95c0866d693bd4d5b85f0f4451777e8",
+    "families/legacy/ruby-1.8.7-p374.patch": "4d36610658e18161278d8280ea2300eebc8af27f947068b39930dec138afb590",
+    "families/legacy-wasi/build.sh": "e60bed166d921e27b7ec8b1a613c99c007b5ec785dc02df6ffef5051ad13adba",
+    "families/legacy-wasi/missing.c": "3ae18737506dfdf7993ecb5306491919e9b5af229b46d7a64f931cd829e2c56f",
+    "families/legacy-wasi/optimize.sh": "03305e473d483fe1f7c097832de25f80ab97ec0957082cc16d50ae35d81bb107",
+    "families/legacy-wasi/prepare.py": "eb3b998fbdb09f0e734b413e643b33ce6fd9839c29d491ca257f43388fd05d71",
+    "families/modern/Dockerfile": "279977d18c6d3beadc5818d05265c53bb6468c9126790972f2e397b226e7d4ad",
+    "families/modern/prepare.py": "4c0fbfe423b70fe5b7beebd00b299c0c2f4d434028387b32646ea2d70b9f8d72",
+    "families/yarv/Dockerfile": "9d79a905ad27442a0c48a459975712f54223d2394bc59a3a3715ec8122d96731",
+    "families/yarv/README.md": "58cbe39680efcd5e5dfe05360ed55d9c577a240cfde99417a9e889a06b2435c3",
+    "families/yarv/browser-module.mk": "cff4d2c6c7c3a99c29bf5dab8e1b87d1094af485248838c76ee48f554ce28fe8",
+    "families/yarv/build.sh": "22238e3cd2bc78542b74b6b9a6095dba64799860c56c20835aabccf68256e775",
+    "families/yarv/bundled-zlib.py": "c5d9a63b75eadda5fe61217212be565a31e8d9967fcc86f5952bee5281562b50",
+    "families/yarv/config.sub": "71b8d73e46e0c31b1dc91ba5306f5ef0af009273b3bb283f31d8dad69666fa9e",
+    "families/yarv/configure-output.py": "89779ab52cb99cda36bd9fd581a8adf694f2fc1c5d329252c8d388be1d74d620",
+    "families/yarv/coroutine/emscripten/Context.c": "7b5157e2e74c84cad4dbd8760be70fdad5cf61ef73c301f79c2af310894a2ac9",
+    "families/yarv/coroutine/emscripten/Context.h": "3027ccc52304ba13c90a065ba93982b19672661804b35582b54465601c3b0160",
+    "families/yarv/entry.c": "40b93c326faceb46d45d7bcfc770870f15023dff6ee1cc613634d80ac28e9220",
+    "families/yarv/include/ucontext.h": "59d24aa71b87f8a4c0c45f34109495cda44b8b04bdef08123488d2c5bee2e467",
+    "families/yarv/licenses/CRuby-3.1.7-BSDL": "36a9a6e7347214bbba599a412617204e65bff065dcbe5c46f5cb454c80de9eb0",
+    "families/yarv/licenses/CRuby-3.1.7-COPYING": "967586d538a28955ec2541910cf63c5ac345fcdea94bfb1f1705a1f6eb36bcbb",
+    "families/yarv/licenses/CRuby-3.1.7-LEGAL": "794c384f94396ab07e3e6f53a9f8be093facb7eb4193266024302b93b29e12dc",
+    "families/yarv/old-extensions.mk": "c3e85e070bf4effdab5b2e9840afa8860ba2233ba776fa00182d5f6580fa6a9e",
+    "families/yarv/old-extensions.py": "d1e3249696441d66605ac7cc5eb988425eabeb40336430662d5dffb187e9dcaa",
+    "families/yarv/post.js": "d0d27357982e61fc2c88db8c465bc2b6cd52baa467a8ceb60a797d28aad77410",
+    "families/yarv/prepare.py": "e5d8418071008fa91606206a3805e88a21d6d27f3caae1d4f7b9642ce642e4ed",
+    "families/yarv/stage-library.py": "6871d27b0d4b822efd32e7b1a8997e51667079c5c1e6a6a0dcbb92d2577221f6"
+  },
+  "files": {
+    "inspection.json": {
+      "sha256": "66d82755788e053e43ad3a6c66d275028a44cbf3783cc17a7dcc5d1ae06f2603",
+      "bytes": 4776
+    },
+    "licenses/BSDL": {
+      "sha256": "36a9a6e7347214bbba599a412617204e65bff065dcbe5c46f5cb454c80de9eb0",
+      "bytes": 1291
+    },
+    "licenses/COPYING": {
+      "sha256": "967586d538a28955ec2541910cf63c5ac345fcdea94bfb1f1705a1f6eb36bcbb",
+      "bytes": 2427
+    },
+    "licenses/LEGAL": {
+      "sha256": "17301f605433d473aade59a761969edb0eb4cf1557d1a774f2ff1e63633fcd63",
+      "bytes": 44938
+    },
+    "licenses/browser-wasi-shim-LICENSE-APACHE": {
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "bytes": 11357
+    },
+    "licenses/browser-wasi-shim-LICENSE-MIT": {
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "bytes": 1023
+    },
+    "licenses/openssl-3.2.0-LICENSE.txt": {
+      "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+      "bytes": 10175
+    },
+    "licenses/yaml-0.2.5-LICENSE": {
+      "sha256": "c40112449f254b9753045925248313e9270efa36d226b22d82d4cc6c43c57f29",
+      "bytes": 1101
+    },
+    "licenses/zlib-1.3.1-LICENSE": {
+      "sha256": "845efc77857d485d91fb3e0b884aaa929368c717ae8186b66fe1ed2495753243",
+      "bytes": 1002
+    },
+    "licenses/zlib-1.3.1-README": {
+      "sha256": "d106dcdb2a0b3087cb3a2380b9f00a0bbadc7eb835cd80408f94a2d78d69727d",
+      "bytes": 5317
+    },
+    "ruby.wasm": {
+      "sha256": "239b6d6965ef96e10f7673415995c6c8dca90ee00d1988f8cfaf1b46b496d1c8",
+      "bytes": 47212067
+    },
+    "runtime.mjs": {
+      "sha256": "768048bbb61525be851797a6fc506c8821e5f59c7a4adca7b23b57c2afa29090",
+      "bytes": 48019
+    },
+    "smoke.json": {
+      "sha256": "6db5fd20c2b837ea0a184488e45cbe7558d186ea02aa6ccd845b97cc311c7ceb",
+      "bytes": 2200
+    }
+  }
+}

@@ -1,0 +1,7 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Full-bleed variant for maskable/adaptive icons and apple-touch-icon: OS crops its own
+       shape, so the mark sits inside the central 80% safe zone and nothing gets clipped. -->
+  <rect width="512" height="512" fill="#1E4D4A"/>
+  <path d="M136 142L256 262L376 142" stroke="#FFFDF8" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M256 262V382" stroke="#FFFDF8" stroke-width="40" stroke-linecap="round"/>
+</svg>

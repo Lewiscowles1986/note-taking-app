@@ -1,0 +1,29 @@
+{
+  "loader": "runtime.mjs",
+  "api": "createVM",
+  "gzip": [
+    "ruby.wasm"
+  ],
+  "files": {
+    "LICENSE": {
+      "bytes": 1067,
+      "sha256": "90357d3794c968704914d42a52354a83f2d8b10cb43df3b63ef1ca0e5bbc0bf2"
+    },
+    "NOTICE": {
+      "bytes": 51134,
+      "sha256": "343c246a6e1f1234e29e51707a54799ea82b50d3a2a41c5221fa12058b2395b2"
+    },
+    "manifest.json": {
+      "bytes": 4230,
+      "sha256": "601875fb22e5892a9c5bd4770a7f410a6a2e4e616dc10294407b8a246c26e581"
+    },
+    "ruby.wasm": {
+      "bytes": 30635497,
+      "sha256": "4b814fc9d13505ea5b4c1f3bd3a7cc7ccca137f551196b9b21f0a7caf9cc5878"
+    },
+    "runtime.mjs": {
+      "bytes": 96869,
+      "sha256": "a54d241acfa72adfc7dbb90973fa0800bdd7708ba5f8af6382284bc1f7b1dc64"
+    }
+  }
+}
