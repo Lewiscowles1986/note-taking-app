@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "version": "3.15.0rc2",
+  "version": "3.15.0",
   "runtime": "cpython",
   "target": "wasm32-emscripten",
   "adapter": "emscripten",
   "invocation": "callMain",
   "source": {
-    "url": "https://www.python.org/ftp/python/3.15.0/Python-3.15.0rc2.tar.xz",
-    "sha256": "8d93af5eaaaea5adfd41bd786a7ba3f03f2ad1ab57c6a65e0b963deab91d5ad7"
+    "url": "https://www.python.org/ftp/python/3.15.0/Python-3.15.0.tar.xz",
+    "sha256": "ba4bed1ba346b916890b76d9e320451420aa69f6408997d33c66482eeae3d575"
   },
   "emscripten": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 5.0.3 (285c424dfa9e83b03cf8490c65ceadb7c45f28eb)",
   "features": {
@@ -30,7 +30,7 @@
   },
   "validation": {
     "node": {
-      "version": "3.15.0rc2 (main, Sep 15 2026, 00:00:00) [Clang 23.0.0git (https:/github.com/llvm/llvm-project e5927fecf8a6ce89e1a4eac5b8",
+      "version": "3.15.0 (main, Sep 15 2026, 00:00:00) [Clang 23.0.0git (https:/github.com/llvm/llvm-project e5927fecf8a6ce89e1a4eac5b8",
       "platform": "emscripten",
       "modules": {
         "sqlite3": true,
@@ -64,24 +64,24 @@
       "sha256": "b0e25a78cffb43f4d92de8b61ccfa1f1f98ecbc22330b54b5251e7b6ba010231"
     },
     "THIRD-PARTY-NOTICES.txt": {
-      "bytes": 421250,
-      "sha256": "ba41c2fdf571e4ce0975a6fe8523e4803a177bcdb444105df845cd3382cb512a"
+      "bytes": 423282,
+      "sha256": "676e3eda08a801a13e426d46cd7290557b10be171b05868715a8dd25e6d648bd"
     },
     "python.data": {
-      "bytes": 11364765,
-      "sha256": "c7e3199716b275e3b1ccfee063bf96d232192eb18173f23e7bfabfa81f1b175b"
+      "bytes": 11375662,
+      "sha256": "a48577cb257cf9e7a265c33b205b9f1db82c65e8f7693cb69f38136807f68ccc"
     },
     "python.mjs": {
       "bytes": 140832,
-      "sha256": "8987aa945bf815aba447996971a4f2e33b00704b1fc8a8cb877e60ffe3ebbf85"
+      "sha256": "74cfa01bf2827d90b8dae8f61112110854a3ad7c6dce668f5cebd8b9f87ff5cc"
     },
     "python.wasm": {
-      "bytes": 7353113,
-      "sha256": "234eb15f6e89f3b55f344630412f9d2ca8f82deaa52be1a3a1811db042c58df1"
+      "bytes": 7361940,
+      "sha256": "ac5bec7c571c8faf83c3c38104df5c12def2cecc704ddd3785216eabd59862aa"
     },
     "smoke.json": {
-      "bytes": 563,
-      "sha256": "f49341e3803e1a60004844d7269b0d5f5c24208a6b8ae158044d73600297bd58"
+      "bytes": 560,
+      "sha256": "9332906d800118922366bad062ac847020f25a2233674e632ec28b688c5897bc"
     },
     "smoke.mjs": {
       "bytes": 3425,
