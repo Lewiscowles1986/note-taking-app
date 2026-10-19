@@ -37,10 +37,10 @@ export const PYTHON_BUNDLES: PythonBundle[] = [
   { version: '3.12.14', directory: '3.12.14' },
   { version: '3.13.15', directory: '3.13.15' },
   { version: '3.14.7', directory: '3.14.7' },
-  { version: '3.15.0rc2', directory: '3.15.0rc2' },
+  { version: '3.15.0', directory: '3.15.0' },
 ];
 export const PYTHON_VERSIONS = PYTHON_BUNDLES.map((b) => b.version);
-export const DEFAULT_PYTHON_VERSION = '3.14.7';
+export const DEFAULT_PYTHON_VERSION = '3.15.0';
 export const REQUIRED_PYTHON_VERSIONS = [DEFAULT_PYTHON_VERSION] as const;
 
 export type PythonVersion = string;

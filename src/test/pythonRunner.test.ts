@@ -14,8 +14,8 @@ describe('Python runner bundle table', () => {
     expect(PYTHON_BUNDLES.length).toBe(17);
     expect(new Set(PYTHON_VERSIONS).size).toBe(PYTHON_VERSIONS.length);
     expect(PYTHON_VERSIONS[0]).toBe('2.7.18');
-    expect(PYTHON_VERSIONS).toContain('3.15.0rc2');
-    expect(DEFAULT_PYTHON_VERSION).toBe('3.14.7');
+    expect(PYTHON_VERSIONS).toContain('3.15.0');
+    expect(DEFAULT_PYTHON_VERSION).toBe('3.15.0');
   });
 
   it('registers the runner with an availability probe', () => {

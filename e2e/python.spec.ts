@@ -34,9 +34,9 @@ test('runs a Python code block via wasm', async ({ page }) => {
   await page.getByRole('button', { name: 'View', exact: true }).click();
   const versionSelect = page.getByRole('combobox', { name: 'python version' });
   await expect(versionSelect).toBeVisible({ timeout: 10000 });
-  await expect(versionSelect).toHaveValue('3.14.7');
+  await expect(versionSelect).toHaveValue('3.15.0');
 
   await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await expect(page.getByText(/Hello from Python 3\.14\.7/)).toBeVisible({ timeout: 60000 });
+  await expect(page.getByText(/Hello from Python 3\.15\.0/)).toBeVisible({ timeout: 60000 });
   await step(page, 'python-output');
 });

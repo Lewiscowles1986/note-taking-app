@@ -39,6 +39,32 @@ This is required because:
   together and be validated together (see `.devcontainer/README.md` and the
   pairing check in `.devcontainer/post-create.sh`).
 
+## Vendored wasm bundles: one build per line, latest patch
+
+`public/python-wasm/`, `public/ruby-wasm/`, `public/php-wasm/` and the other
+vendored language matrices ship **one bundle per upstream major.minor line** —
+the latest release of that line, not every release of it.
+
+- When a newer patch of an existing line is vendored (`3.15.1` arriving over
+  `3.15.0`), **replace** that bundle and its entry in the runner's table. Do
+  not keep the superseded build as a second selectable version: two labels for
+  one line makes the version selector ambiguous, and every retained bundle is
+  committed bytes the deployment carries.
+- A pre-release is superseded by the final release of the same line.
+  `3.15.0rc2` and `3.15.0` are one line, so the rc goes when the final lands.
+- A distinct line — a new major.minor, or an old one re-vendored — is a
+  **new** bundle, not a replacement. Superseding is about patch releases within
+  a line, never about trimming lines the matrix exists to cover.
+- Vendor through `scripts/vendor-wasm.mjs` rather than copying files by hand,
+  so `vendor.json` records hashes of what actually ships.
+- Regenerate the catalog with `scripts/build-wasm-index.mjs` for every language
+  whose runner reads it; the `src/test/*Bundles.test.ts` integrity tests fail
+  when a runner table and the vendored directories disagree.
+
+The Ruby matrix was pruned to exactly this rule (its six redundant bundles were
+each a line's *first* release), so treat one-build-per-line as the established
+shape rather than a new preference.
+
 ## Validating devcontainer / e2e changes
 
 - Run checks in the actual container image, not just on the host: lint,
