@@ -88,6 +88,7 @@ jobs:
           VITE_PREVIEW_LABEL: ${{ steps.cfg.outputs.branch }}
           VITE_STORAGE_NAMESPACE: preview-${{ steps.cfg.outputs.slug }}
           VITE_DEPLOYED_REF: ${{ github.sha }}
+          VITE_POSTHOG_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
         run: npm run build
 
       - name: Deploy preview to preview-builds/<branch>
