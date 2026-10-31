@@ -1,7 +1,7 @@
 name: Renovate
 
 on:
-  push:
+  workflow_dispatch:
     branches:
       - main
   # Match renovate.json's "every weekend" schedule (Saturdays & Sundays, 06:00 UTC).
