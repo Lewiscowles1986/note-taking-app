@@ -27,7 +27,7 @@ jobs:
       - name: Validate Renovate config
         env:
           LOG_LEVEL: debug
-          RENOVATE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
         run: renovate-config-validator
 
       - name: Run Renovate
