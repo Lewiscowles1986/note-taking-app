@@ -1,13 +1,18 @@
 name: Renovate
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
   # Match renovate.json's "every weekend" schedule (Saturdays & Sundays, 06:00 UTC).
   # Weekday runs would be no-ops anyway — Renovate gates itself on that schedule.
   schedule:
     - cron: 0 6 * * 0,6
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  statuses: write
+  workflows: write
 
 jobs:
   renovate:
@@ -35,9 +40,3 @@ jobs:
           LOG_LEVEL: debug
           RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
         run: renovate Lewiscowles1986/note-taking-app
-
-      # - name: Run Renovate Bot
-      #   uses: renovatebot/github-action@v43.0.14
-      #   with:
-      #     token: ${{ secrets.GITHUB_TOKEN }}
-      #     log-level: debug
