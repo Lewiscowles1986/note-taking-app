@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Redirecting…</title>
+    <script>
+      // GitHub Pages serves this file for any path that doesn't match a real
+      // file (e.g. a client-side route). Redirect to the app root so the SPA
+      // can load and handle the route. The base is derived from the current
+      // path so this works for both user/org sites (served at the root) and
+      // project sites (served under /<repo>/).
+      location.replace(location.pathname.replace(/\/[^/]*$/, "/"));
+    </script>
+  </head>
+  <body></body>
+</html>

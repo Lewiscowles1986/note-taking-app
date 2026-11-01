@@ -1,0 +1,18 @@
+{
+  "version": "8.4.25",
+  "loader": "php-web.mjs",
+  "api": "default",
+  "gzip": [
+    "php-web.wasm"
+  ],
+  "files": {
+    "php-web.mjs": {
+      "bytes": 121662,
+      "sha256": "194392b84f5fd9b24d43b96d1a5793d3643012e46186e575fdc9eccd9910334d"
+    },
+    "php-web.wasm": {
+      "bytes": 8059180,
+      "sha256": "1e8c4c6b4d83b07317a47e6a76a7aab91f289ce31a8ce454867a4350ae60d9e6"
+    }
+  }
+}

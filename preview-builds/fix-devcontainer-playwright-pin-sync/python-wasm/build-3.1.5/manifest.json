@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "version": "3.1.5",
+  "runtime": "cpython",
+  "target": "wasm32-emscripten",
+  "adapter": "emscripten",
+  "invocation": "callMain",
+  "source": {
+    "url": "https://www.python.org/ftp/python/3.1.5/Python-3.1.5.tgz",
+    "sha256": "d12dae6d06f52ef6bf1271db4d5b4d14b5dd39813e324314e72b648ef1bc0103"
+  },
+  "emscripten": "emcc (Emscripten gcc/clang-like replacement) 2.0.2 (ec6d3d463ad5b709d5645466fa2ae0f62e1d468f)",
+  "features": {
+    "filesystem": "MEMFS",
+    "threads": false,
+    "dynamicLinking": false,
+    "pip": false,
+    "micropip": false,
+    "modules": {
+      "hashlib": true,
+      "time": true,
+      "re": true,
+      "json": true,
+      "filesystem": true,
+      "math": true
+    }
+  },
+  "validation": {
+    "node": {
+      "astralLength": 2,
+      "maxunicode": 65535,
+      "modules": {
+        "hashlib": true,
+        "time": true,
+        "re": true,
+        "json": true,
+        "filesystem": true,
+        "math": true
+      },
+      "integer_division": 3.5,
+      "platform": "emscripten",
+      "version": "3.1.5 (default, Apr 19 2020, 00:00:00) \n[GCC Clang 12.0.0 (/b/s/w/ir/cache/git/chromium.googlesource.com-external-githu",
+      "sha256": "336154bf67f765f8f75d16a0accee61b5ee5f6a75b2a2905703df913bd550f3e"
+    },
+    "browser": "pending"
+  },
+  "files": {
+    "CPYTHON-LICENSE.txt": {
+      "bytes": 14411,
+      "sha256": "2f506874efe0ed23540eaffb76c2d17f2ef690c57dcaca5617c73e313172086d"
+    },
+    "THIRD-PARTY-NOTICES.txt": {
+      "bytes": 282616,
+      "sha256": "3ec065034f056137838264e41e08734cf6f37838c280881ef9a6c874060f80e5"
+    },
+    "python.data": {
+      "bytes": 9517452,
+      "sha256": "2cac94ed9dfd1b51e72bd653746255c3a2dd1f565421b2238bcf500de508168c"
+    },
+    "python.mjs": {
+      "bytes": 208173,
+      "sha256": "81aa8d04a8df5a04c1e5747f106b4a5ddfa809d04101736a61ab75fa67a9516b"
+    },
+    "python.wasm": {
+      "bytes": 1368575,
+      "sha256": "bfeadd79197af2f15277146166ce43886c7f47c4f19cf1eddf4eadaeefd2b854"
+    },
+    "smoke-result.json": {
+      "bytes": 507,
+      "sha256": "774d56a821349465863f0bc1f3857946a1c8c33a9a31ccdd8cdd3ac0aaca97aa"
+    },
+    "smoke.json": {
+      "bytes": 452,
+      "sha256": "b0535cabf0c519b7659994d8e8e8a35cbee01e01973ec754e4664df477f84ff1"
+    },
+    "smoke.mjs": {
+      "bytes": 2027,
+      "sha256": "da1f0f0170e3812dab1408edf0a94f7050e590353e4258a17becb50c816133ee"
+    }
+  }
+}
