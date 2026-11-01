@@ -356,6 +356,10 @@ console.log("hi")
 \`\`\`python
 print("hi")
 \`\`\`
+
+\`\`\`go
+fmt.Println("hi")
+\`\`\`
 `,
       hasCodeBlocks: true,
       hasMermaid: false,
@@ -363,13 +367,17 @@ print("hi")
   ]);
   await page.goto(APP_PATH);
   await openNoteInView(page, 'Runners');
-  await debugBreak(page, 'js-runnable — js has Run, python does not');
+  await debugBreak(page, 'runnable — js and python have Run, go does not');
 
-  // jsRunner registers 'js'/'javascript'; python has no runner (codeRunners.ts).
+  // jsRunner registers 'js'/'javascript' and pythonRunner registers 'python'
+  // (both enabled by DEFAULT_LANGUAGES in src/lib/languageList.ts). Go has no
+  // runner, so its block renders static — that is the negative case here.
   await expect(codeBlock(page, 'js').getByRole('button', { name: 'Run', exact: true })).toBeVisible();
-  await expect(codeBlock(page, 'python').getByRole('button', { name: 'Run', exact: true })).toHaveCount(0);
+  await expect(codeBlock(page, 'python').getByRole('button', { name: 'Run', exact: true })).toBeVisible();
+  await expect(codeBlock(page, 'go').getByRole('button', { name: 'Run', exact: true })).toHaveCount(0);
   await step(page, 'js-runnable');
-  await step(page, 'py-static');
+  await step(page, 'py-runnable');
+  await step(page, 'go-static');
 });
 
 test('syntax highlights multiple languages', async ({ page }) => {

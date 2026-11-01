@@ -106,8 +106,13 @@ lock or a moved base image is caught automatically.
 Bump `@playwright/test` in `package.json` (and `package-lock.json`), then:
 
 1. set `ARG PLAYWRIGHT_IMAGE` in `.devcontainer/base.Dockerfile` to `mcr.microsoft.com/playwright:v<version>-noble`,
-2. bump the tag in `devcontainer.json` (`"image": ...:<version>`) and the `IMAGE` tag in `scripts/e2e-docker.sh`,
+2. bump the tag in `devcontainer.json` (`"image": ...:<version>`),
 3. `scripts/build-devcontainer-base.sh` (add `--push` to publish), commit, and let CI verify/publish.
+
+`scripts/e2e-docker.sh` derives its image from the `base.Dockerfile` ARG, so it
+needs no separate bump. `src/test/devcontainerPins.test.ts` enforces that the
+remaining pins agree with `package-lock.json`, so `npm test` fails on drift
+instead of the weekly container job failing with a version mismatch.
 
 ## Docker access inside the container
 
