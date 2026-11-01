@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "id": "browser-3.3",
+  "series": "3.3",
+  "ruby_version": "3.3.3",
+  "target": "browser",
+  "abi": "wasip1",
+  "assembly": "upstream-prebuilt",
+  "release": "2.10.1",
+  "upstream_commit": "cbb1e8440159c55b9c56e5359eb8e12d5a1e742d",
+  "source": {
+    "url": "https://github.com/ruby/ruby.wasm/releases/download/2.10.1/ruby-3.3-wasm-wasi-2.10.1.tgz",
+    "sha256": "573c0d66d4dc755200ff0fe054aa31f6c4716d041f925e88b11f1e7b6f5443d1",
+    "size": 33718983
+  },
+  "lock_sha256": "3400303e78df8f68ee5bc7b6d511c4d38176c9cd8431207a976b02238458a9bd",
+  "yarn_lock_sha256": "1302077fd4df48b15559501c2797e0c35d95a43eda3526e125cc763b0fa3940e",
+  "recipe_files": {
+    "artifacts.py": "c604bb4ce419af0f335525649ef178578dc480b6d088283486d630fed70d43f4",
+    "browser-runtime.mjs": "22203890c6bd3f43095e4a106773f3430a65b0223350aa99d007fb9f6c90a3f5",
+    "build-history.py": "8f311d24a4e0795cbd8f955dda94734ffe6fccc58f3c4d449bbf384b91f715a4",
+    "build-legacy-wasi.py": "529198aeeccea7cea7f656fad082bf69f1b019a6f5716b6f881d935c48810c9b",
+    "build-legacy.py": "85aedaaf211eb610fd9902c3d0e4a2e3180550f2c7d688892c207a9145af305b",
+    "build-source.py": "7141ed4487d293cb8ce7cc68c50590cb434bd6688fad76f096ff1e962ba01190",
+    "build-yarv.py": "b1777cd6e9a44762277e7a6a03224c2d08a9ce4c4b22fcd80196627c79ca913e",
+    "build.py": "14dc441091fef274507e46d442c604b145fd248ff1791fb9d288b5f331c54a05",
+    "command-runtime.mjs": "f002c2ce1b828c07792e2874708d1a52242ab3795daac26e281b3a0b2dbe5af0",
+    "document-runtimes.py": "a8a594d69befa811e69a4f4084cb8a2885ed5b3e2a7471034722e38b2e52d57c",
+    "export-lab.py": "3ec26dca878ba6bbda65c236bde59e6dd53fdd1be81dfcfce4a6a144f6dab1e0",
+    "inspect.mjs": "79ffaed5803345484bf3183c9b61f4b71d7d6406fbfcb73b153797b99690d9bd",
+    "legacy-runtime.mjs": "5baf4914f11a16308448d9dece2f525af9f2603bf84d95d48d3295cc6525768b",
+    "lock-versions.py": "dea64cfa4e726c72d5055b0555a8ea9cd880f0d318566932ee283d9128cc573b",
+    "package-app.py": "38293e7ffab7762d519e81489e4d2956a0429a68327514f2c3629a6dc893a95f",
+    "refresh-command-adapters.py": "115b3212c719f29772a954130e78435107680fad365dbd0886ff0db104db21c1",
+    "run-wasi.mjs": "9ec90aec8d6013037ddc2b496e5e87fe9ad591616e498451840e6c815abd8a0a",
+    "smoke-browser.mjs": "5f51b1934f681886e19065d62a5b8245ffaac040ac482a4554c20067d9976f0b",
+    "smoke-command.mjs": "bbf303aa27ca5feb16fdb3bb616530d776873d2d9cd1e8ece5650a16bf3c7079",
+    "smoke-legacy-wasi.py": "9bec2ad572ebecfae2d2e4342aa151b9d9cea4bbffb21c8e6aea7027bf928899",
+    "smoke-legacy.mjs": "bddbf146403a48ab8feb4be38ba4d05c35fd0ad11f66bbf13e53c60ea0828d6c",
+    "smoke-yarv.mjs": "28f6f9d805a1fdf5bd8370281ee5bbbe4484ca2bdae3b1aa66bf58527de309b6",
+    "verify.py": "ae2717336bc27f0af22d9a091f4d8961f7d012089b83f22d60ac83f5206b6b96"
+  },
+  "files": {
+    "LICENSE": {
+      "sha256": "90357d3794c968704914d42a52354a83f2d8b10cb43df3b63ef1ca0e5bbc0bf2",
+      "bytes": 1067
+    },
+    "NOTICE": {
+      "sha256": "343c246a6e1f1234e29e51707a54799ea82b50d3a2a41c5221fa12058b2395b2",
+      "bytes": 51134
+    },
+    "inspection.json": {
+      "sha256": "77cc04baf4cccc40ffd5fcb60f9e03a9ebda8f1d0afeeadbe0e63ba017e513e0",
+      "bytes": 10118
+    },
+    "licenses/@bjorn3-browser_wasi_shim-LICENSE-APACHE": {
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "bytes": 11357
+    },
+    "licenses/@bjorn3-browser_wasi_shim-LICENSE-MIT": {
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "bytes": 1023
+    },
+    "licenses/tslib-CopyrightNotice.txt": {
+      "sha256": "da16ddb65f8ca390998fb99223d0112498b56b45784d00afd77ff8ce1ac4de8b",
+      "bytes": 822
+    },
+    "licenses/tslib-LICENSE.txt": {
+      "sha256": "210b19e543130388c68654b7497e967119ce17145f66ab7d85688fbd70f08751",
+      "bytes": 655
+    },
+    "ruby.wasm": {
+      "sha256": "d6e3e863076a6bf7a8dd11870a9a68e84c2e76b3df41121ab090621e76953593",
+      "bytes": 36018798
+    },
+    "runtime.mjs": {
+      "sha256": "a54d241acfa72adfc7dbb90973fa0800bdd7708ba5f8af6382284bc1f7b1dc64",
+      "bytes": 96869
+    },
+    "smoke.json": {
+      "sha256": "e5b9b5f0bde6a82781d1dd3eba8980e0f0c65728361a914352ee2ae6abc07877",
+      "bytes": 439
+    }
+  }
+}
