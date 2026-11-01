@@ -37,12 +37,13 @@ describe('devcontainer Playwright pin', () => {
     expect(npmVersion).toBe(baseImageVersion());
   });
 
-  it('devcontainer.json references the base image version (un-suffixed)', () => {
-    // The workflow retags this to <version>-amd64/-arm64 at check time, so the
-    // committed value must be the plain multi-arch tag CI publishes.
+  it('devcontainer.json references the base image version', () => {
+    // CI rewrites this to <version>-amd64 / <version>-arm64 before running the
+    // in-container checks, so compare only the version and allow the suffix.
     const pinned = read('.devcontainer/devcontainer.json').match(/"image"\s*:\s*"[^"]*:([^"]+)"/);
     expect(pinned, 'no "image" tag in .devcontainer/devcontainer.json').not.toBeNull();
-    expect(pinned![1]).toBe(baseImageVersion());
+    const version = pinned![1].replace(/-(amd64|arm64)$/, '');
+    expect(version).toBe(baseImageVersion());
   });
 
   it('scripts/e2e-docker.sh derives its image from base.Dockerfile', () => {
