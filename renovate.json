@@ -40,9 +40,7 @@
   "customManagers": [
     {
       "customType": "regex",
-      "managerFilePatterns": [
-        "/.github/workflows/*.{yml,yaml}/"
-      ],
+      "fileMatch": [".github/workflows/*.{yml,yaml}"],
       "datasourceTemplate": "github-tags",
       "depNameTemplate": "actions/setup-node",
       "versioningTemplate": "docker",
