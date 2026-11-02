@@ -24,14 +24,18 @@ on:
       - "scripts/build-devcontainer-base.sh"
       - ".github/workflows/devcontainer.yml"
   pull_request:
-    # Dependency-only PRs (e.g. a package-lock.json bump) don't change the
-    # Devcontainer image, so don't rebuild it per dependency bump. The image
-    # only changes when the pinned base/Playwright version changes, which is a
-    # deliberate, separate change (see failing PR #16).
+    # package-lock.json is included because a lockfile-only bump can still move
+    # @playwright/test — the version the image's baked browsers must match. A
+    # lockfile bump that skips this workflow lets the pin drift, and the next
+    # post-merge run boots a stale published image and fails in post-create.sh
+    # with "Playwright version mismatch" (that is how #94 -> #95 broke main).
+    # The cost is rebuilding the base image on dependency PRs; the build is
+    # layer-cached, and catching drift pre-merge is worth it.
     paths:
       - ".devcontainer/**"
       - "flake.nix"
       - "flake.lock"
+      - "package-lock.json"
       - ".dockerignore"
       - "scripts/build-devcontainer-base.sh"
       - ".github/workflows/devcontainer.yml"
@@ -108,7 +112,26 @@ jobs:
         run: |
           IMAGE="${{ steps.ver.outputs.image }}"
           VERSION="${{ steps.ver.outputs.version }}"
-          sed -i "s#${IMAGE}:${VERSION}#${IMAGE}:${VERSION}-${{ matrix.suffix }}#" .devcontainer/devcontainer.json
+          TARGET="$IMAGE:$VERSION-${{ matrix.suffix }}"
+
+          # Verify the committed pin matches before rewriting it. A `sed` that
+          # only matches an exact tag silently does nothing once the two drift
+          # apart, and the job then boots the previously published image — the
+          # container comes up on the wrong Playwright build and post-create.sh
+          # fails on the version mismatch. Fail here instead, where the cause is
+          # obvious. The committed tag tracks base.Dockerfile's ARG default.
+          PINNED="$(sed -nE 's/.*"image"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' .devcontainer/devcontainer.json | head -n1)"
+          if [ "$PINNED" != "$IMAGE:$VERSION" ]; then
+            echo "ERROR: devcontainer.json pins '$PINNED' but base.Dockerfile builds '$IMAGE:$VERSION'." >&2
+            echo "Keep them in sync (scripts/build-devcontainer-base.sh publishes the tag)." >&2
+            exit 1
+          fi
+
+          sed -i "s#^\([[:space:]]*\"image\"[[:space:]]*:[[:space:]]*\)\"[^\"]*\"#\1\"$TARGET\"#" .devcontainer/devcontainer.json
+          if ! grep -q "\"$TARGET\"" .devcontainer/devcontainer.json; then
+            echo "ERROR: failed to retag devcontainer.json to $TARGET" >&2
+            exit 1
+          fi
           grep '"image"' .devcontainer/devcontainer.json
 
       - name: Run project checks inside the devcontainer
