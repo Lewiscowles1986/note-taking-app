@@ -24,14 +24,18 @@ on:
       - "scripts/build-devcontainer-base.sh"
       - ".github/workflows/devcontainer.yml"
   pull_request:
-    # Dependency-only PRs (e.g. a package-lock.json bump) don't change the
-    # Devcontainer image, so don't rebuild it per dependency bump. The image
-    # only changes when the pinned base/Playwright version changes, which is a
-    # deliberate, separate change (see failing PR #16).
+    # package-lock.json is included because a lockfile-only bump can still move
+    # @playwright/test — the version the image's baked browsers must match. A
+    # lockfile bump that skips this workflow lets the pin drift, and the next
+    # post-merge run boots a stale published image and fails in post-create.sh
+    # with "Playwright version mismatch" (that is how #94 -> #95 broke main).
+    # The cost is rebuilding the base image on dependency PRs; the build is
+    # layer-cached, and catching drift pre-merge is worth it.
     paths:
       - ".devcontainer/**"
       - "flake.nix"
       - "flake.lock"
+      - "package-lock.json"
       - ".dockerignore"
       - "scripts/build-devcontainer-base.sh"
       - ".github/workflows/devcontainer.yml"
