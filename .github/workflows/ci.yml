@@ -1,5 +1,8 @@
 name: CI
 
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
 on:
   push:
     branches: [ main ]
@@ -9,6 +12,7 @@ on:
     paths:
       - "src/**"
       - "e2e/**"
+      - "electron/**"
       - "scripts/**"
       - "public/**"
       - "package.json"
@@ -24,6 +28,7 @@ on:
     paths:
       - "src/**"
       - "e2e/**"
+      - "electron/**"
       - "scripts/**"
       - "public/**"
       - "package.json"
@@ -98,6 +103,8 @@ jobs:
         run: npm ci
       - name: Run tests
         run: npm run test
+      - name: Run Electron server tests
+        run: npm run test:electron
       - name: Run Vitest with coverage
         run: npm run test:coverage
 
