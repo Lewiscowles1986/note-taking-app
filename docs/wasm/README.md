@@ -4,7 +4,7 @@ Code blocks can run in the browser through WebAssembly. Each language is a plugi
 
 | Language | Doc | Vendored builder | Contract |
 | --- | --- | --- | --- |
-| PHP | [docs/FEATURES.md](../FEATURES.md) | `php-wasm-builder` | vendor.json (no provenance manifest) |
+| PHP | [php.md](./php.md) | `php-wasm-builder` | compiled-in manifest + vendor.json (no provenance manifest) |
 | Python | [python.md](./python.md) | `python-wasm-builder` | manifest + vendor + gzip |
 | Ruby | [ruby.md](./ruby.md) | `ruby-wasm-builder` | manifest + vendor + gzip |
 | Elixir | [elixir.md](./elixir.md) | `elixir-wasm-builder` | manifest + vendor + gzip |
@@ -22,7 +22,7 @@ A disabled language registers no runner and its wasm is left out of the built si
 
 ## The bundle contract
 
-Bundles built by a sibling `*-wasm-builder` repository are vendored under `public/<language>-wasm/build-<version>/` by `scripts/vendor-wasm.mjs`, which writes two files:
+Bundles built by a sibling `*-wasm-builder` repository are vendored under `public/<language>-wasm/build-<version>/` by `scripts/vendor-wasm.mjs`, which writes two files (PHP uses `build-<series>.x/`; see [php.md](./php.md)):
 
 - `manifest.json` — the build's provenance (source URL and hash, compiler, capabilities, file hashes), produced by the builder.
 - `vendor.json` — what the runner needs: the loader module, its exported entry point, which assets are gzipped, and each file's size and hash.
@@ -31,24 +31,69 @@ Large assets are committed gzipped and decompressed in the browser with `Decompr
 
 ## The PHP builder
 
-PHP is built by [php-wasm-builder](https://github.com/Lewiscowles1986/php-wasm-builder), a fork of [derickr/php-wasm-builder](https://github.com/derickr/php-wasm-builder). `docker-bake.hcl` on the `feat/parallel-build-multiple-php` branch builds each version in parallel and exports `php-web.mjs` and `php-web.wasm` (plus an `php-cli.mjs` for Node) into `builds/auto/build-<series>/`.
+PHP is built by [php-wasm-builder](https://github.com/Lewiscowles1986/php-wasm-builder), a fork of [derickr/php-wasm-builder](https://github.com/derickr/php-wasm-builder). `docker-bake.hcl` builds each line in parallel and exports `php-web.mjs`, `php-web.wasm` and a Node-only `php-cli.mjs`/`php-cli.wasm` pair into `builds/auto/build-<series>.x/`.
 
-Its versions match the vendored bundles exactly: 5.4.45, 7.4.33, 8.0.30, 8.1.34, 8.2.33, 8.3.33, 8.4.25, 8.5.10.
+PHP differs from the other languages in one way: its build directories are named after the **line**, not the patch (`build-8.4.x` holds PHP 8.4.28). The vendored tree keeps that shape, so a patch release replaces a bundle in place instead of accumulating a directory per patch.
+
+### Syncing the builds
+
+`scripts/sync-php-wasm.mjs` is the only supported way to update PHP bundles. It:
+
+1. Requires a `php-wasm-builder` checkout at `../php-wasm-builder`, and refuses to run unless one of its remotes is `github.com/Lewiscowles1986/php-wasm-builder` — so a stray clone cannot get vendored.
+2. Reads the PHP version out of each build's `php-web.wasm` (`X-Powered-By: PHP/<version>`) and cross-checks it against the `PHP_VERSION` pin in `docker-bake.hcl`, failing if the checkout and its output disagree.
+3. Vendors each line with `scripts/vendor-wasm.mjs`, dropping the Node-only files the browser runner never loads.
+4. Prunes any `public/php-wasm/build-*` directory the matrix no longer produces.
+5. Rewrites `src/lib/phpWasm.manifest.json`, the list the runner is compiled with.
+
+```sh
+node scripts/sync-php-wasm.mjs              # sync everything
+node scripts/sync-php-wasm.mjs --dry-run    # report changes only
+node scripts/sync-php-wasm.mjs --default 8.5.13
+```
+
+If the checkout is missing the script prints the clone command and exits non-zero:
+
+```sh
+git clone https://github.com/Lewiscowles1986/php-wasm-builder.git ../php-wasm-builder
+cd ../php-wasm-builder && docker buildx bake
+```
+
+### Adding a version
+
+Add a target to the builder's `docker-bake.hcl`, run `docker buildx bake`, then re-run the sync script. Nothing in this repository needs editing: the new line appears in the version selector because the manifest is regenerated and compiled into the bundle.
+
+### `src/lib/phpWasm.manifest.json`
+
+```json
+{
+  "schema": 1,
+  "language": "php",
+  "default": "8.6.0",
+  "bundles": [
+    { "version": "8.4.28", "directory": "build-8.4.x", "source": "php-wasm-builder" },
+    { "version": "5.4.45", "directory": "build-5.4.x", "source": "legacy" }
+  ]
+}
+```
+
+It is imported by `src/lib/phpRunner.ts`, so the version list ships with the code and the runner makes **no request to discover versions** — unlike Ruby and Python, which fetch `index.json` at runtime. A build that leaves a bundle out cannot advertise it, because the list and the vendored files come from the same sync run (`src/test/phpBundles.test.ts` asserts they agree).
+
+`source: "legacy"` marks bundles from before the builder covered that line (PHP 5.4 and 7.4). The current Dockerfile targets 8.x only, so those are kept as-is and never regenerated; the sync script preserves them and lists them.
 
 ## Known inconsistency: PHP
 
-PHP's bundles are now vendored through `scripts/vendor-wasm.mjs` like the others, so they carry `vendor.json` and gzipped payloads. Two gaps remain, both because the builder does not produce the inputs:
+PHP's bundles are vendored through `scripts/vendor-wasm.mjs` like the others, so they carry `vendor.json` and gzipped payloads. Two gaps remain, both because the builder does not produce the inputs:
 
-- **No `manifest.json`** — `php-wasm-builder` emits only the two build artifacts, so there is no recorded source URL, hash, compiler identity or capability list to vendor. A manifest could be generated from the builder at build time; it does not exist today.
+- **No `manifest.json`** — `php-wasm-builder` emits only the build artifacts, so there is no recorded source URL, hash, compiler identity or capability list to vendor. A manifest could be generated from the builder at build time; it does not exist today.
 - **No licence files or third-party notices** — the builder does not emit them either.
 
-So PHP is verified as far as its inputs allow (file hashes from `vendor.json`, and that the payload is really WebAssembly), but it has no provenance record, unlike Ruby, Python and Elixir.
+So PHP is verified as far as its inputs allow (file hashes from `vendor.json`, the version marker in the wasm, and that the payload is really WebAssembly), but it has no provenance record, unlike Ruby, Python and Elixir.
 
 ## Size
 
 | Language | Bundles | Vendored | Notes |
 | --- | ---: | ---: | --- |
-| PHP | 8 | ~18 MB | gzipped; no provenance manifest |
+| PHP | 9 | ~22 MB | gzipped; no provenance manifest |
 | Python | 17 | ~72 MB | gzipped |
 | Ruby | 28 | ~124 MB | gzipped |
 | Elixir | 1 | ~20 MB | gzipped |

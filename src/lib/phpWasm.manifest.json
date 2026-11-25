@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "language": "php",
+  "default": "8.6.0",
+  "bundles": [
+    {
+      "version": "5.4.45",
+      "directory": "build-5.4.x",
+      "source": "legacy"
+    },
+    {
+      "version": "7.4.33",
+      "directory": "build-7.4.x",
+      "source": "legacy"
+    },
+    {
+      "version": "8.0.30",
+      "directory": "build-8.0.x",
+      "source": "php-wasm-builder"
+    },
+    {
+      "version": "8.1.34",
+      "directory": "build-8.1.x",
+      "source": "php-wasm-builder"
+    },
+    {
+      "version": "8.2.36",
+      "directory": "build-8.2.x",
+      "source": "php-wasm-builder"
+    },
+    {
+      "version": "8.3.37",
+      "directory": "build-8.3.x",
+      "source": "php-wasm-builder"
+    },
+    {
+      "version": "8.4.28",
+      "directory": "build-8.4.x",
+      "source": "php-wasm-builder"
+    },
+    {
+      "version": "8.5.13",
+      "directory": "build-8.5.x",
+      "source": "php-wasm-builder"
+    },
+    {
+      "version": "8.6.0",
+      "directory": "build-8.6.x",
+      "source": "php-wasm-builder"
+    }
+  ]
+}

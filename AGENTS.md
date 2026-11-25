@@ -65,6 +65,25 @@ The Ruby matrix was pruned to exactly this rule (its six redundant bundles were
 each a line's *first* release), so treat one-build-per-line as the established
 shape rather than a new preference.
 
+### PHP in particular
+
+PHP's directories are named after the line (`public/php-wasm/build-8.4.x/`)
+because that is how `php-wasm-builder` names its output; the patch version lives
+in `vendor.json` and in the wasm itself. Do not hand-edit PHP bundles or
+`src/lib/phpWasm.manifest.json`:
+
+```sh
+node scripts/sync-php-wasm.mjs     # or `npm run sync:php-wasm`
+```
+
+It validates the sibling builder checkout (remote must be
+`github.com/Lewiscowles1986/php-wasm-builder`), reads versions from the compiled
+wasm and cross-checks the bake pins, vendors each line, prunes lines the matrix
+dropped, and rewrites the manifest. The manifest is imported by the runner, so
+the version list is compiled into the app and no version discovery happens at
+runtime. `src/test/phpBundles.test.ts` fails if the manifest and the vendored
+directories disagree. See [docs/wasm/php.md](docs/wasm/php.md).
+
 ## Validating devcontainer / e2e changes
 
 - Run checks in the actual container image, not just on the host: lint,

@@ -1,70 +1,44 @@
 /**
  * Sandboxed PHP executor via WebAssembly.
  *
- * Loads a PHP build (php-web.mjs + php-web.wasm) from /php-wasm/build-<version>/
+ * Loads a PHP build (php-web.mjs + php-web.wasm) from /php-wasm/build-<series>.x/
  * and runs code through the exported `phpw_run` C function. Output written to
  * stdout/stderr is captured through the emscripten `print`/`printErr` callbacks.
+ *
+ * The bundle list is compiled in from phpWasm.manifest.json, which
+ * scripts/sync-php-wasm.mjs regenerates from the builder's output. Nothing is
+ * probed at runtime: the manifest is the list, so the selector cannot offer a
+ * build the deploy left out, and no HEAD request per version is needed.
  *
  * The module is cached per version so switching versions only reloads when the
  * selected version changes.
  */
 
-import { registerVersionedRunner, setRunnerAvailability } from './codeRunners';
+import manifest from './phpWasm.manifest.json';
+import { registerVersionedRunner } from './codeRunners';
 import { isLanguageEnabled } from './languages';
 import { loadAsset, loadVendorManifest } from './wasmAssets';
 
-export const PHP_VERSIONS = [
-  '5.4.45',
-  '7.4.33',
-  '8.0.30',
-  '8.1.34',
-  '8.2.33',
-  '8.3.33',
-  '8.4.25',
-  '8.5.10',
-] as const;
-export const DEFAULT_PHP_VERSION = '8.4.25';
-
-/**
- * The "last" version of each major line (5.4, 7.4, 8.4). These are the ones we
- * expect to always be present; if any of them 404s we surface an alert. Other
- * versions are optional — if they're missing they're just skipped.
- */
-export const REQUIRED_PHP_VERSIONS = ['5.4.45', '7.4.33', '8.4.25'] as const;
-
-export type PhpVersion = (typeof PHP_VERSIONS)[number];
-
-let availabilityCache: string[] | null = null;
-
-/**
- * HEAD-request the version's vendor.json to see whether that build is
- * actually present (e.g. served by the app or the service worker cache).
- * Only an explicit 404 (or other non-OK status) marks a version as missing;
- * a network error or aborted request can't confirm a 404, so we optimistically
- * treat the build as present rather than dropping it from the selector.
- */
-export async function checkPhpVersionAvailable(version: string): Promise<boolean> {
-  const base = import.meta.env.BASE_URL || '/';
-  const url = `${base}php-wasm/build-${version}/vendor.json`;
-  try {
-    const res = await fetch(url, { method: 'HEAD' });
-    return res.ok;
-  } catch {
-    return true;
-  }
+export interface PhpBundle {
+  version: string;
+  /** `build-<series>.x` directory under public/php-wasm/. */
+  directory: string;
+  /** `legacy` for bundles the current builder does not produce (PHP 5.x/7.x). */
+  source: string;
 }
 
-/**
- * Returns the subset of PHP_VERSIONS that are actually available, checking each
- * once and caching the result for the session.
- */
-export async function getAvailablePhpVersions(): Promise<string[]> {
-  if (availabilityCache) return availabilityCache;
-  const results = await Promise.all(
-    PHP_VERSIONS.map(async (v) => ({ v, ok: await checkPhpVersionAvailable(v) })),
-  );
-  availabilityCache = results.filter((r) => r.ok).map((r) => r.v);
-  return availabilityCache;
+/** Bundles vendored under public/php-wasm/, oldest first. */
+export const PHP_BUNDLES: PhpBundle[] = manifest.bundles;
+
+export const PHP_VERSIONS: string[] = PHP_BUNDLES.map((b) => b.version);
+
+/** The newest bundle unless scripts/sync-php-wasm.mjs was told otherwise. */
+export const DEFAULT_PHP_VERSION: string = manifest.default;
+
+export type PhpVersion = string;
+
+function directoryFor(version: string): string {
+  return PHP_BUNDLES.find((b) => b.version === version)?.directory ?? `build-${version}.x`;
 }
 
 interface PhpModule {
@@ -88,14 +62,14 @@ async function loadPhp(version: string): Promise<PhpModule> {
   // Resolve against the app's base URL (e.g. "/" in dev, "/note-taking-app/"
   // on GitHub Pages) so the wasm is loaded from THIS repo, not the domain root.
   const base = import.meta.env.BASE_URL || '/';
-  const dir = `${base}php-wasm/build-${version}/`;
+  const dir = `${base}php-wasm/${directoryFor(version)}/`;
   // Load the wasm ourselves: it is vendored gzipped, and the Emscripten runtime
   // would otherwise fetch the uncompressed name (see scripts/vendor-wasm.mjs).
-  const manifest = await loadVendorManifest(dir);
-  const wasmBinary = await loadAsset(dir, 'php-web.wasm', manifest);
+  const vendor = await loadVendorManifest(dir);
+  const wasmBinary = await loadAsset(dir, 'php-web.wasm', vendor);
   // A literal filename in the specifier keeps the dev server from appending its
   // `?import` query, which 500s for files under public/.
-  const mod = await import(/* @vite-ignore */ `${base}php-wasm/build-${version}/php-web.mjs`);
+  const mod = await import(/* @vite-ignore */ `${dir}php-web.mjs`);
   const createPhpModule = mod.default as (
     opts: Record<string, unknown>,
   ) => Promise<PhpModule>;
@@ -103,7 +77,7 @@ async function loadPhp(version: string): Promise<PhpModule> {
   const php = await createPhpModule({
     wasmBinary,
     // Some PHP builds (8.x) ignore wasmBinary and fetch the wasm by name, which
-    // is no longer present uncompressed. Instantiate from the bytes we already
+    // is not present uncompressed. Instantiate from the bytes we already
     // decompressed, so every version loads the same way.
     instantiateWasm: (
       imports: WebAssembly.Imports,
@@ -185,10 +159,6 @@ function normalizePhpCode(code: string): string {
 export function registerPhpRunner() {
   const runner = createPhpRunner();
   registerVersionedRunner('php', runner, [...PHP_VERSIONS], DEFAULT_PHP_VERSION);
-  setRunnerAvailability('php', {
-    check: getAvailablePhpVersions,
-    required: [...REQUIRED_PHP_VERSIONS],
-  });
 }
 
 if (isLanguageEnabled('php')) registerPhpRunner();

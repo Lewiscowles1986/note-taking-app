@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import '@/lib/registerRunners';
-import { hasRunner, getRunnerAvailability } from '@/lib/codeRunners';
+import { hasRunner, getRunnerVersions } from '@/lib/codeRunners';
+import { DEFAULT_PHP_VERSION } from '@/lib/phpRunner';
 
 describe('runner auto-registration', () => {
   it('registers the built-in runners on import', () => {
@@ -9,7 +10,9 @@ describe('runner auto-registration', () => {
     expect(hasRunner('php')).toBe(true);
   });
 
-  it('registers the PHP availability probe', () => {
-    expect(getRunnerAvailability('php')?.required).toEqual(['5.4.45', '7.4.33', '8.4.25']);
+  it('offers the vendored PHP versions without probing the network', () => {
+    const versions = getRunnerVersions('php');
+    expect(versions?.length).toBeGreaterThan(0);
+    expect(versions).toContain(DEFAULT_PHP_VERSION);
   });
 });
