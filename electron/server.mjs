@@ -146,3 +146,21 @@ async function sendFile(req, res, filePath) {
     .pipe(res);
   return true;
 }
+
+/**
+ * Reject requests whose Host header is not the loopback name the app was
+ * built for. Without this, a web page can point a hostname at 127.0.0.1 and
+ * reach this server (DNS rebinding).
+ */
+export function hostGuard(allowedHosts) {
+  const allowed = new Set([...allowedHosts].map((host) => host.toLowerCase()));
+  return function guard(req, res, next) {
+    const host = typeof req.headers?.host === 'string' ? req.headers.host.toLowerCase() : '';
+    if (!allowed.has(host)) {
+      res.writeHead(421, { 'Content-Type': 'text/plain; charset=utf-8', Connection: 'close' });
+      res.end('Misdirected Request\n');
+      return;
+    }
+    return next();
+  };
+}

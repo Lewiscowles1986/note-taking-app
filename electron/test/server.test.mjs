@@ -1,7 +1,7 @@
 import test, { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createApp, staticAssets } from '../server.mjs';
-import { fakeRes, withServer, fixtureDir } from './helpers.mjs';
+import { createApp, staticAssets, hostGuard } from '../server.mjs';
+import { fakeRes, withServer, fixtureDir, rawRequest } from './helpers.mjs';
 
 describe('createApp', () => {
   it('runs middlewares in order and stops at the first that answers', async () => {
@@ -113,6 +113,43 @@ describe('gzipped vendored assets', () => {
       assert.equal(res.status, 200);
       assert.equal(res.headers.get('content-encoding'), null);
       assert.equal(await res.text(), 'NOT-ACTUALLY-GZIP-BYTES');
+    });
+  });
+});
+
+describe('hostGuard', () => {
+  it('rejects a Host it was not built for (DNS rebinding)', async () => {
+    // fetch() forbids overriding Host, hence raw http in rawRequest().
+    const app = createApp({ middlewares: [hostGuard(['127.0.0.1:4173'])] });
+    await withServer(app, async (_base, port) => {
+      // The guard-only chain has no static middleware, so an allowed Host
+      // falls through to createApp's terminal 404. What matters is 421 vs not.
+      const ok = await rawRequest({ port, host: '127.0.0.1:4173' });
+      assert.equal(ok.status, 404);
+      const bad = await rawRequest({ port, host: 'attacker.example' });
+      assert.equal(bad.status, 421);
+    });
+  });
+});
+
+describe('traversal', () => {
+  const root = fixtureDir({
+    'index.html': '<!doctype html>',
+    'public.txt': 'inside',
+  });
+
+  it('never serves a file outside the root', async () => {
+    const app = createApp({ middlewares: [staticAssets(root)] });
+    await withServer(app, async (_base, port) => {
+      // rawRequest, not fetch: fetch() normalises `/../x` client-side, which
+      // would hide exactly the input being tested.
+      for (const attempt of ['/../package.json', '/..%2fpackage.json', '/%2e%2e/package.json']) {
+        const res = await rawRequest({ port, path: attempt, host: `127.0.0.1:${port}` });
+        assert.equal(res.status, 404, attempt);
+        assert.equal(res.body.includes('"name":'), false, attempt);
+      }
+      const inside = await fetch(`http://127.0.0.1:${port}/public.txt`);
+      assert.equal(await inside.text(), 'inside');
     });
   });
 });
