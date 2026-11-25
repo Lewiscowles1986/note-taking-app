@@ -96,3 +96,23 @@ describe('staticAssets', () => {
     });
   });
 });
+
+describe('gzipped vendored assets', () => {
+  const root = fixtureDir({
+    'index.html': '<!doctype html>',
+    // The sentinel marks the stored bytes; if the server claimed gzip encoding
+    // at the HTTP layer, fetch() would transparently inflate them and the
+    // marker would not survive.
+    'ruby-wasm/build-3.4.1/ruby.wasm.gz': Buffer.from('NOT-ACTUALLY-GZIP-BYTES'),
+  });
+
+  it('sends .gz bytes verbatim without Content-Encoding', async () => {
+    const app = createApp({ middlewares: [staticAssets(root)] });
+    await withServer(app, async (base) => {
+      const res = await fetch(`${base}/ruby-wasm/build-3.4.1/ruby.wasm.gz`);
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get('content-encoding'), null);
+      assert.equal(await res.text(), 'NOT-ACTUALLY-GZIP-BYTES');
+    });
+  });
+});
