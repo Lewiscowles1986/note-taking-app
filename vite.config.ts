@@ -37,6 +37,10 @@ const NO_SYNC_ALIASES: Record<string, string> = {
   "@/lib/oidcAuth": path.resolve(__dirname, "./src/build-stubs/oidcAuth.ts"),
 };
 
+// VITE_ELECTRON=1 builds the Electron target: no service worker (a desktop app
+// has no origin to refresh from, and a stale profile worker after an upgrade is
+// a real bug) and its own output directory, so the web build is untouched.
+const electronBuild = process.env.VITE_ELECTRON === "1";
 
 // Leaves a disabled language's wasm out of the built site: a language that is
 // not enabled should not ship its payload, not merely leave it unloaded. Runs
@@ -71,6 +75,9 @@ export default defineConfig(() => ({
   define: {
     __DEPLOYED_REF__: JSON.stringify(deployedRef),
   },
+  build: {
+    outDir: electronBuild ? "dist-electron" : "dist",
+  },
   server: {
     host: "::",
     port: 8080,
@@ -85,79 +92,83 @@ export default defineConfig(() => ({
       name: "compose-social-preview-url",
       transformIndexHtml: (html) => html.replaceAll("__ASSET_BASE_URL__", assetBaseUrl),
     },
-    VitePWA({
-      // The service worker precaches the hashed build output and re-registers
-      // silently: a new deploy activates on the user's next load.
-      registerType: "autoUpdate",
-      workbox: {
-        // SPA: serve the app shell for client-side routes...
-        navigateFallback: "index.html",
-        // ...but NEVER for the per-PR previews. Previews are published next to
-        // the app under /preview-builds/<branch>/ and the service worker's scope
-        // (/note-taking-app/) covers them too; without this denylist it would
-        // smuggle in the main app's index.html and its own 404 route, masking
-        // the real preview. This exclusion applies only to the real build — a
-        // preview's OWN worker still needs SPA fallback within its own scope.
-        navigateFallbackDenylist: previewBuild
-          ? [/[^/]+\.[^/]+$/]
-          : [/preview-builds\//, /[^/]+\.[^/]+$/],
-        // No wasm runtime is precached. The matrices span dozens of versions and
-        // run to hundreds of MB, so precaching them would stall install and bloat
-        // the deploy. They are fetched on demand and cached after first use by the
-        // runtime rule below, which also keeps the install small. Raise workbox's
-        // per-file cap anyway so the dynamically imported .mjs glue can be cached.
-        maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
-        globPatterns: ["**/*.{js,css,html,mjs,wasm}"],
-        // Any language's wasm bundle: a new language needs no edit here.
-        globIgnores: ["**/*-wasm/**"],
-        // Precaching the wasm matrices is not viable (hundreds of MB, and the
-        // install would stall on them). Instead cache a runtime the first time it
-        // is actually loaded, so it is instant on later runs and available
-        // offline. Each bundle lives at a versioned path, so the bytes never
-        // change and CacheFirst is safe. This covers whichever versions a reader
-        // touches, not all of them.
-        runtimeCaching: [
-          {
-            urlPattern: /-wasm\//,
-            handler: "CacheFirst",
-            options: {
-              cacheName: "wasm-runtimes-v1",
-              // Warming all versions of a language can exceed the default cap,
-              // so allow the full matrix per language (plus a little headroom).
-              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
-              cacheableResponse: { statuses: [0, 200] },
+    ...(electronBuild
+      ? []
+      : [
+          VitePWA({
+            // The service worker precaches the hashed build output and re-registers
+            // silently: a new deploy activates on the user's next load.
+            registerType: "autoUpdate",
+            workbox: {
+              // SPA: serve the app shell for client-side routes...
+              navigateFallback: "index.html",
+              // ...but NEVER for the per-PR previews. Previews are published next to
+              // the app under /preview-builds/<branch>/ and the service worker's scope
+              // (/note-taking-app/) covers them too; without this denylist it would
+              // smuggle in the main app's index.html and its own 404 route, masking
+              // the real preview. This exclusion applies only to the real build — a
+              // preview's OWN worker still needs SPA fallback within its own scope.
+              navigateFallbackDenylist: previewBuild
+                ? [/[^/]+\.[^/]+$/]
+                : [/preview-builds\//, /[^/]+\.[^/]+$/],
+              // No wasm runtime is precached. The matrices span dozens of versions and
+              // run to hundreds of MB, so precaching them would stall install and bloat
+              // the deploy. They are fetched on demand and cached after first use by the
+              // runtime rule below, which also keeps the install small. Raise workbox's
+              // per-file cap anyway so the dynamically imported .mjs glue can be cached.
+              maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
+              globPatterns: ["**/*.{js,css,html,mjs,wasm}"],
+              // Any language's wasm bundle: a new language needs no edit here.
+              globIgnores: ["**/*-wasm/**"],
+              // Precaching the wasm matrices is not viable (hundreds of MB, and the
+              // install would stall on them). Instead cache a runtime the first time it
+              // is actually loaded, so it is instant on later runs and available
+              // offline. Each bundle lives at a versioned path, so the bytes never
+              // change and CacheFirst is safe. This covers whichever versions a reader
+              // touches, not all of them.
+              runtimeCaching: [
+                {
+                  urlPattern: /-wasm\//,
+                  handler: "CacheFirst",
+                  options: {
+                    cacheName: "wasm-runtimes-v1",
+                    // Warming all versions of a language can exceed the default cap,
+                    // so allow the full matrix per language (plus a little headroom).
+                    expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
+                    cacheableResponse: { statuses: [0, 200] },
+                  },
+                },
+              ],
             },
-          },
-        ],
-      },
-      includeAssets: [
-        "favicon.svg",
-        "favicon.ico",
-        "apple-touch-icon.png",
-        "maskable-icon-512x512.png",
-        "social-preview.png",
-      ],
-      manifest: {
-        name: "Note Haven",
-        short_name: "Note Haven",
-        description: "A local-first, privacy-focused Markdown note-taking app.",
-        start_url: "./",
-        scope: "./",
-        display: "standalone",
-        background_color: "#F5F1E8",
-        theme_color: "#1E4D4A",
-        icons: [
-          { src: "android-chrome-192x192.png", sizes: "192x192", type: "image/png" },
-          { src: "android-chrome-512x512.png", sizes: "512x512", type: "image/png" },
-          {
-            src: "maskable-icon-512x512.png",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "maskable",
-          },
-        ],
-      },
-    }),
+            includeAssets: [
+              "favicon.svg",
+              "favicon.ico",
+              "apple-touch-icon.png",
+              "maskable-icon-512x512.png",
+              "social-preview.png",
+            ],
+            manifest: {
+              name: "Note Haven",
+              short_name: "Note Haven",
+              description: "A local-first, privacy-focused Markdown note-taking app.",
+              start_url: "./",
+              scope: "./",
+              display: "standalone",
+              background_color: "#F5F1E8",
+              theme_color: "#1E4D4A",
+              icons: [
+                { src: "android-chrome-192x192.png", sizes: "192x192", type: "image/png" },
+                { src: "android-chrome-512x512.png", sizes: "512x512", type: "image/png" },
+                {
+                  src: "maskable-icon-512x512.png",
+                  sizes: "512x512",
+                  type: "image/png",
+                  purpose: "maskable",
+                },
+              ],
+            },
+          }),
+        ]),
   ],
   resolve: {
     alias: {
