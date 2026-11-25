@@ -1,7 +1,7 @@
 import test, { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createApp } from '../server.mjs';
-import { fakeRes } from './helpers.mjs';
+import { createApp, staticAssets } from '../server.mjs';
+import { fakeRes, withServer, fixtureDir } from './helpers.mjs';
 
 describe('createApp', () => {
   it('runs middlewares in order and stops at the first that answers', async () => {
@@ -52,5 +52,47 @@ describe('createApp', () => {
     await app({ method: 'GET', url: '/', headers: {} }, res);
 
     assert.equal(res.statusCode, 418);
+  });
+});
+
+describe('staticAssets', () => {
+  const root = fixtureDir({
+    'index.html': '<!doctype html><title>app</title>',
+    'assets/app.js': 'console.log(1);',
+    'assets/app.mjs': 'export default 1;',
+    'assets/app.css': 'body{}',
+    'manifest.webmanifest': '{"name":"x"}',
+    'php-wasm/build-8.4.25/php-web.mjs': 'export default 1;',
+    'php-wasm/build-8.4.25/php-web.wasm': Buffer.from([0, 97, 115, 109]),
+    'notes/data.json': '{"a":1}',
+  });
+
+  it('serves files with the MIME type their loader requires', async () => {
+    const app = createApp({ middlewares: [staticAssets(root)] });
+    await withServer(app, async (base) => {
+      const cases = [
+        ['/assets/app.mjs', 'text/javascript; charset=utf-8'],
+        ['/php-wasm/build-8.4.25/php-web.wasm', 'application/wasm'],
+        ['/notes/data.json', 'application/json; charset=utf-8'],
+        ['/assets/app.css', 'text/css; charset=utf-8'],
+        ['/manifest.webmanifest', 'application/manifest+json'],
+        ['/', 'text/html; charset=utf-8'],
+      ];
+      for (const [path, expected] of cases) {
+        const res = await fetch(`${base}${path}`);
+        assert.equal(res.status, 200, path);
+        assert.equal(res.headers.get('content-type'), expected, path);
+      }
+    });
+  });
+
+  it('answers HEAD with headers and an empty body', async () => {
+    const app = createApp({ middlewares: [staticAssets(root)] });
+    await withServer(app, async (base) => {
+      const res = await fetch(`${base}/assets/app.js`, { method: 'HEAD' });
+      assert.equal(res.status, 200);
+      assert.equal(await res.text(), '');
+      assert.equal(res.headers.get('content-length'), String('console.log(1);'.length));
+    });
   });
 });

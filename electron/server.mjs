@@ -6,6 +6,9 @@
 // same listener and share the app's origin. Nothing here imports Electron, so
 // the whole module is testable in plain Node.
 import http from 'node:http';
+import path from 'node:path';
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 
 /**
  * @typedef {(req: import('node:http').IncomingMessage,
@@ -59,4 +62,87 @@ export async function listen(app, { host, port }) {
     server.listen(port, host, resolve);
   });
   return server;
+}
+
+const JAVASCRIPT = 'text/javascript; charset=utf-8';
+
+/** Extension → Content-Type. */
+export const MIME_TYPES = Object.freeze({
+  '.html': 'text/html; charset=utf-8',
+  '.js': JAVASCRIPT,
+  '.mjs': JAVASCRIPT,
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.map': 'application/json; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json',
+  '.txt': 'text/plain; charset=utf-8',
+  '.gz': 'application/octet-stream',
+});
+
+export function contentTypeFor(filePath) {
+  return MIME_TYPES[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
+}
+
+export function staticAssets(root) {
+  const rootDir = path.resolve(root);
+
+  return async function serveStatic(req, res, next) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+
+    let pathname;
+    try {
+      pathname = decodeURIComponent(new URL(req.url ?? '/', 'http://127.0.0.1').pathname);
+    } catch {
+      return next();
+    }
+
+    const target = resolveWithin(rootDir, pathname);
+    if (!target) return next();
+
+    const served = await sendFile(req, res, target);
+    return served ? undefined : next();
+  };
+}
+
+/** Resolve a URL path inside `rootDir`, or null when it escapes it. */
+export function resolveWithin(rootDir, pathname) {
+  const relative = pathname.replace(/^\/+/, '');
+  const candidate = path.resolve(rootDir, relative || 'index.html');
+  const prefix = rootDir.endsWith(path.sep) ? rootDir : `${rootDir}${path.sep}`;
+  if (candidate !== rootDir && !candidate.startsWith(prefix)) return null;
+  return candidate;
+}
+
+async function sendFile(req, res, filePath) {
+  let info;
+  try {
+    info = await stat(filePath);
+  } catch {
+    return false;
+  }
+  if (!info.isFile()) return false;
+
+  res.writeHead(200, {
+    'Content-Type': contentTypeFor(filePath),
+    'Content-Length': String(info.size),
+    'Cache-Control': 'no-cache',
+  });
+  if (req.method === 'HEAD') {
+    res.end();
+    return true;
+  }
+  createReadStream(filePath)
+    .on('error', (error) => {
+      if (!res.headersSent) return fail(res, error);
+      res.destroy();
+    })
+    .pipe(res);
+  return true;
 }
