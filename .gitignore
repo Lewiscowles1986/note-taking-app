@@ -11,6 +11,7 @@ node_modules
 dist
 dist-nosync
 dist-ssr
+dist-electron
 *.local
 .npm-cache
 .worktrees

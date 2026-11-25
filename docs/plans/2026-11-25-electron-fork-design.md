@@ -50,9 +50,10 @@ offline payload; installers and signing are planned but not built here.
 ## Architecture
 
 ```
-electron/main.mjs      app lifecycle, single-instance lock, window, navigation guards
-electron/server.mjs    createApp({ middlewares }) + staticAssets(root); runs in a utility process
-electron/paths.mjs     asar-aware resolution of the built renderer root
+electron/main.mjs             app lifecycle, single-instance lock, window, navigation guards
+electron/server.mjs           createApp({ middlewares }) + staticAssets(root); no Electron import
+electron/server-process.mjs   utility-process entry: env → chain → { type: "ready", port }
+electron/paths.mjs            asar-aware resolution of the built renderer root
 ```
 
 ### Process lifecycle
