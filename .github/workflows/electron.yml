@@ -42,6 +42,12 @@ permissions:
 
 env:
   ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+  # electron-builder skips code signing on pull_request builds by default,
+  # which leaves the universal bundle unsigned — the lipo merge invalidates the
+  # per-slice signatures and nothing re-signs, so the app will not launch.
+  # Safe to force here because the identity is ad-hoc with no certificate to
+  # leak; notarisation stays skipped (no credentials are configured).
+  CSC_FOR_PULL_REQUEST: "true"
 
 jobs:
   macos:
