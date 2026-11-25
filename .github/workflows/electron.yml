@@ -1,0 +1,127 @@
+# Builds the Electron desktop app and attaches installers to the workflow run.
+#
+# Why macOS runners: a universal macOS build needs `lipo`, and a dmg needs
+# `hdiutil` to mount an image — neither exists off Darwin, and building on a
+# Linux runner would produce a broken "universal" bundle. The runners also have
+# the codesign toolchain that an arm64 app requires in order to launch at all.
+#
+# This workflow only builds and uploads artifacts. It does not publish a
+# release: publishing is a deliberate act, and the artifacts here are enough to
+# download and try a build.
+name: Electron
+
+on:
+  workflow_dispatch:
+    inputs:
+      mac-arch:
+        description: "macOS architecture"
+        type: choice
+        default: universal
+        options:
+          - universal
+          - arm64
+          - x64
+      version:
+        description: "Version stamped into the app (defaults to package.json)"
+        type: string
+        required: false
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - "electron/**"
+      - "electron-builder.yml"
+      - "scripts/electron-*.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/electron.yml"
+
+permissions:
+  contents: read
+
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      # ELECTRON_SKIP_BINARY_DOWNLOAD keeps `npm ci` from fetching the ~100 MB
+      # Electron runtime just to build the renderer; the packaging step below
+      # downloads exactly the binaries it needs for the architectures asked for.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Electron server tests
+        run: npm run test:electron
+
+      # The renderer is architecture-independent (it is html/js/wasm), so it is
+      # built once and reused for the packaging step.
+      - name: Build renderer
+        run: npm run build:electron
+
+      - name: Package
+        env:
+          MAC_ARCH: ${{ inputs.mac-arch || 'universal' }}
+          APP_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          args=(--mac "--$MAC_ARCH")
+          if [ -n "${APP_VERSION:-}" ]; then
+            args+=(--config.extraMetadata.version="$APP_VERSION")
+          fi
+          npx electron-builder "${args[@]}" --publish never
+
+      - name: Report what was built
+        run: |
+          ls -lh release/
+          for f in release/*.dmg release/*.zip; do
+            [ -e "$f" ] || continue
+            echo "::group::$f"
+            file "$f"
+            echo "::endgroup::"
+          done
+
+      # Proves the bundle is really universal rather than two thin slices, and
+      # that the version floor is the one the config declares.
+      - name: Verify the macOS bundle
+        run: |
+          set -euo pipefail
+          APP=$(find release -maxdepth 2 -name "*.app" -type d | head -1)
+          if [ -z "$APP" ]; then echo "no .app bundle found"; exit 1; fi
+          binary="$APP/Contents/MacOS/$(basename "$APP" .app)"
+          echo "bundle: $APP"
+          lipo -info "$binary"
+          /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist"
+          codesign -dv "$APP" 2>&1 | head -5
+          # Every vendored wasm runtime must be inside the archive: packaging
+          # that silently dropped public/ would still launch, but every code
+          # block would fail. Compare the source tree to the archive so this
+          # does not depend on how a branch names its bundles.
+          npx asar list "$APP/Contents/Resources/app.asar" > asar-files.txt
+          missing=0
+          for dir in public/*-wasm/*/; do
+            name=$(basename "$dir")
+            grep -q "/dist-electron/$(dirname "${dir#public/}")/$name/" asar-files.txt || {
+              echo "missing $name in app.asar"; missing=1;
+            }
+          done
+          exit $missing
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: note-haven-macos-${{ inputs.mac-arch || 'universal' }}
+          path: |
+            release/*.dmg
+            release/*.zip
+          if-no-files-found: error
+          retention-days: 30

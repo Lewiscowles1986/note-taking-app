@@ -11,7 +11,8 @@ It is a **second** target. The web build is still the default and is unchanged;
 everything here sits behind `VITE_ELECTRON=1`, which is off unless you set it.
 
 This is currently a spike: a shell, the origin story and the offline payload.
-Installers, signing and auto-update are not built yet (see the end of this page).
+Installers now build (see [Packaging](#packaging)); signing and auto-update are
+not done yet.
 
 ## Commands
 
@@ -22,6 +23,8 @@ Installers, signing and auto-update are not built yet (see the end of this page)
 | `npm run electron:dev` | Electron pointed at the Vite dev server (`npm run dev` in a second terminal) — HMR |
 | `npm run electron:serve` | Serve `dist-electron/` on `http://127.0.0.1:4173/` with no GUI, for poking in a browser |
 | `npm run test:electron` | The server test suite (`node --test`), no Electron required |
+| `npm run electron:pack` | Package an unpacked `.app` into `release/` (no installer) |
+| `npm run electron:dist:mac` | Build macOS dmg + zip for the current architecture |
 
 A normal run:
 
@@ -111,8 +114,79 @@ worth knowing while editing it:
   decompressed in JS; a `Content-Encoding: gzip` header would double-decompress
   them and break every code runner.
 
+## Packaging
+
+`electron-builder` produces installers from the same `dist-electron/` the dev
+commands use. Configuration lives in `electron-builder.yml`.
+
+```bash
+npm run electron:dist:mac                   # this machine's architecture
+npx electron-builder --mac --universal      # one app for Intel + Apple Silicon
+```
+
+`node_modules/` is deliberately **not** packaged. Every runtime dependency is
+bundled by Vite into `dist-electron/`, and the Electron shell imports only
+`node:` builtins, so shipping dependencies would add hundreds of megabytes of
+code that never executes. The packaged `app.asar` is the shell plus the built
+app.
+
+### Universal builds and the macOS floor
+
+A universal build is one `.app` containing both the arm64 and x64 Electron
+frameworks, merged by `lipo`. It is the right artifact when you want a single
+download for every Mac.
+
+**The OS floor is set by Electron, not by configuration.** Electron 45's
+framework declares `LSMinimumSystemVersion` 13.0, and `electron-builder`'s
+`minimumSystemVersion` option only records that requirement in the bundle's
+`Info.plist` — it cannot lower it. Declaring 11.0 would not make the app run
+there; `dyld` would fail to load the framework. To genuinely support macOS 12 or
+older, the Electron major version has to come down, and that is a dependency
+decision rather than a packaging one.
+
+The floor is therefore pinned to `13.0` in `electron-builder.yml` so the bundle
+states what is actually true. If you need a different floor, change the Electron
+version and update that value to match the new framework's declared minimum.
+
+### Signing
+
+The config uses `identity: null`, which produces an **ad-hoc** signature. That is
+the minimum for an arm64 macOS app to execute at all, and it is enough to run a
+build you made yourself. It is **not** notarisation: a downloaded copy carries
+the quarantine flag, so macOS refuses the first launch. Either right-click the
+app and choose **Open**, or clear the flag once:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Note Haven.app"
+```
+
+Adding a Developer ID certificate and notarisation would remove that step and is
+the natural next change; it needs Apple credentials as repository secrets, so it
+is not wired up.
+
+### CI
+
+`.github/workflows/electron.yml` builds on a macOS runner — `lipo` and `hdiutil`
+are Darwin-only, and a Linux runner cannot produce a valid universal bundle or a
+dmg. It:
+
+- runs the Electron server suite;
+- builds the renderer once (it is architecture-independent);
+- packages whatever `mac-arch` you pick (`universal`, `arm64`, `x64`);
+- asserts the bundle is really universal, that the identifier and OS floor are
+  the configured ones, and that **every** vendored wasm runtime made it into
+  `app.asar`;
+- uploads the dmg and zip as workflow artifacts.
+
+Run it from **Actions → Electron → Run workflow**, or by pushing a `v*` tag. It
+does not publish a release; download the artifact from the run instead.
+
+`appId` is `com.lewiscowles.notehaven`. Changing it changes where Electron keeps
+`userData`, so it is effectively the identity of the note store — do not change
+it casually.
+
 ## Not done yet
 
-- `electron-builder` installers (dmg / nsis / AppImage), code signing, notarisation
+- Code signing with a Developer ID and notarisation (see [Signing](#signing)),
   and auto-update.
 - Any native filesystem integration — the renderer keeps using IndexedDB.
