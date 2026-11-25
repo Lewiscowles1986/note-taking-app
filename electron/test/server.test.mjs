@@ -153,3 +153,27 @@ describe('traversal', () => {
     });
   });
 });
+
+describe('SPA fallback', () => {
+  const root = fixtureDir({
+    'index.html': '<!doctype html><div id="root"></div>',
+    'assets/app.js': '1;',
+  });
+
+  it('serves index.html for an extensionless client route', async () => {
+    const app = createApp({ middlewares: [staticAssets(root)] });
+    await withServer(app, async (base) => {
+      const res = await fetch(`${base}/auth/callback`);
+      assert.equal(res.status, 200);
+      assert.match(await res.text(), /<div id="root">/);
+    });
+  });
+
+  it('does NOT fall back for a missing file with an extension', async () => {
+    const app = createApp({ middlewares: [staticAssets(root)] });
+    await withServer(app, async (base) => {
+      const res = await fetch(`${base}/assets/missing.js`);
+      assert.equal(res.status, 404);
+    });
+  });
+});

@@ -107,7 +107,11 @@ export function staticAssets(root) {
     if (!target) return next();
 
     const served = await sendFile(req, res, target);
-    return served ? undefined : next();
+    if (served) return;
+    // A client-side route: an extensionless path with no file behind it.
+    // Everything else (e.g. a missing /assets/x.js) stays a real 404.
+    if (!path.extname(pathname)) return sendFile(req, res, path.join(rootDir, 'index.html'));
+    return next();
   };
 }
 
