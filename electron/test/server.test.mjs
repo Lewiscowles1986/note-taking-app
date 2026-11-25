@@ -62,8 +62,8 @@ describe('staticAssets', () => {
     'assets/app.mjs': 'export default 1;',
     'assets/app.css': 'body{}',
     'manifest.webmanifest': '{"name":"x"}',
-    'php-wasm/build-8.4.25/php-web.mjs': 'export default 1;',
-    'php-wasm/build-8.4.25/php-web.wasm': Buffer.from([0, 97, 115, 109]),
+    'php-wasm/build-8.4.x/php-web.mjs': 'export default 1;',
+    'php-wasm/build-8.4.x/php-web.wasm': Buffer.from([0, 97, 115, 109]),
     'notes/data.json': '{"a":1}',
   });
 
@@ -72,7 +72,7 @@ describe('staticAssets', () => {
     await withServer(app, async (base) => {
       const cases = [
         ['/assets/app.mjs', 'text/javascript; charset=utf-8'],
-        ['/php-wasm/build-8.4.25/php-web.wasm', 'application/wasm'],
+        ['/php-wasm/build-8.4.x/php-web.wasm', 'application/wasm'],
         ['/notes/data.json', 'application/json; charset=utf-8'],
         ['/assets/app.css', 'text/css; charset=utf-8'],
         ['/manifest.webmanifest', 'application/manifest+json'],
