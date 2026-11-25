@@ -11,6 +11,14 @@ directories:
   output: release
   buildResources: build-resources
 
+# No publish provider. An empty list is required rather than an omitted key:
+# with none configured electron-builder falls back to inferring GitHub from the
+# git remote and tries to generate updater metadata, which fails in a checkout
+# and makes an otherwise successful build exit 1. `null` or `[]` both disable
+# that, but `null` reaches a code path that throws on `provider`; `[]` does not.
+# CI uploads the artifacts itself.
+publish: []
+
 # Only what actually runs. `electron/` is the shell, `dist-electron/` is the
 # built app, and package.json supplies `main`.
 files:
@@ -39,11 +47,15 @@ mac:
   # to come down; see docs/technical/electron.md.
   minimumSystemVersion: "13.0"
   # Ad-hoc sign. An arm64 macOS build must be signed to execute at all, and
-  # without a Developer ID certificate ad-hoc is the only option. It is enough
-  # to run locally, but a downloaded copy is still quarantined by Gatekeeper,
-  # so the docs explain the right-click → Open / xattr step. Setting this to
-  # null stops electron-builder from hunting for an identity that is not there.
-  identity: null
+  # without a Developer ID certificate ad-hoc is the only option.
+  #
+  # "-" is codesign's ad-hoc identity. It matters that this is NOT `null`:
+  # electron-builder reads null as "skip signing", which leaves the app carrying
+  # Electron's own linker signature (Identifier=Electron, linker-signed). An
+  # explicit "-" produces a real ad-hoc signature with this bundle's identifier.
+  # Still not notarisation, so a downloaded copy stays quarantined — see the
+  # Gatekeeper note in docs/technical/electron.md.
+  identity: "-"
   hardenedRuntime: false
 
 dmg:
