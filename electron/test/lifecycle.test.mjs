@@ -113,6 +113,23 @@ describe('createServerExitHandler', () => {
     assert.deepEqual(dialogs, []);
     assert.deepEqual(restarts, []);
   });
+
+  it('restarts on every unexpected exit, not just the first', () => {
+    const restarts = [];
+    const handle = createServerExitHandler({
+      tracker: createShutdownTracker(),
+      port: 4173,
+      showErrorBox: () => {},
+      quit: () => {},
+      restart: () => restarts.push('restart'),
+    });
+
+    handle(1);
+    handle(1);
+    handle(1);
+
+    assert.deepEqual(restarts, ['restart', 'restart', 'restart']);
+  });
 });
 
 describe('createRestartPolicy', () => {

@@ -36,18 +36,22 @@ export function createShutdownTracker() {
  *
  * `onUnexpectedExit` must set `serverProcess = null` itself; this only decides
  * what happens next. When `restart` is supplied an unexpected exit is treated as
- * recoverable; without it the exit is terminal and the user is told.
+ * recoverable, and every such exit restarts — however many arrive in a session.
+ * Without it the exit is terminal and the user is told, at most once.
  */
 export function createServerExitHandler({ tracker, port, showErrorBox, quit, restart }) {
   return function handleServerExit(code) {
-    // Quitting kills the child, so its exit arrives even on a clean quit.
-    // Only an exit the app did not ask for is worth reacting to.
-    if (!tracker.shouldReportExit()) return;
+    // A deliberate quit is silent and terminal. An unexpected exit is
+    // repeatable — the `reported` latch never resets, so it is consulted only
+    // on the fallback path, where it keeps the dialog to one appearance.
+    if (tracker.isShuttingDown()) return;
 
     if (restart) {
       restart();
       return;
     }
+
+    if (!tracker.shouldReportExit()) return;
 
     showErrorBox(
       'Note Haven stopped',
