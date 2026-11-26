@@ -871,7 +871,7 @@ const GALLERY: GallerySection[] = [
     file: 'code-runner',
     title: 'Run Code in Your Notes',
     caption:
-      'JavaScript code blocks can be executed right inside a note. Press Run to see the output — including `console.log` — without leaving the page.\n\nPHP code blocks run in the browser too, via WebAssembly. A version selector next to Run lets you pick which PHP build to execute (e.g. `8.4.25`, `8.2.33`, `7.4.33`, `5.4.45`), and you can pin a default per block with a `version:` frontmatter line:\n\n````markdown\n```php\nversion: 7.4.33\n---\necho "Hello from PHP " . PHP_VERSION;\n```\n````',
+      'JavaScript code blocks can be executed right inside a note. Press Run to see the output — including `console.log` — without leaving the page.\n\nPHP code blocks run in the browser too, via WebAssembly. A version selector next to Run lets you pick which PHP build to execute (e.g. `8.6.0`, `8.4.28`, `7.4.33`, `5.4.45`), and you can pin a default per block with a `version:` frontmatter line:\n\n````markdown\n```php\nversion: 7.4.33\n---\necho "Hello from PHP " . PHP_VERSION;\n```\n````',
   },
   {
     file: 'swagger-openapi',

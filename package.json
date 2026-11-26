@@ -22,7 +22,8 @@
     "test:e2e:pwa": "bash \"$(npm prefix)/scripts/e2e-pwa.sh\"",
     "seed:e2e": "node scripts/seed-environment.mjs",
     "docs:screenshots": "E2E_DOCS=1 playwright test e2e/docs-tour.spec.ts --project=chromium",
-    "docs:screenshots:docker": "bash \"$(npm prefix)/scripts/e2e-docker.sh\""
+    "docs:screenshots:docker": "bash \"$(npm prefix)/scripts/e2e-docker.sh\"",
+    "sync:php-wasm": "node scripts/sync-php-wasm.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

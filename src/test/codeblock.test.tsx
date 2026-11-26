@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import CodeBlock from '../components/CodeBlock';
-import { listRunners, registerRunner, registerVersionedRunner, unregisterRunner, setRunnerAvailability } from '@/lib/codeRunners';
+import { listRunners, registerRunner, registerVersionedRunner, unregisterRunner } from '@/lib/codeRunners';
 import { registerJSRunner } from '@/lib/jsRunner';
 
 // CodeBlock pulls shiki in with a dynamic import(); replace it with a
@@ -11,11 +11,8 @@ import { registerJSRunner } from '@/lib/jsRunner';
 const { codeToHtmlMock } = vi.hoisted(() => ({ codeToHtmlMock: vi.fn() }));
 vi.mock('shiki', () => ({ codeToHtml: codeToHtmlMock }));
 
-// CodeBlock 404-checks PHP builds via getAvailablePhpVersions(); stub it to
-// report every version as available so the version selector renders in tests.
-const { getAvailablePhpVersionsMock } = vi.hoisted(() => ({
-  getAvailablePhpVersionsMock: vi.fn(),
-}));
+// CodeBlock imports every runner for its side effects; keep the PHP one out of
+// this suite so its wasm-backed registration does not shadow the stubs below.
 vi.mock('@/lib/phpRunner', () => ({ registerPhpRunner: () => {} }));
 
 const HIGHLIGHTED = '<span data-testid="shiki-output">highlighted</span>';
@@ -28,10 +25,6 @@ describe('CodeBlock component', () => {
   beforeEach(() => {
     codeToHtmlMock.mockReset();
     codeToHtmlMock.mockResolvedValue(HIGHLIGHTED);
-    getAvailablePhpVersionsMock.mockReset();
-    getAvailablePhpVersionsMock.mockResolvedValue([
-      '5.4.45', '7.4.33', '8.0.30', '8.1.34', '8.2.33', '8.3.33', '8.4.25', '8.5.10',
-    ]);
   });
 
   afterEach(() => {

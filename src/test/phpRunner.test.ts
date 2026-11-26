@@ -1,10 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
+  PHP_BUNDLES,
   PHP_VERSIONS,
   DEFAULT_PHP_VERSION,
-  REQUIRED_PHP_VERSIONS,
-  checkPhpVersionAvailable,
-  getAvailablePhpVersions,
   createPhpRunner,
   registerPhpRunner,
 } from '@/lib/phpRunner';
@@ -16,7 +14,11 @@ import {
   getDefaultVersion,
   listRunners,
 } from '@/lib/codeRunners';
+import manifest from '@/lib/phpWasm.manifest.json';
 
+// The runner's version list is the compiled-in manifest rather than a
+// hand-maintained array or a runtime probe, so these assert the wiring between
+// the two and the invariants scripts/sync-php-wasm.mjs guarantees.
 describe('PHP runner registration', () => {
   beforeEach(() => {
     for (const lang of listRunners()) {
@@ -24,18 +26,36 @@ describe('PHP runner registration', () => {
     }
   });
 
-  it('exposes the full set of PHP versions', () => {
-    expect(PHP_VERSIONS).toEqual([
-      '5.4.45',
-      '7.4.33',
-      '8.0.30',
-      '8.1.34',
-      '8.2.33',
-      '8.3.33',
-      '8.4.25',
-      '8.5.10',
-    ]);
-    expect(DEFAULT_PHP_VERSION).toBe('8.4.25');
+  it('exposes the compiled-in manifest verbatim', () => {
+    expect(PHP_BUNDLES).toEqual(manifest.bundles);
+    expect(PHP_VERSIONS).toEqual(manifest.bundles.map((b) => b.version));
+    expect(DEFAULT_PHP_VERSION).toBe(manifest.default);
+  });
+
+  it('lists bundles oldest first and defaults to the newest', () => {
+    const versions = PHP_BUNDLES.map((b) => b.version);
+    const numeric = (v: string) => v.split('.').map(Number);
+    const sorted = [...versions].sort((a, b) => {
+      const [x, y] = [numeric(a), numeric(b)];
+      for (let i = 0; i < Math.max(x.length, y.length); i += 1) {
+        if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
+      }
+      return 0;
+    });
+    expect(versions).toEqual(sorted);
+    expect(DEFAULT_PHP_VERSION).toBe(versions[versions.length - 1]);
+  });
+
+  it('maps every version to the series directory the sync script writes', () => {
+    for (const bundle of PHP_BUNDLES) {
+      const [major, minor] = bundle.version.split('.');
+      expect(bundle.directory).toBe(`build-${major}.${minor}.x`);
+    }
+  });
+
+  it('keeps the legacy 5.4 and 7.4 bundles the builder cannot rebuild', () => {
+    expect(PHP_VERSIONS).toContain('5.4.45');
+    expect(PHP_VERSIONS).toContain('7.4.33');
   });
 
   it('registers a versioned php runner', () => {
@@ -49,44 +69,5 @@ describe('PHP runner registration', () => {
   it('createPhpRunner returns a callable runner', () => {
     const runner = createPhpRunner();
     expect(runner).toBeTypeOf('function');
-  });
-});
-
-describe('PHP version availability', () => {
-  it('declares the required versions (last of each major line)', () => {
-    expect(REQUIRED_PHP_VERSIONS).toEqual(['5.4.45', '7.4.33', '8.4.25']);
-  });
-
-  it('checkPhpVersionAvailable returns true for a 200 HEAD', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
-    await expect(checkPhpVersionAvailable('8.4.x')).resolves.toBe(true);
-    vi.unstubAllGlobals();
-  });
-
-  it('checkPhpVersionAvailable returns false for a 404', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
-    await expect(checkPhpVersionAvailable('8.4.x')).resolves.toBe(false);
-    vi.unstubAllGlobals();
-  });
-
-  it('checkPhpVersionAvailable is optimistic on network failure (keeps the version)', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
-    await expect(checkPhpVersionAvailable('8.4.x')).resolves.toBe(true);
-    vi.unstubAllGlobals();
-  });
-
-  it('getAvailablePhpVersions filters to the versions that respond 200', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation((url: string) =>
-        Promise.resolve({ ok: url.includes('8.4.25') || url.includes('7.4.33') }),
-      ),
-    );
-    const avail = await getAvailablePhpVersions();
-    expect(avail).toContain('8.4.25');
-    expect(avail).toContain('7.4.33');
-    expect(avail).not.toContain('5.4.45');
-    expect(avail).not.toContain('8.5.10');
-    vi.unstubAllGlobals();
   });
 });
