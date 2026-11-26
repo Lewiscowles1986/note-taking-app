@@ -1,19 +1,24 @@
 # Note Haven — run the app, the web target, and the checks.
 #
-# The Electron code lands on feat/electron-fork before main, so every Electron
-# recipe resolves its root first: the worktree if it has electron/, else this
-# checkout. After the branch merges, the second case takes over unchanged.
+# Resolution is based on this file's own location (justfile_directory()), not on
+# the directory you invoke it from. The Electron code lands on feat/electron-fork
+# before main, so every Electron recipe resolves its root relative to this file:
+# the sibling worktree if it has electron/, else the repo holding this file.
+# That makes one identical file correct both at the main repo root and in the
+# worktree; after the branch merges, the second case takes over unchanged.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 PORT := "4173"
 ELECTRON_WORKTREE := ".worktrees/electron-fork"
 
-# Print the directory that has electron/, or fail with a pointer to the branch.
+# Print the absolute directory that has electron/, or fail with a pointer to the
+# branch. Resolves from this file's directory, so the caller's cwd is irrelevant.
 _electron_root:
-    @if [ -d "{{ELECTRON_WORKTREE}}/electron" ]; then echo "{{ELECTRON_WORKTREE}}"; \
-    elif [ -d "electron" ]; then echo "."; \
-    else echo "No electron/ here or in {{ELECTRON_WORKTREE}}." >&2; \
+    @root="{{justfile_directory()}}"; \
+    if [ -d "$root/{{ELECTRON_WORKTREE}}/electron" ]; then echo "$root/{{ELECTRON_WORKTREE}}"; \
+    elif [ -d "$root/electron" ]; then echo "$root"; \
+    else echo "No electron/ in $root or $root/{{ELECTRON_WORKTREE}}." >&2; \
          echo "The Electron target lives on feat/electron-fork (PR #107)." >&2; exit 1; fi
 
 # The web app's dev server on :8080.
