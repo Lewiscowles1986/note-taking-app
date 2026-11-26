@@ -70,6 +70,49 @@ describe('createServerExitHandler', () => {
     handle(1);
     assert.equal(dialogs.length, 1);
   });
+
+  it('restarts instead of quitting when a restart is possible', () => {
+    const dialogs = [];
+    const quits = [];
+    const restarts = [];
+    const handle = createServerExitHandler({
+      tracker: createShutdownTracker(),
+      port: 4173,
+      showErrorBox: (title, message) => dialogs.push({ title, message }),
+      quit: () => quits.push('quit'),
+      restart: () => restarts.push('restart'),
+    });
+
+    handle(1);
+
+    assert.deepEqual(dialogs, []);
+    assert.deepEqual(quits, []);
+    assert.deepEqual(restarts, ['restart']);
+  });
+
+  it('falls back to the dialog when there is no restart available', () => {
+    const { handle, dialogs, quits } = harness();
+    handle(1);
+    assert.equal(dialogs.length, 1);
+    assert.deepEqual(quits, ['quit']);
+  });
+
+  it('still says nothing during an intentional quit, even with a restart available', () => {
+    const dialogs = [];
+    const restarts = [];
+    const tracker = createShutdownTracker();
+    const handle = createServerExitHandler({
+      tracker,
+      port: 4173,
+      showErrorBox: (title, message) => dialogs.push({ title, message }),
+      quit: () => {},
+      restart: () => restarts.push('restart'),
+    });
+    tracker.begin();
+    handle(15);
+    assert.deepEqual(dialogs, []);
+    assert.deepEqual(restarts, []);
+  });
 });
 
 describe('createRestartPolicy', () => {

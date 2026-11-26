@@ -32,16 +32,23 @@ export function createShutdownTracker() {
 
 /**
  * The `exit` handler for the forked server, kept out of main.mjs so the
- * decision — dialog or silence — is covered by `npm run test:electron`.
+ * decision — restart, dialog, or silence — is covered by `npm run test:electron`.
  *
  * `onUnexpectedExit` must set `serverProcess = null` itself; this only decides
- * whether the user hears about it.
+ * what happens next. When `restart` is supplied an unexpected exit is treated as
+ * recoverable; without it the exit is terminal and the user is told.
  */
-export function createServerExitHandler({ tracker, port, showErrorBox, quit }) {
+export function createServerExitHandler({ tracker, port, showErrorBox, quit, restart }) {
   return function handleServerExit(code) {
     // Quitting kills the child, so its exit arrives even on a clean quit.
-    // Only an exit the app did not ask for is worth a dialog.
+    // Only an exit the app did not ask for is worth reacting to.
     if (!tracker.shouldReportExit()) return;
+
+    if (restart) {
+      restart();
+      return;
+    }
+
     showErrorBox(
       'Note Haven stopped',
       `The embedded server exited (code ${code}). Port ${port} may be in use by another process.`,
