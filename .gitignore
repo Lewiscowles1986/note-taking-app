@@ -8,12 +8,31 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
-dist-nosync
-dist-ssr
+# Every build target's output directory. The glob rather than a list per target
+# because ad-hoc `--outDir` builds (dist-probe2, ...) otherwise land untracked.
+dist*
+release
 *.local
+# A stray repo-local npm cache/log dir, as distinct from the global ~/.npm.
+.npm/
 .npm-cache
 .worktrees
+
+# Local secrets. Vite loads .env* into the client bundle, and .env files are
+# per-machine config, so none of them are committed. .env.example stays tracked.
+.env
+.env.*
+!.env.example
+
+# Electron writes these lock/socket symlinks into its working directory while
+# running; they point at the user's profile and are meaningless to a clone.
+SingletonCookie
+SingletonLock
+SingletonSocket
+
+# electron-builder's local cache (downloaded dmg-builder bundles, ~100 MB), as
+# distinct from its global ~/Library/Caches copy.
+.eb-cache/
 
 # Scratch/analysis artifacts
 .ghcache/

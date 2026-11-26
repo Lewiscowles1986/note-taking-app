@@ -1,0 +1,71 @@
+# electron-builder configuration for the desktop target.
+#
+# Everything the renderer needs is already bundled by Vite into
+# dist-electron/, and the Electron runtime imports only node: builtins — so
+# node_modules is excluded entirely. Shipping it would add hundreds of MB of
+# React/mermaid/etc that never get executed.
+
+appId: com.lewiscowles.notehaven
+productName: Note Haven
+directories:
+  output: release
+  buildResources: build-resources
+
+# No publish provider. An empty list is required rather than an omitted key:
+# with none configured electron-builder falls back to inferring GitHub from the
+# git remote and tries to generate updater metadata, which fails in a checkout
+# and makes an otherwise successful build exit 1. `null` or `[]` both disable
+# that, but `null` reaches a code path that throws on `provider`; `[]` does not.
+# CI uploads the artifacts itself.
+publish: []
+
+# Only what actually runs. `electron/` is the shell, `dist-electron/` is the
+# built app, and package.json supplies `main`.
+files:
+  - package.json
+  - electron/**/*
+  - "!electron/test/**/*"
+  - dist-electron/**/*
+  - "!node_modules/**/*"
+  - "!dist-electron/**/*.map"
+
+asar: true
+
+mac:
+  category: public.app-category.productivity
+  # No `arch` here on purpose: leaving it unset lets `--universal` / `--arm64`
+  # on the command line choose, which is what CI needs. A pinned arch would
+  # override the flag and quietly build the wrong thing.
+  target:
+    - dmg
+    - zip
+  # The floor is set by the Electron runtime itself: Electron 45's framework
+  # declares LSMinimumSystemVersion 13.0. Declaring anything lower would not
+  # make the app run on an older macOS — dyld would fail against the framework
+  # — so this states the real requirement rather than trying to look more
+  # compatible. To genuinely support macOS 12 or older, the Electron major has
+  # to come down; see docs/technical/electron.md.
+  minimumSystemVersion: "13.0"
+  # Ad-hoc sign. An arm64 macOS build must be signed to execute at all, and
+  # without a Developer ID certificate ad-hoc is the only option.
+  #
+  # "-" is codesign's ad-hoc identity. It matters that this is NOT `null`:
+  # electron-builder reads null as "skip signing", which leaves the app carrying
+  # Electron's own linker signature (Identifier=Electron, linker-signed). An
+  # explicit "-" produces a real ad-hoc signature with this bundle's identifier.
+  # Still not notarisation, so a downloaded copy stays quarantined — see the
+  # Gatekeeper note in docs/technical/electron.md.
+  identity: "-"
+  hardenedRuntime: false
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+win:
+  target:
+    - nsis
+
+linux:
+  target:
+    - AppImage
+  category: Office

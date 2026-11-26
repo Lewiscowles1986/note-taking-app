@@ -76,6 +76,12 @@ Note Haven is built with a focus on type safety, performance, and extensibility.
    npm run build
    ```
 
+   To build the desktop target (see [docs/technical/electron.md](docs/technical/electron.md)):
+
+   ```bash
+   npm run build:electron && npm run electron:start
+   ```
+
 5. **Testing:**
    ```bash
    npm test          # Run Vitest
