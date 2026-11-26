@@ -47,6 +47,10 @@ runtime:
 - A collision is a **hard failure**. The app shows a dialog naming the port and
   quits; it never silently moves to another port, because a different port means
   a different, empty note store.
+- A server that dies **mid-session** is restarted, not fatal. The restart reuses
+  the same port for the same reason launch refuses to move: the note store is
+  keyed by the origin, so a different port would open a different, empty
+  library.
 - `NOTE_HAVEN_PORT` overrides the port (used for dev and testing). Changing it
   changes where your notes live.
 - A single-instance lock stops a second launch from competing for the port.
@@ -57,6 +61,25 @@ runtime:
 
 Loopback addresses count as potentially-trustworthy origins, so the secure-context
 APIs work without any certificate or special casing.
+
+## Testing the restart by hand
+
+The `justfile` at the repo root drives the loop:
+
+```bash
+just electron         # build the renderer and launch the app (:4173)
+just server-status    # note the pid
+just kill-server      # in another terminal
+just server-status    # a different pid: the app rebooted the server
+```
+
+`just watch-server` polls the port once a second and prints the pid whenever it
+changes, which makes the restart visible as it happens. `just web` runs the
+browser build on :8080 instead.
+
+Use the built app (`just electron`), not `npm run electron:dev`: the dev target
+points at the Vite server and starts no embedded server at all, so there would be
+nothing to kill.
 
 ## Your notes are not shared with the browser
 
@@ -108,15 +131,27 @@ electron/main.mjs             app lifecycle, single-instance lock, window, navig
 electron/server.mjs           createApp({ middlewares }) + staticAssets(root); no Electron import
 electron/server-process.mjs   utility-process entry: env → chain → { type: "ready", port }
 electron/paths.mjs            asar-aware resolution of the built renderer root
-electron/lifecycle.mjs        whether a server exit deserves a dialog
+electron/lifecycle.mjs        restart-or-dialog decision for a server exit, and the backoff policy
 electron/parent-watch.mjs     exits the server when the app that owns it is gone
 ```
 
 `main.mjs` forks `server-process.mjs` with `utilityProcess.fork()`, waits for the
-child's `ready` message, and only then creates the window. If the child dies the
-app reports it and quits rather than leaving a window pointing at nothing.
+child's `ready` message, and only then creates the window.
 
-Two details keep that dialog honest:
+That **initial** start is strict. If it fails, the app says so and quits: a port
+collision is fatal, and there is no useful window to show without a server.
+
+An exit **after** a successful start is not fatal. The app restarts the child on
+the same port 4173 and reloads the window once it reports `ready` again.
+Restarts back off — 250 ms times the attempt number, capped at 5 s — and the
+attempt counter resets after 10 s of healthy uptime, so one crash costs nothing
+while a crash loop cannot spin. It is repeatable: every unexpected exit takes
+that path, not just the first.
+
+A normal quit stays silent. Quitting kills the child, and that exit is neither
+reported nor restarted.
+
+Two details keep those reports honest:
 
 - **Only an unrequested exit is reported.** Quitting kills the child, so a clean
   quit also produces an `exit` event. `before-quit` records the intent first, and
