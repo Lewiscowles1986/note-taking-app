@@ -4,6 +4,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, dialog, shell, utilityProcess } from 'electron';
+import { createShutdownTracker, createServerExitHandler } from './lifecycle.mjs';
 import { resolveRendererRoot } from './paths.mjs';
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -27,6 +28,7 @@ const rendererRoot = resolveRendererRoot({
 });
 
 let serverProcess = null;
+const shutdown = createShutdownTracker();
 
 function startServer() {
   return new Promise((resolve, reject) => {
@@ -36,6 +38,8 @@ function startServer() {
         NOTE_HAVEN_ROOT: rendererRoot,
         NOTE_HAVEN_HOST: HOST,
         NOTE_HAVEN_PORT: String(PORT),
+        // Lets the child notice a Force Quit and release the port.
+        NOTE_HAVEN_PARENT_PID: String(process.pid),
       },
       stdio: 'inherit',
     });
@@ -96,13 +100,15 @@ if (!app.requestSingleInstanceLock()) {
     if (!devUrl) {
       try {
         serverProcess = await startServer();
+        const handleServerExit = createServerExitHandler({
+          tracker: shutdown,
+          port: PORT,
+          showErrorBox: dialog.showErrorBox,
+          quit: () => app.quit(),
+        });
         serverProcess.once('exit', (code) => {
           serverProcess = null;
-          dialog.showErrorBox(
-            'Note Haven stopped',
-            `The embedded server exited (code ${code}). Port ${PORT} may be in use by another process.`,
-          );
-          app.quit();
+          handleServerExit(code);
         });
       } catch (error) {
         dialog.showErrorBox(
@@ -132,6 +138,9 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  // Record the intent before killing: the child's exit event follows, and it
+  // must not be mistaken for a crash.
+  shutdown.begin();
   serverProcess?.kill();
   serverProcess = null;
 });

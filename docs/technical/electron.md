@@ -50,6 +50,10 @@ runtime:
 - `NOTE_HAVEN_PORT` overrides the port (used for dev and testing). Changing it
   changes where your notes live.
 - A single-instance lock stops a second launch from competing for the port.
+- If the app is **Force Quit** (or crashes), the forked server would otherwise
+  outlive its parent and keep holding 4173, so the next launch could not bind.
+  The child therefore watches the parent pid it is given in
+  `NOTE_HAVEN_PARENT_PID` and closes the listener when that process goes away.
 
 Loopback addresses count as potentially-trustworthy origins, so the secure-context
 APIs work without any certificate or special casing.
@@ -62,6 +66,15 @@ visible to it. That is deliberate: copying browser storage into an application
 profile behind the user's back is not something this design does.
 
 Move notes across with the existing **Export → Import** flow (JSON or ZIP).
+
+On macOS that profile is `~/Library/Application Support/Note Haven/`, and the
+notes themselves are the IndexedDB directory inside it — named after the origin,
+so `IndexedDB/http_127.0.0.1_4173.indexeddb.leveldb/`. This is why the port is
+part of the note store's identity: a different port is a different directory, and
+therefore a different, empty library.
+
+The directory follows `productName` (`Note Haven`), not `appId`. Renaming the
+product moves where the notes live; changing `appId` does not.
 
 ## Choosing the wasm payload
 
@@ -95,11 +108,27 @@ electron/main.mjs             app lifecycle, single-instance lock, window, navig
 electron/server.mjs           createApp({ middlewares }) + staticAssets(root); no Electron import
 electron/server-process.mjs   utility-process entry: env → chain → { type: "ready", port }
 electron/paths.mjs            asar-aware resolution of the built renderer root
+electron/lifecycle.mjs        whether a server exit deserves a dialog
+electron/parent-watch.mjs     exits the server when the app that owns it is gone
 ```
 
 `main.mjs` forks `server-process.mjs` with `utilityProcess.fork()`, waits for the
 child's `ready` message, and only then creates the window. If the child dies the
 app reports it and quits rather than leaving a window pointing at nothing.
+
+Two details keep that dialog honest:
+
+- **Only an unrequested exit is reported.** Quitting kills the child, so a clean
+  quit also produces an `exit` event. `before-quit` records the intent first, and
+  `lifecycle.mjs` suppresses the "Note Haven stopped" dialog from then on — it
+  appears at most once, and only when the server really did stop on its own.
+- **The child does not outlive the app.** A Force Quit or crash skips the quit
+  path entirely, leaving the server holding port 4173. `parent-watch.mjs` makes
+  the child exit once the `NOTE_HAVEN_PARENT_PID` it was started with is gone, so
+  the next launch can bind.
+
+A bind failure (`EADDRINUSE`) is posted back by the child before it exits, and
+`main.mjs` surfaces that message rather than a bare exit code.
 
 `server.mjs` has no Electron import, which is why `npm run test:electron` can
 exercise the whole HTTP layer in plain Node. The only security-sensitive details
@@ -181,9 +210,10 @@ dmg. It:
 Run it from **Actions → Electron → Run workflow**, or by pushing a `v*` tag. It
 does not publish a release; download the artifact from the run instead.
 
-`appId` is `com.lewiscowles.notehaven`. Changing it changes where Electron keeps
-`userData`, so it is effectively the identity of the note store — do not change
-it casually.
+`appId` is `com.lewiscowles.notehaven` — the bundle identifier, which is what
+signing and Gatekeeper see. It is **not** where the data lives: `userData`
+follows `productName` (see above), so renaming the product is the change that
+moves a user's notes.
 
 ## Not done yet
 
