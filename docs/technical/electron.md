@@ -151,12 +151,14 @@ that path, not just the first.
 A normal quit stays silent. Quitting kills the child, and that exit is neither
 reported nor restarted.
 
-Two details keep those reports honest:
+Two details keep that honest:
 
-- **Only an unrequested exit is reported.** Quitting kills the child, so a clean
-  quit also produces an `exit` event. `before-quit` records the intent first, and
-  `lifecycle.mjs` suppresses the "Note Haven stopped" dialog from then on — it
-  appears at most once, and only when the server really did stop on its own.
+- **A deliberate quit is never mistaken for a crash.** Quitting kills the child,
+  so a clean quit also produces an `exit` event. `before-quit` records the intent
+  first and `lifecycle.mjs` checks it before anything else, so a quit is neither
+  restarted nor reported. The "Note Haven stopped" dialog survives only for the
+  unprotected case — an exit where no restart is wired up — and appears at most
+  once there.
 - **The child does not outlive the app.** A Force Quit or crash skips the quit
   path entirely, leaving the server holding port 4173. `parent-watch.mjs` makes
   the child exit once the `NOTE_HAVEN_PARENT_PID` it was started with is gone, so
