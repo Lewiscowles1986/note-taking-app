@@ -4,7 +4,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, dialog, shell, utilityProcess } from 'electron';
-import { createShutdownTracker, createServerExitHandler } from './lifecycle.mjs';
+import { createShutdownTracker, createServerExitHandler, createRestartPolicy } from './lifecycle.mjs';
 import { resolveRendererRoot } from './paths.mjs';
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -29,6 +29,8 @@ const rendererRoot = resolveRendererRoot({
 
 let serverProcess = null;
 const shutdown = createShutdownTracker();
+const restartPolicy = createRestartPolicy();
+let serverStartedAt = 0;
 
 function startServer() {
   return new Promise((resolve, reject) => {
@@ -56,6 +58,43 @@ function startServer() {
       reject(new Error(`the embedded server exited with code ${code}`));
     });
   });
+}
+
+async function launchServer() {
+  serverProcess = await startServer();
+  serverStartedAt = Date.now();
+
+  const handleExit = createServerExitHandler({
+    tracker: shutdown,
+    port: PORT,
+    showErrorBox: dialog.showErrorBox,
+    quit: () => app.quit(),
+    restart: () => void scheduleRestart(),
+  });
+
+  serverProcess.once('exit', (code) => {
+    serverProcess = null;
+    restartPolicy.recordHealthyUptime(Date.now() - serverStartedAt);
+    handleExit(code);
+  });
+}
+
+async function scheduleRestart() {
+  const delay = restartPolicy.nextDelay();
+  await new Promise((resolve) => setTimeout(resolve, delay));
+  if (shutdown.isShuttingDown()) return;
+
+  try {
+    await launchServer();
+  } catch (error) {
+    // Keep the port invariant: retry the same port rather than giving up or
+    // moving to another one.
+    console.error('[main] server restart failed:', error.message);
+    void scheduleRestart();
+    return;
+  }
+
+  for (const window of BrowserWindow.getAllWindows()) window.reload();
 }
 
 function createWindow(url) {
@@ -99,17 +138,7 @@ if (!app.requestSingleInstanceLock()) {
 
     if (!devUrl) {
       try {
-        serverProcess = await startServer();
-        const handleServerExit = createServerExitHandler({
-          tracker: shutdown,
-          port: PORT,
-          showErrorBox: dialog.showErrorBox,
-          quit: () => app.quit(),
-        });
-        serverProcess.once('exit', (code) => {
-          serverProcess = null;
-          handleServerExit(code);
-        });
+        await launchServer();
       } catch (error) {
         dialog.showErrorBox(
           'Note Haven could not start',
