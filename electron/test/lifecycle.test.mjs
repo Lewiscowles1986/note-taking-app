@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createShutdownTracker, createServerExitHandler } from '../lifecycle.mjs';
+import {
+  createShutdownTracker,
+  createServerExitHandler,
+  createRestartPolicy,
+} from '../lifecycle.mjs';
 
 describe('createShutdownTracker', () => {
   it('reports an exit the app did not ask for', () => {
@@ -65,5 +69,40 @@ describe('createServerExitHandler', () => {
     handle(1);
     handle(1);
     assert.equal(dialogs.length, 1);
+  });
+});
+
+describe('createRestartPolicy', () => {
+  it('backs off further on each consecutive failure', () => {
+    const policy = createRestartPolicy();
+    assert.deepEqual([policy.nextDelay(), policy.nextDelay(), policy.nextDelay()], [250, 500, 750]);
+  });
+
+  it('caps the delay so a long outage still retries promptly', () => {
+    const policy = createRestartPolicy();
+    for (let i = 0; i < 100; i += 1) policy.nextDelay();
+    assert.equal(policy.nextDelay(), 5000);
+  });
+
+  it('forgets previous failures once the server has been healthy', () => {
+    const policy = createRestartPolicy();
+    policy.nextDelay();
+    policy.nextDelay();
+    policy.recordHealthyUptime(10_000);
+    assert.equal(policy.nextDelay(), 250);
+  });
+
+  it('keeps counting when the server died too soon to be healthy', () => {
+    const policy = createRestartPolicy();
+    policy.nextDelay();
+    policy.recordHealthyUptime(1_000);
+    assert.equal(policy.nextDelay(), 500);
+  });
+
+  it('never runs out of attempts', () => {
+    const policy = createRestartPolicy();
+    for (let i = 0; i < 1000; i += 1) {
+      assert.equal(typeof policy.nextDelay(), 'number');
+    }
   });
 });

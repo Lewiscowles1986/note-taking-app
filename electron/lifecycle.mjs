@@ -49,3 +49,28 @@ export function createServerExitHandler({ tracker, port, showErrorBox, quit }) {
     quit();
   };
 }
+
+/**
+ * How long to wait before restarting the server, and when to stop counting.
+ *
+ * There is no attempt limit on purpose: if the server ran once, the port was
+ * free and the env was right, so a later exit is transient and retrying forever
+ * is safe. The strict initial start in main.mjs is what stops an occupied port
+ * from becoming a retry loop.
+ */
+export function createRestartPolicy({ baseDelayMs = 250, maxDelayMs = 5_000, healthyUptimeMs = 10_000 } = {}) {
+  let attempt = 0;
+
+  return {
+    /** The delay to wait before the next attempt, in milliseconds. */
+    nextDelay() {
+      const delay = Math.min(baseDelayMs * (attempt + 1), maxDelayMs);
+      attempt += 1;
+      return delay;
+    },
+    /** Call when a server exits; a long uptime means this is a fresh incident. */
+    recordHealthyUptime(uptimeMs) {
+      if (uptimeMs >= healthyUptimeMs) attempt = 0;
+    },
+  };
+}
