@@ -59,10 +59,13 @@ watch-server:
       sleep 1; \
     done
 
-# Tests: web unit suite, then the electron suite from wherever electron/ lives.
+# Tests: web unit suite, then the electron suite when electron/ exists.
+# The electron half is skipped on branches that do not carry the target yet.
 test:
     npm test
-    cd "$(just _electron_root)" && npm run test:electron
+    @root="$(just _electron_root 2>/dev/null || true)"; \
+    if [ -n "$root" ]; then cd "$root" && npm run test:electron; \
+    else echo "skipping electron tests: no electron/ reachable from here"; fi
 
 lint:
     npm run lint
